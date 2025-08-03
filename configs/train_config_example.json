@@ -1,0 +1,54 @@
+{
+  "train": {
+    "type": "mixed",
+    "datasets": [
+      {
+        "type": "caption",
+        "path": "/path/to/coco/captions_train.json",
+        "params": {
+          "image_size": 448,
+          "max_length": 512
+        }
+      },
+      {
+        "type": "vqa",
+        "path": "/path/to/vqa/vqa_train.json",
+        "params": {
+          "image_size": 448,
+          "max_length": 256
+        }
+      },
+      {
+        "type": "refcoco",
+        "path": "/path/to/refcoco",
+        "params": {
+          "image_size": 448,
+          "max_length": 128
+        }
+      }
+    ],
+    "sampling_weights": [0.3, 0.3, 0.4]
+  },
+  "val": {
+    "type": "mixed",
+    "datasets": [
+      {
+        "type": "caption",
+        "path": "/path/to/coco/captions_val.json",
+        "params": {
+          "image_size": 448,
+          "max_length": 512
+        }
+      },
+      {
+        "type": "refcoco",
+        "path": "/path/to/refcoco/val",
+        "params": {
+          "image_size": 448,
+          "max_length": 128
+        }
+      }
+    ],
+    "sampling_weights": [0.5, 0.5]
+  }
+}

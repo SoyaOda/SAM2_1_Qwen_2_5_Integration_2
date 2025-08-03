@@ -7,6 +7,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from typing import Dict, List, Optional, Tuple, Union
 from dataclasses import dataclass
+import warnings
 
 from transformers import (
     Qwen2_5_VLForConditionalGeneration,
@@ -347,26 +348,175 @@ class LISA_Model(nn.Module):
         self,
         input_ids: torch.Tensor,
         pixel_values: torch.Tensor,
+        attention_mask: Optional[torch.Tensor] = None,
         max_new_tokens: int = 100,
         temperature: float = 0.7,
+        do_sample: bool = True,
+        top_p: float = 0.9,
         **kwargs
     ) -> Dict[str, Union[torch.Tensor, List[torch.Tensor]]]:
         """
         Generate text with automatic mask generation at SEG tokens
         
         Args:
-            input_ids: Input token IDs
-            pixel_values: Input images
+            input_ids: Input token IDs [B, seq_len]
+            pixel_values: Input images [B, C, H, W]
+            attention_mask: Attention mask [B, seq_len]
             max_new_tokens: Maximum tokens to generate
             temperature: Sampling temperature
+            do_sample: Whether to use sampling
+            top_p: Top-p sampling parameter
             **kwargs: Additional generation arguments
         
         Returns:
-            Dictionary with generated tokens and masks
+            Dictionary with:
+                - generated_ids: Full generated token sequence
+                - generated_text: List of decoded text
+                - masks: List of generated masks (None if no SEG token)
+                - seg_positions: Positions where SEG tokens were generated
         """
-        # TODO: Implement streaming generation with mask output
-        # This requires custom generation loop to handle SEG tokens
-        raise NotImplementedError("generate_with_masks not yet implemented")
+        B = input_ids.size(0)
+        device = input_ids.device
+        
+        # Initialize outputs
+        generated_ids = input_ids.clone()
+        all_masks = [[] for _ in range(B)]
+        all_seg_positions = [[] for _ in range(B)]
+        
+        # Get vision features once (they don't change during generation)
+        vision_features = self.extract_vision_features(pixel_values)
+        image_features_sam = self.image_adapter(vision_features)
+        
+        # Generation loop
+        for step in range(max_new_tokens):
+            # Get model outputs
+            with torch.no_grad():
+                outputs = self.qwen(
+                    input_ids=generated_ids,
+                    attention_mask=attention_mask,
+                    pixel_values=pixel_values,
+                    output_hidden_states=True,
+                    return_dict=True
+                )
+            
+            # Get next token logits
+            next_token_logits = outputs.logits[:, -1, :]  # [B, vocab_size]
+            
+            # Apply temperature
+            if temperature > 0:
+                next_token_logits = next_token_logits / temperature
+            
+            # Sample or take argmax
+            if do_sample:
+                # Apply top-p sampling
+                if top_p < 1.0:
+                    sorted_logits, sorted_indices = torch.sort(
+                        next_token_logits, descending=True
+                    )
+                    cumulative_probs = torch.cumsum(
+                        torch.softmax(sorted_logits, dim=-1), dim=-1
+                    )
+                    
+                    # Remove tokens with cumulative probability above threshold
+                    sorted_indices_to_remove = cumulative_probs > top_p
+                    # Keep at least one token
+                    sorted_indices_to_remove[:, 1:] = sorted_indices_to_remove[:, :-1].clone()
+                    sorted_indices_to_remove[:, 0] = False
+                    
+                    # Set logits to -inf for removed tokens
+                    indices_to_remove = sorted_indices_to_remove.scatter(
+                        1, sorted_indices, sorted_indices_to_remove
+                    )
+                    next_token_logits[indices_to_remove] = float('-inf')
+                
+                # Sample from distribution
+                probs = torch.softmax(next_token_logits, dim=-1)
+                next_tokens = torch.multinomial(probs, num_samples=1).squeeze(1)
+            else:
+                # Greedy decoding
+                next_tokens = torch.argmax(next_token_logits, dim=-1)
+            
+            # Append generated tokens
+            generated_ids = torch.cat([
+                generated_ids,
+                next_tokens.unsqueeze(1)
+            ], dim=1)
+            
+            # Update attention mask if provided
+            if attention_mask is not None:
+                attention_mask = torch.cat([
+                    attention_mask,
+                    torch.ones((B, 1), device=device, dtype=attention_mask.dtype)
+                ], dim=1)
+            
+            # Check for SEG tokens
+            seg_mask = (next_tokens == self.seg_token_id)
+            
+            if seg_mask.any():
+                # Get hidden states at current position
+                current_hidden = outputs.hidden_states[-1][:, -1, :]  # [B, D_l]
+                
+                # Generate masks for samples that output SEG
+                for b in range(B):
+                    if seg_mask[b]:
+                        # Record SEG position
+                        seg_pos = generated_ids.size(1) - 1
+                        all_seg_positions[b].append(seg_pos)
+                        
+                        # Generate mask
+                        seg_hidden = current_hidden[b]  # [D_l]
+                        prompt_embed = self.text_prompt_proj(seg_hidden)  # [256]
+                        
+                        # Get positional encoding
+                        image_pe = self.sam_prompt_encoder.get_dense_pe()
+                        
+                        # Prepare inputs for mask decoder
+                        sparse_embeddings = prompt_embed.unsqueeze(0).unsqueeze(0)  # [1, 1, 256]
+                        dense_embeddings = torch.empty(
+                            1, 0, self.sam_prompt_encoder.embed_dim,
+                            device=device
+                        )
+                        
+                        # Run mask decoder
+                        with torch.no_grad():
+                            low_res_masks, _ = self.sam_mask_decoder(
+                                image_embeddings=image_features_sam[b:b+1],
+                                image_pe=image_pe,
+                                sparse_prompt_embeddings=sparse_embeddings,
+                                dense_prompt_embeddings=dense_embeddings,
+                                multimask_output=False
+                            )
+                        
+                        # Upscale mask
+                        orig_h, orig_w = pixel_values.shape[-2:]
+                        mask = F.interpolate(
+                            low_res_masks,
+                            size=(orig_h, orig_w),
+                            mode='bilinear',
+                            align_corners=False
+                        ).squeeze(0).squeeze(0)  # Remove batch and channel dims
+                        
+                        all_masks[b].append(mask)
+            
+            # Check for EOS tokens
+            eos_mask = (next_tokens == self.tokenizer.eos_token_id)
+            if eos_mask.all():
+                break
+        
+        # Decode generated text
+        generated_text = []
+        for b in range(B):
+            # Get only the newly generated tokens
+            new_tokens = generated_ids[b, input_ids.size(1):]
+            text = self.tokenizer.decode(new_tokens, skip_special_tokens=False)
+            generated_text.append(text)
+        
+        return {
+            'generated_ids': generated_ids,
+            'generated_text': generated_text,
+            'masks': all_masks,
+            'seg_positions': all_seg_positions
+        }
     
     def save_pretrained(self, save_directory: str):
         """Save model components"""

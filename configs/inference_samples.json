@@ -1,0 +1,27 @@
+[
+  {
+    "id": "sample1",
+    "image": "/path/to/image1.jpg",
+    "instruction": "Please segment all the apples in this image"
+  },
+  {
+    "id": "sample2", 
+    "image": "/path/to/image2.jpg",
+    "instruction": "Can you highlight the person wearing a red shirt?"
+  },
+  {
+    "id": "sample3",
+    "image": "/path/to/image3.jpg",
+    "instruction": "Describe this image and show me where the main object is"
+  },
+  {
+    "id": "sample4",
+    "image": "/path/to/kitchen.jpg",
+    "instruction": "What cooking ingredients can you see? Please point to them"
+  },
+  {
+    "id": "sample5",
+    "image": "/path/to/street.jpg",
+    "instruction": "Identify and segment all the vehicles in this street scene"
+  }
+]

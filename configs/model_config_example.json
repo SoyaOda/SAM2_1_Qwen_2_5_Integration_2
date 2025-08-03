@@ -1,0 +1,28 @@
+{
+  "qwen_model_name": "Qwen/Qwen2.5-VL-3B-Instruct",
+  "sam_model_name": "./checkpoints/sam2.1_hiera_large.pt",
+  "qwen_hidden_size": 2048,
+  "qwen_vision_hidden_size": 1280,
+  "sam_image_embedding_dim": 256,
+  "image_adapter_out_dim": 256,
+  "text_prompt_out_dim": 256,
+  "seg_token": "<SEG>",
+  "freeze_qwen": true,
+  "freeze_sam": true,
+  "train_seg_token": true,
+  "train_adapters": true,
+  "lora_r": 8,
+  "lora_alpha": 32,
+  "lora_dropout": 0.1,
+  "lora_target_modules": [
+    "self_attn.q_proj",
+    "self_attn.k_proj",
+    "self_attn.v_proj",
+    "self_attn.o_proj"
+  ],
+  "language_loss_weight": 1.0,
+  "segmentation_loss_weight": 1.0,
+  "device_map": "auto",
+  "torch_dtype": "float16",
+  "use_flash_attention": false
+}
