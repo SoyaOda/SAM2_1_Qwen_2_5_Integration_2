@@ -74,8 +74,8 @@ class LISA_Model(nn.Module):
             self.sam_model = sam_predictor.model
         else:
             # Build SAM2 model
-            from sam2.build_sam import build_sam2
-            from sam2.sam2_image_predictor import SAM2ImagePredictor as SAM2IP
+            from sam2.build_sam import build_sam2, build_sam2_video_predictor
+            from sam2.sam2_image_predictor import SAM2ImagePredictor
             
             # Download checkpoint if using HF model name
             if config.sam_model_name.startswith("facebook/"):
@@ -87,14 +87,25 @@ class LISA_Model(nn.Module):
                     "Using default checkpoint path."
                 )
                 checkpoint = "./checkpoints/sam2.1_hiera_large.pt"
-                model_cfg = "configs/sam2.1/sam2.1_hiera_l.yaml"
             else:
                 checkpoint = config.sam_model_name
-                model_cfg = config.sam_model_name.replace(".pt", ".yaml")
             
-            # Build SAM2 model
-            sam2_model = build_sam2(model_cfg, checkpoint, device=config.device_map)
-            self.sam_predictor = SAM2IP(sam2_model)
+            # Build SAM2 model using the automatic model builder
+            try:
+                # Try the newer API
+                self.sam_predictor = SAM2ImagePredictor.from_pretrained("facebook/sam2.1-hiera-large")
+            except:
+                # Fallback to manual loading
+                # For SAM2.1, we need to specify the full config path
+                import os
+                import sam2
+                sam2_root = os.path.dirname(sam2.__file__)
+                config_path = os.path.join(sam2_root, "configs", "sam2.1", "sam2.1_hiera_l.yaml")
+                
+                # Build model with absolute config path
+                sam2_model = build_sam2(config_path, checkpoint, device=config.device_map)
+                self.sam_predictor = SAM2ImagePredictor(sam2_model)
+            
             self.sam_model = self.sam_predictor.model
         
         # Access mask decoder and prompt encoder
@@ -124,17 +135,19 @@ class LISA_Model(nn.Module):
                 # Default to actual Qwen2.5-VL-3B vision encoder size
                 config.qwen_vision_hidden_size = 1280  # Qwen2.5-VL-3B actual vision hidden size
         
-        # Initialize adapters
+        # Initialize adapters with the same dtype as Qwen model
+        model_dtype = next(self.qwen.parameters()).dtype
+        
         self.image_adapter = ImageFeatureAdapter(
             in_dim=config.qwen_vision_hidden_size,
             out_dim=config.sam_image_embedding_dim
-        )
+        ).to(dtype=model_dtype)
         
         self.text_prompt_proj = TextPromptProjector(
             in_dim=config.qwen_hidden_size,
             out_dim=config.text_prompt_out_dim,
             use_mlp=False  # Start with linear projection
-        )
+        ).to(dtype=model_dtype)
         
         # Freeze models as specified
         if config.freeze_qwen:
@@ -174,39 +187,68 @@ class LISA_Model(nn.Module):
             word_embeddings = self.qwen.get_input_embeddings()
             word_embeddings.weight[self.seg_token_id].requires_grad = True
     
-    def extract_vision_features(self, pixel_values: torch.Tensor) -> torch.Tensor:
+    def extract_vision_features(self, pixel_values: torch.Tensor, image_grid_thw: Optional[torch.Tensor] = None) -> torch.Tensor:
         """
         Extract vision features from Qwen's vision encoder
         
         Args:
             pixel_values: Input images [B, C, H, W]
+            image_grid_thw: Grid dimensions for dynamic resolution [B, 3]
         
         Returns:
             Vision features [B, N_patches, D_v]
         """
         # Get vision encoder from Qwen model
-        # The exact method depends on Qwen2.5-VL's implementation
-        if hasattr(self.qwen, 'visual'):
-            # Direct access to vision model
-            vision_features = self.qwen.visual(pixel_values)
-        elif hasattr(self.qwen, 'vision_model'):
-            vision_features = self.qwen.vision_model(pixel_values)
-        else:
-            # Fallback: run full model and extract vision features
-            # This is less efficient but ensures compatibility
-            with torch.no_grad():
-                outputs = self.qwen(
-                    pixel_values=pixel_values,
-                    output_hidden_states=True,
-                    return_dict=True
-                )
-                # Extract vision features from appropriate layer
-                if hasattr(outputs, 'vision_hidden_states'):
-                    vision_features = outputs.vision_hidden_states
+        # We need to extract features before the merger to get 1280D features
+        if hasattr(self.qwen.model, 'visual'):
+            visual_module = self.qwen.model.visual
+            
+            # Use forward hooks to capture features before merger
+            features_dict = {}
+            
+            def capture_features(module, input, output):
+                # Store the input to merger (which is the output of vision blocks)
+                features_dict['before_merger'] = input[0] if isinstance(input, tuple) else input
+            
+            # Register hook on merger module
+            if hasattr(visual_module, 'merger'):
+                hook = visual_module.merger.register_forward_hook(capture_features)
+            else:
+                raise AttributeError("Cannot find merger module in visual encoder")
+            
+            try:
+                # Run visual module
+                if image_grid_thw is not None:
+                    _ = visual_module(pixel_values, grid_thw=image_grid_thw)
                 else:
-                    raise AttributeError("Cannot extract vision features from Qwen model")
-        
-        return vision_features
+                    # Default grid_thw if not provided
+                    B = pixel_values.shape[0]
+                    default_grid = torch.tensor([[1, 24, 24]], device=pixel_values.device).repeat(B, 1)
+                    _ = visual_module(pixel_values, grid_thw=default_grid)
+                
+                # Get captured features
+                if 'before_merger' in features_dict:
+                    vision_features = features_dict['before_merger']
+                    
+                    # Ensure proper shape [B, N_patches, D_v]
+                    if len(vision_features.shape) == 2:
+                        # Add batch dimension if missing
+                        vision_features = vision_features.unsqueeze(0)
+                    elif len(vision_features.shape) == 3:
+                        # Already in correct shape
+                        pass
+                    else:
+                        raise ValueError(f"Unexpected vision features shape: {vision_features.shape}")
+                    
+                    return vision_features
+                else:
+                    raise RuntimeError("Failed to capture vision features before merger")
+                    
+            finally:
+                # Remove hook
+                hook.remove()
+        else:
+            raise AttributeError("Cannot find visual module in Qwen model")
     
     def forward(
         self,
@@ -215,6 +257,7 @@ class LISA_Model(nn.Module):
         attention_mask: Optional[torch.Tensor] = None,
         labels: Optional[torch.Tensor] = None,
         mask_labels: Optional[List[torch.Tensor]] = None,
+        image_grid_thw: Optional[torch.Tensor] = None,
         return_dict: bool = True,
     ) -> Union[LISAModelOutput, Tuple]:
         """
@@ -238,6 +281,7 @@ class LISA_Model(nn.Module):
             input_ids=input_ids,
             pixel_values=pixel_values,
             attention_mask=attention_mask,
+            image_grid_thw=image_grid_thw,
             output_hidden_states=True,
             return_dict=True
         )
@@ -252,7 +296,12 @@ class LISA_Model(nn.Module):
         
         if pixel_values is not None:
             # Get vision features from Qwen
-            vision_features = self.extract_vision_features(pixel_values)
+            vision_features = self.extract_vision_features(pixel_values, image_grid_thw)
+            
+            # Debug: Check vision features shape
+            if len(vision_features.shape) == 2:
+                # If 2D, add batch dimension
+                vision_features = vision_features.unsqueeze(0)
             
             # Transform to SAM format
             image_features_sam = self.image_adapter(vision_features)  # [B, 256, H, W]
@@ -384,7 +433,10 @@ class LISA_Model(nn.Module):
         all_seg_positions = [[] for _ in range(B)]
         
         # Get vision features once (they don't change during generation)
-        vision_features = self.extract_vision_features(pixel_values)
+        # For generation, we need to infer image_grid_thw from pixel_values
+        B = pixel_values.shape[0]
+        image_grid_thw = kwargs.get('image_grid_thw', torch.tensor([[1, 24, 24]], device=pixel_values.device).repeat(B, 1))
+        vision_features = self.extract_vision_features(pixel_values, image_grid_thw)
         image_features_sam = self.image_adapter(vision_features)
         
         # Generation loop
@@ -542,22 +594,29 @@ class LISA_Model(nn.Module):
         import os
         
         # Load config
-        config = torch.load(os.path.join(load_directory, "config.pt"))
+        config = torch.load(os.path.join(load_directory, "config.pt"), weights_only=False)
         
         # Initialize model
         model = cls(config, **kwargs)
         
         # Load adapter weights
         model.image_adapter.load_state_dict(
-            torch.load(os.path.join(load_directory, "image_adapter.pt"))
+            torch.load(os.path.join(load_directory, "image_adapter.pt"), weights_only=True)
         )
         model.text_prompt_proj.load_state_dict(
-            torch.load(os.path.join(load_directory, "text_prompt_proj.pt"))
+            torch.load(os.path.join(load_directory, "text_prompt_proj.pt"), weights_only=True)
         )
         
         # Load Qwen if saved
         qwen_path = os.path.join(load_directory, "qwen")
         if os.path.exists(qwen_path):
             model.qwen = Qwen2_5_VLForConditionalGeneration.from_pretrained(qwen_path)
+        
+        # Load tokenizer if saved
+        tokenizer_path = os.path.join(load_directory, "tokenizer.json")
+        if os.path.exists(tokenizer_path):
+            from transformers import AutoTokenizer
+            tokenizer = AutoTokenizer.from_pretrained(load_directory)
+            model.set_tokenizer(tokenizer)
         
         return model

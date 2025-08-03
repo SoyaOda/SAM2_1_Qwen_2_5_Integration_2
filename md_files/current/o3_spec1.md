@@ -63,9 +63,11 @@ print(f"<SEG> token ID: {seg_token_id}, vocab_size: {new_vocab_size}")
 LISA改モデルは、Qwen2.5-VLの**視覚・言語理解能力**とSAM2.1の**高精度マスク生成能力**を組み合わせた構造です。大まかな情報フローは以下の通りです：
 
 1. **画像エンコーダ (ViT)**: 入力画像をパッチ特徴にエンコードします（Qwen既存のViTを使用）。
+   - **実装注**: Qwen2.5-VL-3Bでは、視覚処理後にmergerモジュールで言語空間への射影が行われます。純粋な視覚特徴（1280次元）を取得するには、merger前でフックを使用する必要があります。
 2. **言語デコーダ (LLM)**: ユーザのテキスト指示を読み取り、画像特徴とクロスアテンションして推論を行います。必要に応じ<SEG>トークンを出力し、マスク生成の指示ポイントを作ります。
 3. **隠れベクトル抽出**: デコーダが<SEG>を出力した位置の隠れ状態ベクトルを取得し、小さな**テキストプロンプト射影モジュール**で次元変換します。これがマスク用プロンプトベクトルp\_text (例えば256次元)になります。
 4. **画像特徴アダプタ**: ViTの出力特徴マップをSAMマスクデコーダの期待する形状・次元（チャネル数256程度）に射影・整形します。
+   - **実装注**: 入力は[B, N_patches, 1280]の形状で、これを[B, 256, H, W]に変換します。
 5. **マスクデコーダ**: SAM2.1のMask Decoderに、画像特徴マップとテキスト由来プロンプトベクトルp\_textを入力し、対象領域の**低解像度マスク**を推論します。さらに元画像サイズへ補間して出力マスクを得ます。
 6. **テキスト出力**: 必要に応じ、モデルはマスク後にテキスト応答を続けて生成できます（例: 「リンゴをハイライトしました。」など）。
 
@@ -73,7 +75,7 @@ LISA改モデルは、Qwen2.5-VLの**視覚・言語理解能力**とSAM2.1の**
 
 ### 画像特徴アダプタ (Vision Feature Adapter)
 
-QwenのViT出力は元々の視覚特徴次元\$D\_v\$（例: 768や1024）ですが、SAMマスクデコーダは約256次元の特徴マップを想定しています。そこで**画像特徴アダプタ**として全結合層（1層線形変換）を用意し、各パッチ特徴ベクトルを\$256\$次元に射影します。また、トークン列を2次元グリッドに並べ替えてCNN的なマスク処理に備えます。
+QwenのViT出力は元々の視覚特徴次元\$D\_v\$（Qwen2.5-VL-3Bでは実際には1280）ですが、SAMマスクデコーダは約256次元の特徴マップを想定しています。そこで**画像特徴アダプタ**として全結合層（1層線形変換）を用意し、各パッチ特徴ベクトルを\$256\$次元に射影します。また、トークン列を2次元グリッドに並べ替えてCNN的なマスク処理に備えます。
 
 ```python
 import torch.nn as nn
@@ -91,8 +93,8 @@ class ImageFeatureAdapter(nn.Module):
         feat_2d = feat.view(B, H, W, -1).permute(0, 3, 1, 2).contiguous()  # [B, out_dim, H, W]
         return feat_2d
 
-# Qwen視覚エンコーダ出力次元はモデル設定に依存（3Bモデルでは例えばDv=768）
-Dv = qwen_model.config.vision_config.hidden_size  # 仮: Qwen視覚隠れ次元
+# Qwen視覚エンコーダ出力次元はモデル設定に依存（3Bモデルでは実際にはDv=1280）
+Dv = qwen_model.config.vision_config.hidden_size  # Qwen視覚隠れ次元
 image_adapter = ImageFeatureAdapter(in_dim=Dv, out_dim=256)
 ```
 
@@ -104,7 +106,7 @@ image_adapter = ImageFeatureAdapter(in_dim=Dv, out_dim=256)
 
 ### テキストプロンプト射影 (Text Prompt Projector)
 
-LLMデコーダが生成した<SEG>トークンの隠れ状態ベクトル（次元\$D\_l\$、Qwen-3Bでは約2560次元）を、SAMマスクデコーダ用のプロンプトベクトルに変換する小型MLPです。ここでは単純に1層の線形変換で次元を256に落とし込みます。必要に応じReLUなどを挟む2層MLPに拡張も可能ですが、まずは線形で設計します。
+LLMデコーダが生成した<SEG>トークンの隠れ状態ベクトル（次元\$D\_l\$、Qwen-3Bでは実際には2048次元）を、SAMマスクデコーダ用のプロンプトベクトルに変換する小型MLPです。ここでは単純に1層の線形変換で次元を256に落とし込みます。必要に応じReLUなどを挟む2層MLPに拡張も可能ですが、まずは線形で設計します。
 
 ```python
 class TextPromptProjector(nn.Module):
@@ -115,7 +117,7 @@ class TextPromptProjector(nn.Module):
         # text_hidden_state: Tensor [B, D_l]
         return self.fc(text_hidden_state)
 
-Dl = qwen_model.config.hidden_size  # Qwen言語隠れ次元 (例: 2560)
+Dl = qwen_model.config.hidden_size  # Qwen言語隠れ次元 (実際: 2048)
 text_prompt_proj = TextPromptProjector(in_dim=Dl, out_dim=256)
 ```
 
@@ -159,6 +161,14 @@ class LISA_Model(nn.Module):
         else:
             # なければQwenモデルを全体で動かした後、内部から引き出す処理（擬似コード）
             vision_feats = outputs.vision_hidden_states  # 仮: HFモデルが画像埋め込み出力を提供する場合
+        
+        # 【実際の実装】Qwen2.5-VL-3Bでは上記の方法が使えないため、以下のようにフックを使用：
+        # visual_module = self.qwen.model.visual
+        # def capture_features(module, input, output):
+        #     features_dict['before_merger'] = input[0]  # merger前の1280次元特徴を取得
+        # hook = visual_module.merger.register_forward_hook(capture_features)
+        # _ = visual_module(pixel_values, grid_thw=image_grid_thw)
+        # vision_feats = features_dict['before_merger']  # [B, N_patches, 1280]
         
         # 3. 画像特徴をSAM入力形式に変換
         image_features = self.image_adapter(vision_feats)  # [B, 256, H_feat, W_feat]
@@ -216,6 +226,8 @@ class LISA_Model(nn.Module):
 * Qwen内部で画像はクロスアテンションに利用されます。Qwen2.5-VLは**物体の位置をJSON形式で出力する**能力さえ持つため（例えばバウンディングボックスを安定的にテキスト出力できる）、クロスアテンションを通じてLLM内部にローカライズ情報が反映されます。今回その能力をさらに活用し、座標ではなく**内部embeddingを直接利用**してセグメンテーションにつなげています。
 * **ステップ2**: `vision_feats = self.qwen.vision_tower[0](pixel_values)` の部分では、Qwenモデル内の視覚エンコーダ（vision tower）を直接呼び出しています。HuggingFace版Qwenでは、おそらく`model.vision_tower`（または`vision_model`）という属性があり、それがViTモジュールになっています。ここではそれを仮定し、pixel\_valuesから**画像特徴トークン列**を取得しています（形状\[B, N\_patch, D\_v]）。
   *注:* Transformers実装によっては直接vision出力を得るインターフェースが無い可能性もあります。その場合は、`outputs.hidden_states`内に視覚トークンの埋め込みを含めて取得するか、モデル内部から属性を直接参照する方法が必要です。上記コードでは簡略化のため`vision_tower`を直接呼んでいます。
+  
+  **実装上の注意**: Qwen2.5-VL-3Bの実際の実装では、`model.model.visual()`を直接呼ぶと言語空間に射影された2048次元の特徴が返されます。純粋な視覚特徴（1280次元）を取得するには、mergerモジュールの前でフックを使用する必要があります。
 * **ステップ3**: 取得した`vision_feats`を`image_adapter`に通し、\[B,256,H\_feat,W\_feat]の特徴マップを得ます。これがSAMデコーダへの画像エンコーダ出力に相当します。例えば448×448画像ならH\_feat=W\_feat=32程度、256チャネルのマップです。
 * **ステップ4**: <SEG>トークン位置の隠れ状態を取り出します。学習時（labelsあり）と推論時で処理が異なりますが、基本的に各バッチごとにシーケンス中の<SEG>インデックスを検出しています。
 
@@ -240,6 +252,10 @@ class LISA_Model(nn.Module):
 LISA改では、**事前学習済みの知識を極力活かす**ために大部分のパラメータを凍結し、ごく一部のみ学習させます。特にQwenの言語デコーダは数十億パラメータ規模のため、全更新は非現実的です。そこでLow-Rank Adaptation (LoRA) を用いて一部重みに微小な学習可能パラメータを追加します。
 
 * **Qwen2.5-VL 側**: テキストデコーダ内部の**画像クロスアテンション層**にLoRAを挿入します。具体的には、各Transformerブロックのマルチヘッド注意機構で**キー/バリュー投影行列**に対し、rankの低い補正行列を学習させます。これにより、画像特徴との融合の最適化だけを微調整できます。併せて、新規追加した<SEG>トークンの埋め込み（word embeddingの末尾1行）も学習対象とします。また視覚エンコーダ（ViT）は原則凍結します（SAMのマスク精度に影響するため、ここではQwenのViTを固定し特徴抽出器として扱う）。
+  
+  **注**: 実際のQwen2.5-VL-3Bモデルの次元は以下の通りです：
+  - 言語隠れ次元 (D_l): 2048
+  - 視覚隠れ次元 (D_v): 1280
 * **SAM2.1 側**: マスクデコーダとプロンプトエンコーダは原則凍結します。これにより、SA-1Bなどで学習された汎用的なセグメント知識を維持します。ただし、Qwenからの特徴分布に適応させるため、**マスクデコーダ内のクロスアテンションにもLoRA**を挿入可能です。必要に応じてMask DecoderのQ,K,V投影に小さなLoRAを加え、微調整できるようにします。初期段階ではSAMデコーダを完全凍結とし、後で性能に応じてLoRAを検討します。
 * **アダプタ部**: 画像特徴アダプタとテキストプロンプト射影は**新規追加モジュール**であり、パラメータ数はごく小さいため、**全て学習対象**とします。
 
