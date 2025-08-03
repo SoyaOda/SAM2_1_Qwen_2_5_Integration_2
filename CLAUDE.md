@@ -5,7 +5,7 @@
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Project Overview
-serena MCPが対応すること！
+serena MCPが日本語で対応すること！
 日本語で応答すること！
 Webリサーチはo3をタイムアウトの設定なしで用いること！
 
