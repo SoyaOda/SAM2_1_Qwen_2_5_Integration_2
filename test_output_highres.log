@@ -1,0 +1,122 @@
+08/04/2025 11:22:22 - INFO - __main__ - Starting LISA改 Training Integration Tests
+08/04/2025 11:22:22 - INFO - __main__ - ======================================================================
+08/04/2025 11:22:22 - INFO - __main__ - ==================================================
+08/04/2025 11:22:22 - INFO - __main__ - Setting up model with actual weights
+08/04/2025 11:22:22 - INFO - __main__ - ==================================================
+08/04/2025 11:22:22 - INFO - __main__ - Downloading SAM2.1 checkpoint from facebook/sam2.1-hiera-large
+08/04/2025 11:22:22 - INFO - __main__ - SAM2.1 checkpoint already exists at checkpoints/sam2.1_hiera_large.pt
+08/04/2025 11:22:22 - INFO - __main__ - Loading tokenizer and processor
+The image processor of type `Qwen2VLImageProcessor` is now loaded as a fast processor by default, even if the model checkpoint was saved with a slow processor. This is a breaking change and may produce slightly different outputs. To continue using the slow processor, instantiate this class with `use_fast=False`. Note that this behavior will be extended to all models in a future release.
+You have video processor config saved in `preprocessor.json` file which is deprecated. Video processor configs should be saved in their own `video_preprocessor.json` file. You can rename the file or load and save the processor back which renames it automatically. Loading from `preprocessor.json` will be removed in v5.0.
+08/04/2025 11:22:26 - INFO - __main__ - Loading LISA model
+Added 1 special tokens to tokenizer
+Tokenizer prepared with vocab size: 151666
+Special tokens: {'<SEG>': 151665}
+Loading checkpoint shards:   0%|          | 0/2 [00:00<?, ?it/s]Loading checkpoint shards:  50%|█████     | 1/2 [00:08<00:08,  8.35s/it]Loading checkpoint shards: 100%|██████████| 2/2 [00:16<00:00,  8.04s/it]Loading checkpoint shards: 100%|██████████| 2/2 [00:16<00:00,  8.09s/it]
+08/04/2025 11:22:46 - INFO - root - Loaded checkpoint sucessfully
+08/04/2025 11:22:46 - INFO - __main__ - Setting up LoRA
+08/04/2025 11:22:46 - INFO - __main__ - Total parameters: 3,981,766,322
+08/04/2025 11:22:46 - INFO - __main__ - Trainable parameters: 222,922,017
+08/04/2025 11:22:46 - INFO - __main__ - Percentage trainable: 5.60%
+08/04/2025 11:22:46 - INFO - __main__ - 
+Creating dummy training dataset
+08/04/2025 11:22:46 - INFO - __main__ - ==================================================
+08/04/2025 11:22:46 - INFO - __main__ - Testing gradient flow
+08/04/2025 11:22:46 - INFO - __main__ - ==================================================
+You're using a Qwen2TokenizerFast tokenizer. Please note that with a fast tokenizer, using the `__call__` method is faster than using a method to encode the text followed by a call to the `pad` method to get a padded encoding.
+08/04/2025 11:22:48 - INFO - __main__ - Initial losses - Total: 18.6614, LM: 18.1250, Seg: 1.0728
+08/04/2025 11:22:48 - INFO - __main__ - SEG token ID: 151665
+08/04/2025 11:22:48 - INFO - __main__ - Batches with SEG in labels: 2/2
+08/04/2025 11:22:48 - INFO - __main__ - Sample decoded text: <|im_start|>system
+You are a helpful assistant.<|im_end|>
+<|im_start|>user
+<|vision_start|><|image_pad|><|image_pad|><|image_pad|><|image_pad|><|image_pad|><|image_pad|><|image_pad|><|image_pad|><|ima...
+08/04/2025 11:22:48 - INFO - __main__ - 
+Gradient statistics:
+08/04/2025 11:22:48 - INFO - __main__ -   adapter: avg_norm=0.323204, has_nan=False
+08/04/2025 11:22:48 - INFO - __main__ -   prompt_proj: avg_norm=0.383865, has_nan=False
+08/04/2025 11:22:48 - INFO - __main__ -   lora: avg_norm=0.224461, has_nan=False
+08/04/2025 11:22:48 - INFO - __main__ - ✓ Gradient flow test passed
+08/04/2025 11:22:48 - INFO - __main__ - ==================================================
+08/04/2025 11:22:48 - INFO - __main__ - Testing training loop for 3 epochs
+08/04/2025 11:22:48 - INFO - __main__ - ==================================================
+Warning: Could not extract SAM2.1 features, using adapter only: not enough values to unpack (expected 4, got 3)
+Epoch 1/3:   0%|          | 0/10 [00:00<?, ?it/s]Epoch 1/3:   0%|          | 0/10 [00:00<?, ?it/s, loss=18.6199, lm=18.0000, seg=1.2398]Epoch 1/3:  10%|█         | 1/10 [00:00<00:03,  2.31it/s, loss=18.6199, lm=18.0000, seg=1.2398]Epoch 1/3:  10%|█         | 1/10 [00:00<00:03,  2.31it/s, loss=19.1414, lm=18.6250, seg=1.0328]Epoch 1/3:  20%|██        | 2/10 [00:00<00:03,  2.35it/s, loss=19.1414, lm=18.6250, seg=1.0328]Epoch 1/3:  20%|██        | 2/10 [00:01<00:03,  2.35it/s, loss=18.4284, lm=17.8750, seg=1.1067]Epoch 1/3:  30%|███       | 3/10 [00:01<00:02,  2.37it/s, loss=18.4284, lm=17.8750, seg=1.1067]Epoch 1/3:  30%|███       | 3/10 [00:01<00:02,  2.37it/s, loss=19.3972, lm=18.8750, seg=1.0444]Epoch 1/3:  40%|████      | 4/10 [00:01<00:02,  2.39it/s, loss=19.3972, lm=18.8750, seg=1.0444]Epoch 1/3:  40%|████      | 4/10 [00:02<00:02,  2.39it/s, loss=18.2687, lm=17.7500, seg=1.0374]Epoch 1/3:  50%|█████     | 5/10 [00:02<00:02,  2.38it/s, loss=18.2687, lm=17.7500, seg=1.0374]Epoch 1/3:  50%|█████     | 5/10 [00:02<00:02,  2.38it/s, loss=18.1817, lm=17.6250, seg=1.1134]Epoch 1/3:  60%|██████    | 6/10 [00:02<00:01,  2.39it/s, loss=18.1817, lm=17.6250, seg=1.1134]Epoch 1/3:  60%|██████    | 6/10 [00:02<00:01,  2.39it/s, loss=18.5439, lm=18.0000, seg=1.0879]Epoch 1/3:  70%|███████   | 7/10 [00:02<00:01,  2.39it/s, loss=18.5439, lm=18.0000, seg=1.0879]Epoch 1/3:  70%|███████   | 7/10 [00:03<00:01,  2.39it/s, loss=17.7931, lm=17.2500, seg=1.0862]Epoch 1/3:  80%|████████  | 8/10 [00:03<00:00,  2.40it/s, loss=17.7931, lm=17.2500, seg=1.0862]Epoch 1/3:  80%|████████  | 8/10 [00:03<00:00,  2.40it/s, loss=17.5453, lm=17.0000, seg=1.0905]Epoch 1/3:  90%|█████████ | 9/10 [00:03<00:00,  2.40it/s, loss=17.5453, lm=17.0000, seg=1.0905]Epoch 1/3:  90%|█████████ | 9/10 [00:04<00:00,  2.40it/s, loss=18.2939, lm=17.7500, seg=1.0878]Epoch 1/3: 100%|██████████| 10/10 [00:04<00:00,  2.41it/s, loss=18.2939, lm=17.7500, seg=1.0878]Epoch 1/3: 100%|██████████| 10/10 [00:04<00:00,  2.39it/s, loss=18.2939, lm=17.7500, seg=1.0878]
+08/04/2025 11:22:52 - INFO - __main__ - 
+Epoch 1 - Avg Loss: 18.4214, LM: 17.8750, Seg: 1.0927
+Warning: Could not extract SAM2.1 features, using adapter only: not enough values to unpack (expected 4, got 3)
+Warning: Could not extract SAM2.1 features, using adapter only: not enough values to unpack (expected 4, got 3)
+Warning: Could not extract SAM2.1 features, using adapter only: not enough values to unpack (expected 4, got 3)
+Warning: Could not extract SAM2.1 features, using adapter only: not enough values to unpack (expected 4, got 3)
+Warning: Could not extract SAM2.1 features, using adapter only: not enough values to unpack (expected 4, got 3)
+Warning: Could not extract SAM2.1 features, using adapter only: not enough values to unpack (expected 4, got 3)
+Warning: Could not extract SAM2.1 features, using adapter only: not enough values to unpack (expected 4, got 3)
+Warning: Could not extract SAM2.1 features, using adapter only: not enough values to unpack (expected 4, got 3)
+Warning: Could not extract SAM2.1 features, using adapter only: not enough values to unpack (expected 4, got 3)
+Warning: Could not extract SAM2.1 features, using adapter only: not enough values to unpack (expected 4, got 3)
+Epoch 2/3:   0%|          | 0/10 [00:00<?, ?it/s]Epoch 2/3:   0%|          | 0/10 [00:00<?, ?it/s, loss=18.0342, lm=17.5000, seg=1.0684]Epoch 2/3:  10%|█         | 1/10 [00:00<00:03,  2.38it/s, loss=18.0342, lm=17.5000, seg=1.0684]Epoch 2/3:  10%|█         | 1/10 [00:00<00:03,  2.38it/s, loss=18.0392, lm=17.5000, seg=1.0784]Epoch 2/3:  20%|██        | 2/10 [00:00<00:03,  2.40it/s, loss=18.0392, lm=17.5000, seg=1.0784]Epoch 2/3:  20%|██        | 2/10 [00:01<00:03,  2.40it/s, loss=17.6530, lm=17.1250, seg=1.0559]Epoch 2/3:  30%|███       | 3/10 [00:01<00:02,  2.39it/s, loss=17.6530, lm=17.1250, seg=1.0559]Epoch 2/3:  30%|███       | 3/10 [00:01<00:02,  2.39it/s, loss=16.6551, lm=16.1250, seg=1.0602]Epoch 2/3:  40%|████      | 4/10 [00:01<00:02,  2.40it/s, loss=16.6551, lm=16.1250, seg=1.0602]Epoch 2/3:  40%|████      | 4/10 [00:02<00:02,  2.40it/s, loss=17.2917, lm=16.7500, seg=1.0835]Epoch 2/3:  50%|█████     | 5/10 [00:02<00:02,  2.41it/s, loss=17.2917, lm=16.7500, seg=1.0835]Epoch 2/3:  50%|█████     | 5/10 [00:02<00:02,  2.41it/s, loss=16.8978, lm=16.3750, seg=1.0456]Epoch 2/3:  60%|██████    | 6/10 [00:02<00:01,  2.40it/s, loss=16.8978, lm=16.3750, seg=1.0456]Epoch 2/3:  60%|██████    | 6/10 [00:02<00:01,  2.40it/s, loss=16.0339, lm=15.5000, seg=1.0678]Epoch 2/3:  70%|███████   | 7/10 [00:02<00:01,  2.40it/s, loss=16.0339, lm=15.5000, seg=1.0678]Epoch 2/3:  70%|███████   | 7/10 [00:03<00:01,  2.40it/s, loss=16.9258, lm=16.3750, seg=1.1016]Epoch 2/3:  80%|████████  | 8/10 [00:03<00:00,  2.40it/s, loss=16.9258, lm=16.3750, seg=1.1016]Epoch 2/3:  80%|████████  | 8/10 [00:03<00:00,  2.40it/s, loss=16.3837, lm=15.8750, seg=1.0174]Epoch 2/3:  90%|█████████ | 9/10 [00:03<00:00,  2.40it/s, loss=16.3837, lm=15.8750, seg=1.0174]Epoch 2/3:  90%|█████████ | 9/10 [00:04<00:00,  2.40it/s, loss=15.3439, lm=14.8125, seg=1.0627]Epoch 2/3: 100%|██████████| 10/10 [00:04<00:00,  2.40it/s, loss=15.3439, lm=14.8125, seg=1.0627]Epoch 2/3: 100%|██████████| 10/10 [00:04<00:00,  2.40it/s, loss=15.3439, lm=14.8125, seg=1.0627]
+08/04/2025 11:22:57 - INFO - __main__ - 
+Epoch 2 - Avg Loss: 16.9258, LM: 16.3938, Seg: 1.0641
+Warning: Could not extract SAM2.1 features, using adapter only: not enough values to unpack (expected 4, got 3)
+Warning: Could not extract SAM2.1 features, using adapter only: not enough values to unpack (expected 4, got 3)
+Warning: Could not extract SAM2.1 features, using adapter only: not enough values to unpack (expected 4, got 3)
+Warning: Could not extract SAM2.1 features, using adapter only: not enough values to unpack (expected 4, got 3)
+Warning: Could not extract SAM2.1 features, using adapter only: not enough values to unpack (expected 4, got 3)
+Warning: Could not extract SAM2.1 features, using adapter only: not enough values to unpack (expected 4, got 3)
+Warning: Could not extract SAM2.1 features, using adapter only: not enough values to unpack (expected 4, got 3)
+Warning: Could not extract SAM2.1 features, using adapter only: not enough values to unpack (expected 4, got 3)
+Warning: Could not extract SAM2.1 features, using adapter only: not enough values to unpack (expected 4, got 3)
+Warning: Could not extract SAM2.1 features, using adapter only: not enough values to unpack (expected 4, got 3)
+Epoch 3/3:   0%|          | 0/10 [00:00<?, ?it/s]Epoch 3/3:   0%|          | 0/10 [00:00<?, ?it/s, loss=16.0335, lm=15.5000, seg=1.0670]Epoch 3/3:  10%|█         | 1/10 [00:00<00:03,  2.40it/s, loss=16.0335, lm=15.5000, seg=1.0670]Epoch 3/3:  10%|█         | 1/10 [00:00<00:03,  2.40it/s, loss=14.7697, lm=14.2500, seg=1.0394]Epoch 3/3:  20%|██        | 2/10 [00:00<00:03,  2.41it/s, loss=14.7697, lm=14.2500, seg=1.0394]Epoch 3/3:  20%|██        | 2/10 [00:01<00:03,  2.41it/s, loss=14.7712, lm=14.2500, seg=1.0425]Epoch 3/3:  30%|███       | 3/10 [00:01<00:02,  2.40it/s, loss=14.7712, lm=14.2500, seg=1.0425]Epoch 3/3:  30%|███       | 3/10 [00:01<00:02,  2.40it/s, loss=15.1514, lm=14.6250, seg=1.0527]Epoch 3/3:  40%|████      | 4/10 [00:01<00:02,  2.40it/s, loss=15.1514, lm=14.6250, seg=1.0527]Epoch 3/3:  40%|████      | 4/10 [00:02<00:02,  2.40it/s, loss=14.1877, lm=13.6250, seg=1.1253]Epoch 3/3:  50%|█████     | 5/10 [00:02<00:02,  2.40it/s, loss=14.1877, lm=13.6250, seg=1.1253]Epoch 3/3:  50%|█████     | 5/10 [00:02<00:02,  2.40it/s, loss=14.6528, lm=14.1250, seg=1.0557]Epoch 3/3:  60%|██████    | 6/10 [00:02<00:01,  2.40it/s, loss=14.6528, lm=14.1250, seg=1.0557]Epoch 3/3:  60%|██████    | 6/10 [00:02<00:01,  2.40it/s, loss=14.3345, lm=13.8125, seg=1.0439]Epoch 3/3:  70%|███████   | 7/10 [00:02<00:01,  2.40it/s, loss=14.3345, lm=13.8125, seg=1.0439]Epoch 3/3:  70%|███████   | 7/10 [00:03<00:01,  2.40it/s, loss=13.8267, lm=13.3125, seg=1.0285]Epoch 3/3:  80%|████████  | 8/10 [00:03<00:00,  2.39it/s, loss=13.8267, lm=13.3125, seg=1.0285]Epoch 3/3:  80%|████████  | 8/10 [00:03<00:00,  2.39it/s, loss=13.0302, lm=12.5000, seg=1.0603]Epoch 3/3:  90%|█████████ | 9/10 [00:03<00:00,  2.40it/s, loss=13.0302, lm=12.5000, seg=1.0603]Epoch 3/3:  90%|█████████ | 9/10 [00:04<00:00,  2.40it/s, loss=13.3499, lm=12.8125, seg=1.0749]Epoch 3/3: 100%|██████████| 10/10 [00:04<00:00,  2.40it/s, loss=13.3499, lm=12.8125, seg=1.0749]Epoch 3/3: 100%|██████████| 10/10 [00:04<00:00,  2.40it/s, loss=13.3499, lm=12.8125, seg=1.0749]
+08/04/2025 11:23:01 - INFO - __main__ - 
+Epoch 3 - Avg Loss: 14.4108, LM: 13.8812, Seg: 1.0590
+08/04/2025 11:23:01 - INFO - __main__ - 
+==================================================
+08/04/2025 11:23:01 - INFO - __main__ - Loss progression analysis:
+08/04/2025 11:23:01 - INFO - __main__ - Epoch 1 → 2:
+08/04/2025 11:23:01 - INFO - __main__ -   Total loss change: -1.4955
+08/04/2025 11:23:01 - INFO - __main__ -   LM loss change: -1.4812
+08/04/2025 11:23:01 - INFO - __main__ -   Seg loss change: -0.0286
+08/04/2025 11:23:01 - INFO - __main__ - Epoch 2 → 3:
+08/04/2025 11:23:01 - INFO - __main__ -   Total loss change: -2.5151
+08/04/2025 11:23:01 - INFO - __main__ -   LM loss change: -2.5125
+08/04/2025 11:23:01 - INFO - __main__ -   Seg loss change: -0.0051
+08/04/2025 11:23:01 - INFO - __main__ - 
+Overall loss decrease: 4.0106 (21.8%)
+08/04/2025 11:23:01 - INFO - __main__ - Loss plot saved to test_outputs/training_losses.png
+08/04/2025 11:23:01 - INFO - __main__ - ✓ Loss is decreasing - training is working!
+08/04/2025 11:23:01 - INFO - __main__ - ==================================================
+08/04/2025 11:23:01 - INFO - __main__ - Testing model save/load
+08/04/2025 11:23:01 - INFO - __main__ - ==================================================
+08/04/2025 11:23:02 - INFO - __main__ - Model saved to /tmp/tmpk7yg9594/test_model
+08/04/2025 11:23:02 - INFO - __main__ - Saved files: ['qwen', 'text_prompt_proj.pt', 'config.json', 'chat_template.jinja', 'special_tokens_map.json', 'merges.txt', 'image_adapter.pt', 'tokenizer_config.json', 'added_tokens.json', 'tokenizer.json', 'config.pt', 'vocab.json']
+Warning: Could not extract SAM2.1 features, using adapter only: not enough values to unpack (expected 4, got 3)
+Warning: Could not extract SAM2.1 features, using adapter only: not enough values to unpack (expected 4, got 3)
+Warning: Could not extract SAM2.1 features, using adapter only: not enough values to unpack (expected 4, got 3)
+Warning: Could not extract SAM2.1 features, using adapter only: not enough values to unpack (expected 4, got 3)
+Warning: Could not extract SAM2.1 features, using adapter only: not enough values to unpack (expected 4, got 3)
+Warning: Could not extract SAM2.1 features, using adapter only: not enough values to unpack (expected 4, got 3)
+Warning: Could not extract SAM2.1 features, using adapter only: not enough values to unpack (expected 4, got 3)
+Warning: Could not extract SAM2.1 features, using adapter only: not enough values to unpack (expected 4, got 3)
+Warning: Could not extract SAM2.1 features, using adapter only: not enough values to unpack (expected 4, got 3)
+Warning: Could not extract SAM2.1 features, using adapter only: not enough values to unpack (expected 4, got 3)
+Loading checkpoint shards:   0%|          | 0/2 [00:00<?, ?it/s]Loading checkpoint shards:  50%|█████     | 1/2 [00:01<00:01,  1.51s/it]Loading checkpoint shards: 100%|██████████| 2/2 [00:02<00:00,  1.32s/it]Loading checkpoint shards: 100%|██████████| 2/2 [00:02<00:00,  1.35s/it]
+08/04/2025 11:23:07 - INFO - root - Loaded checkpoint sucessfully
+Fetching 2 files:   0%|          | 0/2 [00:00<?, ?it/s]Fetching 2 files: 100%|██████████| 2/2 [00:00<00:00, 11634.69it/s]
+Loading checkpoint shards:   0%|          | 0/2 [00:00<?, ?it/s]Loading checkpoint shards:  50%|█████     | 1/2 [00:01<00:01,  1.34s/it]Loading checkpoint shards: 100%|██████████| 2/2 [00:02<00:00,  1.27s/it]Loading checkpoint shards: 100%|██████████| 2/2 [00:02<00:00,  1.28s/it]
+08/04/2025 11:23:16 - INFO - __main__ - ✓ Model loaded successfully
+08/04/2025 11:23:16 - INFO - __main__ - Testing model save/load with proper inputs...
+08/04/2025 11:23:17 - INFO - __main__ - Max difference between logits: 6.437500
+08/04/2025 11:23:17 - INFO - __main__ - ✓ Model inference after loading successful
+08/04/2025 11:23:17 - INFO - __main__ - 
+======================================================================
+08/04/2025 11:23:17 - INFO - __main__ - ✅ ALL TRAINING TESTS PASSED!
+08/04/2025 11:23:17 - INFO - __main__ - ======================================================================
+08/04/2025 11:23:17 - INFO - __main__ - 
+Training Test Summary:
+08/04/2025 11:23:17 - INFO - __main__ - - Gradient flow: ✓ Confirmed
+08/04/2025 11:23:17 - INFO - __main__ - - Loss reduction: ✓ 21.8% decrease
+08/04/2025 11:23:17 - INFO - __main__ - - Model save/load: ✓ Working
+08/04/2025 11:23:17 - INFO - __main__ - - Device used: cuda
+Warning: Could not extract SAM2.1 features, using adapter only: not enough values to unpack (expected 4, got 2)
+Warning: Could not extract SAM2.1 features, using adapter only: not enough values to unpack (expected 4, got 2)

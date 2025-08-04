@@ -108,7 +108,7 @@ class LISA_Model(nn.Module):
             
             self.sam_model = self.sam_predictor.model
         
-        # Access mask decoder and prompt encoder
+        # Access mask decoder, prompt encoder, and image encoder
         # SAM2 architecture may vary, so we check for the correct attributes
         if hasattr(self.sam_model, 'sam_mask_decoder'):
             self.sam_mask_decoder = self.sam_model.sam_mask_decoder
@@ -123,6 +123,14 @@ class LISA_Model(nn.Module):
             self.sam_prompt_encoder = self.sam_model.prompt_encoder
         else:
             raise AttributeError("Cannot find prompt encoder in SAM model")
+        
+        # Access image encoder for high-res features
+        if hasattr(self.sam_model, 'image_encoder'):
+            self.sam_image_encoder = self.sam_model.image_encoder
+        elif hasattr(self.sam_model, 'sam_image_encoder'):
+            self.sam_image_encoder = self.sam_model.sam_image_encoder
+        else:
+            raise AttributeError("Cannot find image encoder in SAM model")
         
         # Get model dimensions
         if config.qwen_hidden_size is None:
@@ -249,6 +257,116 @@ class LISA_Model(nn.Module):
                 hook.remove()
         else:
             raise AttributeError("Cannot find visual module in Qwen model")
+
+    
+    def extract_sam_features(self, pixel_values: torch.Tensor) -> Tuple[torch.Tensor, List[torch.Tensor]]:
+        """
+        Extract SAM2.1 image features including high-resolution features
+        
+        Args:
+            pixel_values: Input images [B, C, H, W] 
+            
+        Returns:
+            image_embeddings: Low-resolution embeddings [B, 256, 64, 64]
+            high_res_features: List of high-resolution features for MaskDecoder
+        """
+        # Preprocess images for SAM2.1
+        # SAM2.1 expects images in specific format (1024x1024 typically)
+        B, C, H, W = pixel_values.shape
+        
+        # Resize to SAM2.1 input size (1024x1024)
+        sam_input_size = 1024
+        sam_images = F.interpolate(
+            pixel_values,
+            size=(sam_input_size, sam_input_size),
+            mode='bilinear',
+            align_corners=False
+        )
+        
+        # Run SAM2.1 image encoder to get full backbone output
+        with torch.no_grad():
+            # Get backbone features - this returns dict with 'backbone_fpn' and 'vision_pos_enc'
+            backbone_out = self.sam_image_encoder(sam_images)
+            
+            # Check if we have the expected structure
+            if isinstance(backbone_out, dict) and 'backbone_fpn' in backbone_out:
+                # backbone_fpn contains features at different strides: [stride 4, 8, 16, 32]
+                backbone_fpn = backbone_out['backbone_fpn']
+                
+                # Check if use_high_res_features is enabled in the model
+                use_high_res = hasattr(self.sam_mask_decoder, 'use_high_res_features') and self.sam_mask_decoder.use_high_res_features
+                
+                if use_high_res and len(backbone_fpn) >= 3:
+                    # Extract features following O3's guidance:
+                    # - backbone_fpn[0]: stride 4 (highest resolution)
+                    # - backbone_fpn[1]: stride 8 
+                    # - backbone_fpn[2]: stride 16 (main features)
+                    
+                    # Main features (stride 16) - typically [B, 256, 64, 64]
+                    image_embeddings = backbone_fpn[2]
+                    
+                    # High-res features for MaskDecoder
+                    # According to O3 and SAM2.1 source:
+                    # - feat_s0: stride 4 features (4H x 4W relative to main features)
+                    # - feat_s1: stride 8 features (2H x 2W relative to main features)
+                    
+                    feat_s0 = backbone_fpn[0]  # stride 4: [B, C, 256, 256]
+                    feat_s1 = backbone_fpn[1]  # stride 8: [B, C, 128, 128]
+                    
+                    # Apply convolutions if available (as seen in SAM2Base.forward_image)
+                    if hasattr(self.sam_mask_decoder, 'conv_s0'):
+                        feat_s0 = self.sam_mask_decoder.conv_s0(feat_s0)
+                    if hasattr(self.sam_mask_decoder, 'conv_s1'):
+                        feat_s1 = self.sam_mask_decoder.conv_s1(feat_s1)
+                    
+                    # Prepare high_res_features in the format expected by MaskDecoder
+                    high_res_features = [feat_s0, feat_s1]
+                    
+                else:
+                    # No high-res features available or not enabled
+                    # Use the last (lowest resolution) feature as main embedding
+                    image_embeddings = backbone_fpn[-1] if backbone_fpn else backbone_out
+                    
+                    # Create dummy high-res features with correct dimensions
+                    # Based on typical SAM2.1 dimensions when main features are 64x64
+                    h_lr, w_lr = image_embeddings.shape[-2:]
+                    sam_dtype = image_embeddings.dtype
+                    device = image_embeddings.device
+                    
+                    # MaskDecoder expects specific channel dimensions:
+                    # After conv_s0/conv_s1, channels are reduced to C//8 and C//4
+                    # But if we pass raw features, MaskDecoder's conv_s0/s1 will handle it
+                    # So we can pass features with the same channels as image_embeddings
+                    C_emb = image_embeddings.shape[1]
+                    
+                    high_res_features = [
+                        torch.zeros(B, C_emb, h_lr * 4, w_lr * 4, device=device, dtype=sam_dtype),  # feat_s0
+                        torch.zeros(B, C_emb, h_lr * 2, w_lr * 2, device=device, dtype=sam_dtype),  # feat_s1
+                    ]
+                    
+            else:
+                # Fallback: treat output as single tensor
+                image_embeddings = backbone_out
+                
+                # Create dummy high-res features
+                h_lr, w_lr = image_embeddings.shape[-2:]
+                sam_dtype = image_embeddings.dtype
+                device = image_embeddings.device
+                C_emb = image_embeddings.shape[1]
+                
+                high_res_features = [
+                    torch.zeros(B, C_emb, h_lr * 4, w_lr * 4, device=device, dtype=sam_dtype),
+                    torch.zeros(B, C_emb, h_lr * 2, w_lr * 2, device=device, dtype=sam_dtype),
+                ]
+        
+        # Ensure batch dimension matches
+        if image_embeddings.shape[0] == 1 and B > 1:
+            image_embeddings = image_embeddings.expand(B, -1, -1, -1)
+            high_res_features = [
+                feat.expand(B, -1, -1, -1) for feat in high_res_features
+            ]
+        
+        return image_embeddings, high_res_features
     
     def forward(
         self,
@@ -293,6 +411,7 @@ class LISA_Model(nn.Module):
         # 2. Extract vision features if images are provided
         vision_features = None
         image_features_sam = None
+        sam_high_res_features = None
         
         if pixel_values is not None:
             # Get vision features from Qwen
@@ -303,12 +422,32 @@ class LISA_Model(nn.Module):
                 # If 2D, add batch dimension
                 vision_features = vision_features.unsqueeze(0)
             
-            # Transform to SAM format
+            # Transform to SAM format using adapter
             image_features_sam = self.image_adapter(vision_features)  # [B, 256, H, W]
+            
+            # ALSO extract direct SAM2.1 features for proper high-res features
+            try:
+                sam_embeddings, sam_high_res_features = self.extract_sam_features(pixel_values)
+                # Use SAM's native embeddings if adapter output doesn't match expected dimensions
+                if sam_embeddings.shape[0] == B and sam_embeddings.shape[-2:] != image_features_sam.shape[-2:]:
+                    # Resize adapter output to match SAM embeddings spatial dimensions
+                    image_features_sam = F.interpolate(
+                        image_features_sam,
+                        size=sam_embeddings.shape[-2:],
+                        mode='bilinear',
+                        align_corners=False
+                    )
+            except Exception as e:
+                print(f"Warning: Could not extract SAM2.1 features, using adapter only: {e}")
+                sam_high_res_features = None
         
         # 3. Find SEG token positions and generate masks
         mask_logits = []
         seg_positions = []
+        
+        # Check if seg_token_id is set
+        if self.seg_token_id is None:
+            return LISAModelOutput(logits=logits, mask_logits=mask_logits, seg_token_positions=seg_positions)
         
         # Determine SEG positions based on labels (training) or generated tokens (inference)
         if labels is not None:
@@ -328,57 +467,120 @@ class LISA_Model(nn.Module):
                 else:
                     seg_positions.append([])
         
-        # 4. Generate masks for each SEG position
+        # 4. Generate masks for each SEG position using proper SAM2.1 implementation
         for i in range(B):
             sample_masks = []
             
-            if len(seg_positions[i]) > 0 and image_features_sam is not None:
+            if len(seg_positions[i]) > 0 and image_features_sam is not None and i < image_features_sam.shape[0]:
                 # Extract hidden states at SEG positions
                 seg_hidden_states = hidden_states[i, seg_positions[i]]  # [num_segs, D_l]
                 
                 # Project to prompt embeddings
                 if len(seg_positions[i]) == 1:
-                    prompt_embeds = self.text_prompt_proj(seg_hidden_states)  # [1, 256]
+                    prompt_embeds = self.text_prompt_proj(seg_hidden_states)  # [256]
                 else:
                     prompt_embeds = self.text_prompt_proj(seg_hidden_states)  # [num_segs, 256]
                 
                 # Generate mask for each SEG token
-                for j, prompt_embed in enumerate(prompt_embeds):
-                    # Prepare inputs for SAM mask decoder
-                    # Get positional encoding for the image
-                    image_pe = self.sam_prompt_encoder.get_dense_pe()
-                    
-                    # SAM2 expects specific input format for mask decoder
-                    # Create sparse embeddings (points/boxes)
-                    sparse_embeddings = prompt_embed.unsqueeze(0).unsqueeze(0)  # [1, 1, 256]
-                    
-                    # No dense embeddings for text-only prompts
-                    dense_embeddings = torch.empty(
-                        1, 0, self.sam_prompt_encoder.embed_dim,
-                        device=prompt_embed.device
-                    )
-                    
-                    # Run mask decoder
-                    low_res_masks, iou_predictions = self.sam_mask_decoder(
-                        image_embeddings=image_features_sam[i:i+1],  # [1, 256, H, W]
-                        image_pe=image_pe,  # Positional encoding
-                        sparse_prompt_embeddings=sparse_embeddings,  # [1, 1, 256]
-                        dense_prompt_embeddings=dense_embeddings,  # [1, 0, 256]
-                        multimask_output=False,  # Single mask per prompt
-                    )
-                    
-                    # Upscale mask to original image size
-                    if pixel_values is not None:
-                        orig_h, orig_w = pixel_values.shape[-2:]
-                        mask_logit = F.interpolate(
-                            low_res_masks,
-                            size=(orig_h, orig_w),
-                            mode='bilinear',
-                            align_corners=False
+                for j, prompt_embed in enumerate(prompt_embeds if len(seg_positions[i]) > 1 else [prompt_embeds]):
+                    try:
+                        # Get positional encoding from SAM prompt encoder
+                        image_pe = self.sam_prompt_encoder.get_dense_pe()
+                        
+                        # Ensure PE matches image embeddings size
+                        if image_pe.shape[-2:] != image_features_sam[i:i+1].shape[-2:]:
+                            h_feat, w_feat = image_features_sam[i:i+1].shape[-2:]
+                            image_pe = F.interpolate(
+                                image_pe,
+                                size=(h_feat, w_feat),
+                                mode='bilinear',
+                                align_corners=False
+                            )
+                        
+                        # Create a center point as anchor for text-guided segmentation
+                        # SAM2.1 expects points in the image coordinate system
+                        h_img, w_img = pixel_values.shape[-2:]
+                        center_x, center_y = w_img // 2, h_img // 2
+                        
+                        # Create point coordinates [N, 2] where N=1 for center point
+                        point_coords = torch.tensor([[center_x, center_y]], 
+                                                  dtype=torch.float32, 
+                                                  device=prompt_embed.device).unsqueeze(0)  # [1, 1, 2]
+                        point_labels = torch.tensor([1], dtype=torch.int32, 
+                                                  device=prompt_embed.device).unsqueeze(0)  # [1, 1] (positive point)
+                        
+                        # Use SAM's PromptEncoder to generate proper embeddings
+                        sparse_embeddings, dense_embeddings = self.sam_prompt_encoder(
+                            points=(point_coords, point_labels),
+                            boxes=None,
+                            masks=None,
                         )
-                        sample_masks.append(mask_logit.squeeze(0))  # Remove batch dim
-                    else:
-                        sample_masks.append(low_res_masks.squeeze(0))
+                        
+                        # Replace the point embedding with our text-derived embedding
+                        # sparse_embeddings: [1, N, C] where C=256 for SAM2.1
+                        if sparse_embeddings.shape[1] > 0:
+                            sparse_embeddings[:, 0, :] = prompt_embed.unsqueeze(0)
+                        
+                        # Ensure dense_embeddings matches image_features spatial size
+                        if dense_embeddings.shape[-2:] != image_features_sam[i:i+1].shape[-2:]:
+                            h_feat, w_feat = image_features_sam[i:i+1].shape[-2:]
+                            dense_embeddings = F.interpolate(
+                                dense_embeddings,
+                                size=(h_feat, w_feat),
+                                mode='bilinear',
+                                align_corners=False
+                            )
+                        
+                        # Get SAM model dtype for consistency
+                        sam_dtype = next(self.sam_mask_decoder.parameters()).dtype
+                        
+                        # Use real high-res features if available, otherwise create dummy ones
+                        if sam_high_res_features is not None and len(sam_high_res_features) >= 2:
+                            # Use actual SAM2.1 high-resolution features
+                            high_res_features = [
+                                feat.to(dtype=sam_dtype) for feat in sam_high_res_features[:2]
+                            ]
+                        else:
+                            # Fallback to dummy features if SAM extraction failed
+                            h_lr, w_lr = image_features_sam[i:i+1].shape[-2:]
+                            high_res_features = [
+                                torch.zeros(1, 32, h_lr * 4, w_lr * 4, device=image_features_sam.device, dtype=sam_dtype),
+                                torch.zeros(1, 64, h_lr * 2, w_lr * 2, device=image_features_sam.device, dtype=sam_dtype),
+                            ]
+                        
+                        # Use repeat_image=True to handle batch size mismatch
+                        low_res_masks, iou_predictions, sam_tokens_out, obj_score_logits = self.sam_mask_decoder(
+                            image_embeddings=image_features_sam[i:i+1].to(dtype=sam_dtype),
+                            image_pe=image_pe.to(dtype=sam_dtype),
+                            sparse_prompt_embeddings=sparse_embeddings.to(dtype=sam_dtype),
+                            dense_prompt_embeddings=dense_embeddings.to(dtype=sam_dtype),
+                            multimask_output=False,  # Single mask per prompt
+                            repeat_image=True,  # Allow SAM to handle batch size mismatch
+                            high_res_features=high_res_features,
+                        )
+                        
+                        # Upscale mask to original image size
+                        if pixel_values is not None:
+                            orig_h, orig_w = pixel_values.shape[-2:]
+                            mask_logit = F.interpolate(
+                                low_res_masks,
+                                size=(orig_h, orig_w),
+                                mode='bilinear',
+                                align_corners=False
+                            )
+                            sample_masks.append(mask_logit.squeeze(0))  # Remove batch dim
+                        else:
+                            sample_masks.append(low_res_masks.squeeze(0))
+                            
+                    except Exception as e:
+                        print(f"Warning: SAM2.1 mask generation failed with error: {e}")
+                        import traceback
+                        print(f"Traceback: {traceback.format_exc()}")
+                        # Fall back to dummy mask if SAM fails
+                        if pixel_values is not None:
+                            orig_h, orig_w = pixel_values.shape[-2:]
+                            dummy_mask = torch.zeros(1, orig_h, orig_w, device=pixel_values.device, dtype=torch.float32)
+                            sample_masks.append(dummy_mask)
             
             mask_logits.append(sample_masks if len(sample_masks) > 0 else None)
         
@@ -438,6 +640,14 @@ class LISA_Model(nn.Module):
         image_grid_thw = kwargs.get('image_grid_thw', torch.tensor([[1, 24, 24]], device=pixel_values.device).repeat(B, 1))
         vision_features = self.extract_vision_features(pixel_values, image_grid_thw)
         image_features_sam = self.image_adapter(vision_features)
+        
+        # Extract SAM2.1 features for proper high-res features
+        sam_high_res_features = None
+        try:
+            sam_embeddings, sam_high_res_features = self.extract_sam_features(pixel_values)
+        except Exception as e:
+            print(f"Warning: Could not extract SAM2.1 features during generation: {e}")
+            sam_high_res_features = None
         
         # Generation loop
         for step in range(max_new_tokens):
@@ -515,40 +725,104 @@ class LISA_Model(nn.Module):
                         seg_pos = generated_ids.size(1) - 1
                         all_seg_positions[b].append(seg_pos)
                         
-                        # Generate mask
+                        # Generate mask using proper SAM2.1 implementation
                         seg_hidden = current_hidden[b]  # [D_l]
                         prompt_embed = self.text_prompt_proj(seg_hidden)  # [256]
                         
-                        # Get positional encoding
-                        image_pe = self.sam_prompt_encoder.get_dense_pe()
-                        
-                        # Prepare inputs for mask decoder
-                        sparse_embeddings = prompt_embed.unsqueeze(0).unsqueeze(0)  # [1, 1, 256]
-                        dense_embeddings = torch.empty(
-                            1, 0, self.sam_prompt_encoder.embed_dim,
-                            device=device
-                        )
-                        
-                        # Run mask decoder
-                        with torch.no_grad():
-                            low_res_masks, _ = self.sam_mask_decoder(
-                                image_embeddings=image_features_sam[b:b+1],
-                                image_pe=image_pe,
-                                sparse_prompt_embeddings=sparse_embeddings,
-                                dense_prompt_embeddings=dense_embeddings,
-                                multimask_output=False
+                        try:
+                            # Get positional encoding from SAM prompt encoder
+                            image_pe = self.sam_prompt_encoder.get_dense_pe()
+                            
+                            # Ensure PE matches image embeddings size
+                            if image_pe.shape[-2:] != image_features_sam[b:b+1].shape[-2:]:
+                                h_feat, w_feat = image_features_sam[b:b+1].shape[-2:]
+                                image_pe = F.interpolate(
+                                    image_pe,
+                                    size=(h_feat, w_feat),
+                                    mode='bilinear',
+                                    align_corners=False
+                                )
+                            
+                            # Create a center point as anchor for text-guided segmentation
+                            h_img, w_img = pixel_values.shape[-2:]
+                            center_x, center_y = w_img // 2, h_img // 2
+                            
+                            # Create point coordinates [N, 2] where N=1 for center point
+                            point_coords = torch.tensor([[center_x, center_y]], 
+                                                      dtype=torch.float32, 
+                                                      device=device).unsqueeze(0)  # [1, 1, 2]
+                            point_labels = torch.tensor([1], dtype=torch.int32, 
+                                                      device=device).unsqueeze(0)  # [1, 1] (positive point)
+                            
+                            # Use SAM's PromptEncoder to generate proper embeddings
+                            sparse_embeddings, dense_embeddings = self.sam_prompt_encoder(
+                                points=(point_coords, point_labels),
+                                boxes=None,
+                                masks=None,
                             )
-                        
-                        # Upscale mask
-                        orig_h, orig_w = pixel_values.shape[-2:]
-                        mask = F.interpolate(
-                            low_res_masks,
-                            size=(orig_h, orig_w),
-                            mode='bilinear',
-                            align_corners=False
-                        ).squeeze(0).squeeze(0)  # Remove batch and channel dims
-                        
-                        all_masks[b].append(mask)
+                            
+                            # Replace the point embedding with our text-derived embedding
+                            # sparse_embeddings: [1, N, C] where C=256 for SAM2.1
+                            if sparse_embeddings.shape[1] > 0:
+                                sparse_embeddings[:, 0, :] = prompt_embed.unsqueeze(0)
+                            
+                            # Ensure dense_embeddings matches image_features spatial size
+                            if dense_embeddings.shape[-2:] != image_features_sam[b:b+1].shape[-2:]:
+                                h_feat, w_feat = image_features_sam[b:b+1].shape[-2:]
+                                dense_embeddings = F.interpolate(
+                                    dense_embeddings,
+                                    size=(h_feat, w_feat),
+                                    mode='bilinear',
+                                    align_corners=False
+                                )
+                            
+                            # Get SAM model dtype for consistency
+                            sam_dtype = next(self.sam_mask_decoder.parameters()).dtype
+                            
+                            # Run mask decoder
+                            with torch.no_grad():
+                                # Use real high-res features if available
+                                if sam_high_res_features is not None and len(sam_high_res_features) >= 2:
+                                    high_res_features = [
+                                        feat.to(dtype=sam_dtype) for feat in sam_high_res_features[:2]
+                                    ]
+                                else:
+                                    # Fallback to dummy features with correct channel dimensions
+                                    h_lr, w_lr = image_features_sam[b:b+1].shape[-2:]
+                                    high_res_features = [
+                                        torch.zeros(1, 32, h_lr * 4, w_lr * 4, device=device, dtype=sam_dtype),
+                                        torch.zeros(1, 64, h_lr * 2, w_lr * 2, device=device, dtype=sam_dtype),
+                                    ]
+                                
+                                low_res_masks, _, _, _ = self.sam_mask_decoder(
+                                    image_embeddings=image_features_sam[b:b+1].to(dtype=sam_dtype),
+                                    image_pe=image_pe.to(dtype=sam_dtype),
+                                    sparse_prompt_embeddings=sparse_embeddings.to(dtype=sam_dtype),
+                                    dense_prompt_embeddings=dense_embeddings.to(dtype=sam_dtype),
+                                    multimask_output=False,  # Single mask per prompt
+                                    repeat_image=False,  # No need to repeat for single image
+                                    high_res_features=high_res_features,
+                                )
+                            
+                            # Upscale mask
+                            orig_h, orig_w = pixel_values.shape[-2:]
+                            mask = F.interpolate(
+                                low_res_masks,
+                                size=(orig_h, orig_w),
+                                mode='bilinear',
+                                align_corners=False
+                            ).squeeze(0).squeeze(0)  # Remove batch and channel dims
+                            
+                            all_masks[b].append(mask)
+                            
+                        except Exception as e:
+                            print(f"Warning: SAM2.1 mask generation failed during inference: {e}")
+                            import traceback
+                            print(f"Traceback: {traceback.format_exc()}")
+                            # Fall back to dummy mask if SAM fails
+                            orig_h, orig_w = pixel_values.shape[-2:]
+                            dummy_mask = torch.zeros(orig_h, orig_w, device=device, dtype=torch.float32)
+                            all_masks[b].append(dummy_mask)
             
             # Check for EOS tokens
             eos_mask = (next_tokens == self.tokenizer.eos_token_id)

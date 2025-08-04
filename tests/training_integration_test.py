@@ -10,6 +10,7 @@ from pathlib import Path
 import logging
 import tempfile
 import json
+import warnings
 from typing import Dict, List, Tuple, Any
 import matplotlib.pyplot as plt
 from tqdm import tqdm
@@ -37,7 +38,7 @@ logger = logging.getLogger(__name__)
 
 
 class DummyTrainingDataset(Dataset):
-    """Dummy dataset for training test"""
+    """Dummy dataset for training test with LISA-style reasoning segmentation prompts"""
     
     def __init__(self, size: int = 10, processor=None, tokenizer=None, seq_length: int = 50):
         self.size = size
@@ -51,15 +52,45 @@ class DummyTrainingDataset(Dataset):
         
         self.images = []
         for i in range(size):
-            # Create a simple RGB image
+            # Create a simple RGB image with different patterns
             img_array = np.random.randint(0, 255, (336, 336, 3), dtype=np.uint8)
             img = Image.fromarray(img_array)
             self.images.append(img)
         
+        # LISA-style prompt templates
+        self.prompt_templates = [
+            "Can you segment the {object} in this image?",
+            "Please segment the {object} that appears in the scene.",
+            "Where is the {object}? Please output segmentation mask.",
+            "Identify and segment the {object} in this image.",
+            "Can you show me where the {object} is located?",
+        ]
+        
+        # Example objects for variety
+        self.objects = ["car", "person", "building", "tree", "dog", "cat", "chair", "table", "bottle", "book"]
+        
+        # Response templates with SEG token
+        self.response_templates = [
+            "Sure, the {object} is <SEG>.",
+            "The {object} can be found at <SEG>.",
+            "I can see the {object} <SEG>.",
+            "Here is the {object}: <SEG>.",
+            "The {object} is located <SEG> in the image.",
+        ]
+    
     def __len__(self):
         return self.size
     
     def __getitem__(self, idx):
+        # Select random templates and object
+        prompt_template = self.prompt_templates[idx % len(self.prompt_templates)]
+        response_template = self.response_templates[idx % len(self.response_templates)]
+        obj = self.objects[idx % len(self.objects)]
+        
+        # Format prompts
+        user_prompt = prompt_template.format(object=obj)
+        assistant_response = response_template.format(object=obj)
+        
         # Process image and text together using the processor
         if self.processor:
             # Create messages for chat template
@@ -67,16 +98,13 @@ class DummyTrainingDataset(Dataset):
                 {
                     "role": "user",
                     "content": [
-                        {
-                            "type": "image",
-                            "image": self.images[idx],
-                        },
-                        {"type": "text", "text": f"Please segment the object in position {idx} in this image"},
+                        {"type": "image", "image": self.images[idx]},
+                        {"type": "text", "text": user_prompt},
                     ],
                 },
                 {
                     "role": "assistant",
-                    "content": "The <SEG> object is here."
+                    "content": assistant_response
                 }
             ]
             
@@ -87,11 +115,12 @@ class DummyTrainingDataset(Dataset):
                 add_generation_prompt=False
             )
             
-            # Process text and image together
+            # Use processor with updated tokenizer
+            # The processor should use our tokenizer with SEG token
             inputs = self.processor(
                 text=text,
                 images=[self.images[idx]],
-                max_length=2048,  # Increase to accommodate image tokens
+                max_length=2048,
                 truncation=True,
                 return_tensors="pt"
             )
@@ -100,42 +129,37 @@ class DummyTrainingDataset(Dataset):
             attention_mask = inputs['attention_mask'].squeeze(0)
             image_grid_thw = inputs.get('image_grid_thw', None)
             
-            # Debug: Check if image tokens are present
-            if idx == 0:  # Only print for first sample
-                print(f"Input IDs shape: {input_ids.shape}")
-                print(f"Pixel values shape: {pixel_values.shape}")
-                # Check for image tokens (usually 151859-151863 range for Qwen2.5-VL)
-                image_token_range = (input_ids >= 151859) & (input_ids <= 151863)
-                print(f"Number of image tokens: {image_token_range.sum().item()}")
-                print(f"First 50 tokens: {input_ids[:50].tolist()}")
             if image_grid_thw is not None:
                 image_grid_thw = image_grid_thw.squeeze(0)
         else:
-            # Fallback to random tensor
+            # Fallback - should not be used in actual testing
             pixel_values = torch.randn(3, 336, 336)
-            image_grid_thw = torch.tensor([1, 24, 24])  # Default grid
+            image_grid_thw = torch.tensor([1, 24, 24])
             input_ids = torch.randint(0, 32000, (self.seq_length,))
             attention_mask = torch.ones(self.seq_length)
-            # Insert SEG token manually
-            seg_pos = torch.randint(10, self.seq_length - 10, (1,)).item()
-            input_ids[seg_pos] = 152000  # SEG token ID
         
         # Create labels (same as input_ids for training)
         labels = input_ids.clone()
         
-        # Create dummy mask (matching processed image size)
-        if hasattr(pixel_values, 'shape'):
-            h, w = pixel_values.shape[-2:]
-        else:
-            h, w = 336, 336
-        mask = torch.rand(1, h, w) > 0.5
+        # Create dummy segmentation mask
+        # In real dataset, this would be the actual ground truth mask
+        h, w = pixel_values.shape[-2:]
+        # Create a simple elliptical mask as dummy ground truth
+        y_center = h // 2 + np.random.randint(-50, 50)
+        x_center = w // 2 + np.random.randint(-50, 50)
+        a = np.random.randint(30, 100)  # ellipse width
+        b = np.random.randint(30, 100)  # ellipse height
+        
+        y, x = np.ogrid[:h, :w]
+        mask = ((x - x_center)**2 / a**2 + (y - y_center)**2 / b**2) <= 1
+        mask = torch.from_numpy(mask).float().unsqueeze(0)
         
         result = {
             'pixel_values': pixel_values,
             'input_ids': input_ids,
             'labels': labels,
             'attention_mask': attention_mask,
-            'mask_labels': mask.float()
+            'mask_labels': mask
         }
         
         # Add image_grid_thw if available
@@ -214,7 +238,12 @@ class TrainingIntegrationTest:
             model_name=config.qwen_model_name,
             seg_token=config.seg_token
         )
-        processor = AutoProcessor.from_pretrained(config.qwen_model_name)
+        
+        # Suppress warnings about deprecated preprocessor.json
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", message=".*preprocessor.json.*")
+            warnings.filterwarnings("ignore", message=".*Qwen2VLImageProcessor.*")
+            processor = AutoProcessor.from_pretrained(config.qwen_model_name)
         
         # Load model
         logger.info("Loading LISA model")
@@ -353,6 +382,23 @@ class TrainingIntegrationTest:
         )
         
         logger.info(f"Initial losses - Total: {total_loss:.4f}, LM: {lm_loss:.4f}, Seg: {seg_loss:.4f}")
+        
+        # Debug: Check SEG token
+        if hasattr(model, 'seg_token_id'):
+            # Check in labels
+            seg_in_labels = (batch['labels'] == model.seg_token_id).any(dim=1)
+            logger.info(f"SEG token ID: {model.seg_token_id}")
+            logger.info(f"Batches with SEG in labels: {seg_in_labels.sum().item()}/{len(seg_in_labels)}")
+            
+            # Decode a sample to see the actual text
+            if seg_in_labels[0]:
+                try:
+                    # Filter out -100 tokens before decoding
+                    valid_tokens = batch['labels'][0][batch['labels'][0] != -100]
+                    sample_text = model.tokenizer.decode(valid_tokens, skip_special_tokens=False)
+                    logger.info(f"Sample decoded text: {sample_text[:200]}...")
+                except Exception as e:
+                    logger.info(f"Could not decode sample text: {e}")
         
         # Backward pass
         optimizer.zero_grad()
@@ -543,6 +589,10 @@ class TrainingIntegrationTest:
             loaded_model = LISA_Model.from_pretrained(str(save_path))
             loaded_model = loaded_model.to(self.device)
             
+            # Ensure same dtype as original model
+            model_dtype = next(model.parameters()).dtype
+            loaded_model = loaded_model.to(dtype=model_dtype)
+            
             logger.info("✓ Model loaded successfully")
             
             # Quick inference test using proper processor
@@ -629,6 +679,10 @@ class TrainingIntegrationTest:
             
             # Create dummy dataset
             logger.info("\nCreating dummy training dataset")
+            
+            # Update processor's tokenizer to include SEG token
+            processor.tokenizer = tokenizer
+            
             train_dataset = DummyTrainingDataset(
                 size=20,
                 processor=processor,

@@ -1,0 +1,106 @@
+08/03/2025 21:54:38 - INFO - __main__ - Starting LISA改 Training Integration Tests
+08/03/2025 21:54:38 - INFO - __main__ - ======================================================================
+08/03/2025 21:54:38 - INFO - __main__ - ==================================================
+08/03/2025 21:54:38 - INFO - __main__ - Setting up model with actual weights
+08/03/2025 21:54:38 - INFO - __main__ - ==================================================
+08/03/2025 21:54:38 - INFO - __main__ - Loading tokenizer and processor
+The image processor of type `Qwen2VLImageProcessor` is now loaded as a fast processor by default, even if the model checkpoint was saved with a slow processor. This is a breaking change and may produce slightly different outputs. To continue using the slow processor, instantiate this class with `use_fast=False`. Note that this behavior will be extended to all models in a future release.
+You have video processor config saved in `preprocessor.json` file which is deprecated. Video processor configs should be saved in their own `video_preprocessor.json` file. You can rename the file or load and save the processor back which renames it automatically. Loading from `preprocessor.json` will be removed in v5.0.
+08/03/2025 21:54:42 - INFO - __main__ - Loading LISA model
+Added 1 special tokens to tokenizer
+Tokenizer prepared with vocab size: 151666
+Special tokens: {'<SEG>': 151665}
+Loading checkpoint shards:   0%|          | 0/2 [00:00<?, ?it/s]Loading checkpoint shards:  50%|█████     | 1/2 [00:01<00:01,  1.18s/it]Loading checkpoint shards: 100%|██████████| 2/2 [00:02<00:00,  1.03it/s]Loading checkpoint shards: 100%|██████████| 2/2 [00:02<00:00,  1.01s/it]
+08/03/2025 21:54:47 - INFO - root - Loaded checkpoint sucessfully
+08/03/2025 21:54:47 - INFO - __main__ - Setting up LoRA
+08/03/2025 21:54:48 - INFO - __main__ - Total parameters: 3,981,766,322
+08/03/2025 21:54:48 - INFO - __main__ - Trainable parameters: 222,922,017
+08/03/2025 21:54:48 - INFO - __main__ - Percentage trainable: 5.60%
+08/03/2025 21:54:48 - INFO - __main__ - 
+Creating dummy training dataset
+08/03/2025 21:54:48 - INFO - __main__ - ==================================================
+08/03/2025 21:54:48 - INFO - __main__ - Testing gradient flow
+08/03/2025 21:54:48 - INFO - __main__ - ==================================================
+You're using a Qwen2TokenizerFast tokenizer. Please note that with a fast tokenizer, using the `__call__` method is faster than using a method to encode the text followed by a call to the `pad` method to get a padded encoding.
+08/03/2025 21:54:48 - ERROR - __main__ - 
+======================================================================
+08/03/2025 21:54:48 - ERROR - __main__ - ❌ TRAINING TESTS FAILED!
+08/03/2025 21:54:48 - ERROR - __main__ - ======================================================================
+Traceback (most recent call last):
+  File "/home/oda/SAM2_1_Qwen_2_5_Integration_2/src/models/lisa_model.py", line 377, in forward
+    low_res_masks, iou_predictions, _, _ = self.sam_mask_decoder(
+                                           ~~~~~~~~~~~~~~~~~~~~~^
+        image_embeddings=image_features_sam[i:i+1],  # [1, 256, H, W]
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<5 lines>...
+        high_res_features=None,  # No high-res features for now
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/home/oda/miniconda3/lib/python3.13/site-packages/torch/nn/modules/module.py", line 1739, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/home/oda/miniconda3/lib/python3.13/site-packages/torch/nn/modules/module.py", line 1750, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/home/oda/miniconda3/lib/python3.13/site-packages/sam2/modeling/sam/mask_decoder.py", line 136, in forward
+    masks, iou_pred, mask_tokens_out, object_score_logits = self.predict_masks(
+                                                            ~~~~~~~~~~~~~~~~~~^
+        image_embeddings=image_embeddings,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<4 lines>...
+        high_res_features=high_res_features,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/home/oda/miniconda3/lib/python3.13/site-packages/sam2/modeling/sam/mask_decoder.py", line 223, in predict_masks
+    feat_s0, feat_s1 = high_res_features
+    ^^^^^^^^^^^^^^^^
+TypeError: cannot unpack non-iterable NoneType object
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/home/oda/SAM2_1_Qwen_2_5_Integration_2/tests/training_integration_test.py", line 759, in <module>
+    main()
+    ~~~~^^
+  File "/home/oda/SAM2_1_Qwen_2_5_Integration_2/tests/training_integration_test.py", line 755, in main
+    tester.run_all_tests()
+    ~~~~~~~~~~~~~~~~~~~~^^
+  File "/home/oda/SAM2_1_Qwen_2_5_Integration_2/tests/training_integration_test.py", line 704, in run_all_tests
+    grad_stats = self.test_gradient_flow(model, train_dataloader, optimizer)
+  File "/home/oda/SAM2_1_Qwen_2_5_Integration_2/tests/training_integration_test.py", line 377, in test_gradient_flow
+    outputs = model(**forward_kwargs)
+  File "/home/oda/miniconda3/lib/python3.13/site-packages/torch/nn/modules/module.py", line 1739, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/home/oda/miniconda3/lib/python3.13/site-packages/torch/nn/modules/module.py", line 1750, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/home/oda/SAM2_1_Qwen_2_5_Integration_2/src/models/lisa_model.py", line 388, in forward
+    low_res_masks, iou_predictions, _, _ = self.sam_mask_decoder(
+                                           ~~~~~~~~~~~~~~~~~~~~~^
+        image_embeddings=image_features_sam[i:i+1],
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<4 lines>...
+        repeat_image=False,
+        ^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/home/oda/miniconda3/lib/python3.13/site-packages/torch/nn/modules/module.py", line 1739, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/home/oda/miniconda3/lib/python3.13/site-packages/torch/nn/modules/module.py", line 1750, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/home/oda/miniconda3/lib/python3.13/site-packages/sam2/modeling/sam/mask_decoder.py", line 136, in forward
+    masks, iou_pred, mask_tokens_out, object_score_logits = self.predict_masks(
+                                                            ~~~~~~~~~~~~~~~~~~^
+        image_embeddings=image_embeddings,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<4 lines>...
+        high_res_features=high_res_features,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/home/oda/miniconda3/lib/python3.13/site-packages/sam2/modeling/sam/mask_decoder.py", line 223, in predict_masks
+    feat_s0, feat_s1 = high_res_features
+    ^^^^^^^^^^^^^^^^
+TypeError: cannot unpack non-iterable NoneType object
