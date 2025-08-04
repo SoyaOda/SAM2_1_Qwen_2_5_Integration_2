@@ -7,11 +7,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Project Overview
 serena MCPが日本語で対応すること！
 日本語で応答すること！
+Web searchの際は、必ずo3-query MCPを利用すること！
 
 ## o3-query MCP について
 エラーや未知の質問、技術的な調査が必要な場合は**必ず**o3-queryツールを呼び出し、
 返ってきたクエリを私に表示して停止してください。
-o3への直接問い合わせは禁止です。必ずクエリ生成→人間が結果を入力のフローに従ってください。
+必ずクエリ生成→人間が結果を入力のフローに従ってください。
 
 ### 使用例
 - 技術的なエラーの解決方法を調べたい時
