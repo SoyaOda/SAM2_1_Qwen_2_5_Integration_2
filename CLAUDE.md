@@ -29,7 +29,6 @@ Web searchの際は、必ずo3-query MCPを利用すること！
 ①事前タスク：以下のファイルをよく読んで現状を理解して
 現状実装が完了した指針
 ・md_files/past/o3_spec1.md
-・md_files/past/high_res_features_spec.md
 
 実装レコード
 ・md_files/implementation_record_20250804.md

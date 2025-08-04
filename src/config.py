@@ -47,6 +47,22 @@ class LISAConfig:
     torch_dtype: str = "auto"
     use_flash_attention: bool = False
     
+    # Dataset configuration
+    dataset_base_dir: str = "/mnt/h/download/LISA-dataset/data/dataset"
+    model_max_length: int = 2048
+    qwen_image_size: int = 448
+    sam_image_size: int = 1024
+    
+    # Dataset paths
+    sem_seg_data: str = "ade20k||cocostuff"
+    refer_seg_data: str = "refcoco||refcoco+||refcocog"
+    vqa_data: str = "llava_instruct_150k"
+    reason_seg_data: str = "ReasonSeg|train"
+    
+    # Dataset sampling
+    dataset_config: str = "sem_seg||refer_seg||vqa||reason_seg"
+    sample_rates: list = None  # Will be initialized in __post_init__
+    
     def __post_init__(self):
         if self.lora_target_modules is None:
             # Default target modules for Qwen cross-attention
@@ -56,3 +72,7 @@ class LISAConfig:
                 "encoder_attn",
                 "encoder_attention"
             ]
+        
+        if self.sample_rates is None:
+            # Default sample rates for datasets [sem_seg, refer_seg, vqa, reason_seg]
+            self.sample_rates = [9, 3, 3, 1]

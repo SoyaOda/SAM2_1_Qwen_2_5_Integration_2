@@ -348,6 +348,7 @@ class LISA_Model(nn.Module):
         labels: Optional[torch.Tensor] = None,
         mask_labels: Optional[List[torch.Tensor]] = None,
         image_grid_thw: Optional[torch.Tensor] = None,
+        sam_images: Optional[torch.Tensor] = None,  # SAM用の高解像度画像
         return_dict: bool = True,
     ) -> Union[LISAModelOutput, Tuple]:
         """
