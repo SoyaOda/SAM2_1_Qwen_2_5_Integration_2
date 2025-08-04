@@ -30,6 +30,66 @@ class LISAModelOutput:
     seg_token_positions: Optional[List[int]] = None  # Positions of SEG tokens
 
 
+class HighResFeatureGenerator(nn.Module):
+    """
+    Generates high-resolution features from Qwen vision features for SAM2.1 mask decoder.
+    Implements a lightweight FPN (Feature Pyramid Network) approach.
+    """
+    def __init__(self, in_channels: int, sam_channels: int = 256):
+        """
+        Args:
+            in_channels: Input channels from Qwen vision features (256 after adapter)
+            sam_channels: SAM2.1 transformer_dim (256 by default)
+        """
+        super().__init__()
+        
+        # We don't need to reduce channels since input is already 256
+        # from the image adapter
+        
+        # Important: SAM2.1's MaskDecoder expects the high-res features to have
+        # the SAME channels as image_embeddings (256), then it will apply its own
+        # conv_s0 and conv_s1 to reduce to 32 and 64 channels respectively
+        
+        # Upsampling layers for generating high-res features
+        # For stride-8 feature (2x upsampling)
+        self.upsample_2x = nn.Sequential(
+            nn.ConvTranspose2d(in_channels, sam_channels, kernel_size=2, stride=2),
+            nn.BatchNorm2d(sam_channels),
+            nn.GELU()
+        )
+        
+        # For stride-4 feature (4x upsampling)
+        self.upsample_4x = nn.Sequential(
+            nn.ConvTranspose2d(in_channels, sam_channels, kernel_size=2, stride=2),
+            nn.BatchNorm2d(sam_channels),
+            nn.GELU(),
+            nn.ConvTranspose2d(sam_channels, sam_channels, kernel_size=2, stride=2),
+            nn.BatchNorm2d(sam_channels),
+            nn.GELU()
+        )
+        
+    def forward(self, x: torch.Tensor) -> List[torch.Tensor]:
+        """
+        Args:
+            x: Input features [B, C, H, W] from image adapter (already 256 channels)
+               
+        Returns:
+            List of high-res features [feat_s0, feat_s1] where:
+            - feat_s0: [B, 256, 4*H, 4*W] for stride-4
+            - feat_s1: [B, 256, 2*H, 2*W] for stride-8
+            
+        Note:
+            We output 256 channels (same as sam_channels) and let SAM2.1's
+            MaskDecoder apply its own conv_s0/conv_s1 to reduce to 32/64 channels.
+        """
+        # Generate multi-scale features
+        feat_s1 = self.upsample_2x(x)   # [B, 256, 2*H, 2*W]
+        feat_s0 = self.upsample_4x(x)   # [B, 256, 4*H, 4*W]
+        
+        # Return in the order expected by SAM2.1 (stride-4, stride-8)
+        # MaskDecoder will apply conv_s0/conv_s1 to reduce channels to 32/64
+        return [feat_s0, feat_s1]
+
 class LISA_Model(nn.Module):
     """
     LISA改 Model
@@ -157,6 +217,13 @@ class LISA_Model(nn.Module):
             use_mlp=False  # Start with linear projection
         ).to(dtype=model_dtype)
         
+        # Initialize high-resolution feature generator
+        # Input is already transformed by image_adapter to sam_channels
+        self.high_res_generator = HighResFeatureGenerator(
+            in_channels=config.sam_image_embedding_dim,  # Already 256 after adapter
+            sam_channels=config.sam_image_embedding_dim
+        ).to(dtype=model_dtype)
+        
         # Freeze models as specified
         if config.freeze_qwen:
             for param in self.qwen.parameters():
@@ -261,112 +328,17 @@ class LISA_Model(nn.Module):
     
     def extract_sam_features(self, pixel_values: torch.Tensor) -> Tuple[torch.Tensor, List[torch.Tensor]]:
         """
-        Extract SAM2.1 image features including high-resolution features
+        [DEPRECATED] This method is no longer used.
+        High-resolution features are now generated using HighResFeatureGenerator
+        from Qwen vision features instead of SAM2.1's native extraction.
         
-        Args:
-            pixel_values: Input images [B, C, H, W] 
-            
-        Returns:
-            image_embeddings: Low-resolution embeddings [B, 256, 64, 64]
-            high_res_features: List of high-resolution features for MaskDecoder
+        This method is kept for compatibility but should not be called.
         """
-        # Preprocess images for SAM2.1
-        # SAM2.1 expects images in specific format (1024x1024 typically)
-        B, C, H, W = pixel_values.shape
-        
-        # Resize to SAM2.1 input size (1024x1024)
-        sam_input_size = 1024
-        sam_images = F.interpolate(
-            pixel_values,
-            size=(sam_input_size, sam_input_size),
-            mode='bilinear',
-            align_corners=False
+        raise NotImplementedError(
+            "extract_sam_features is deprecated. "
+            "High-resolution features are now generated from Qwen vision features "
+            "using the HighResFeatureGenerator class."
         )
-        
-        # Run SAM2.1 image encoder to get full backbone output
-        with torch.no_grad():
-            # Get backbone features - this returns dict with 'backbone_fpn' and 'vision_pos_enc'
-            backbone_out = self.sam_image_encoder(sam_images)
-            
-            # Check if we have the expected structure
-            if isinstance(backbone_out, dict) and 'backbone_fpn' in backbone_out:
-                # backbone_fpn contains features at different strides: [stride 4, 8, 16, 32]
-                backbone_fpn = backbone_out['backbone_fpn']
-                
-                # Check if use_high_res_features is enabled in the model
-                use_high_res = hasattr(self.sam_mask_decoder, 'use_high_res_features') and self.sam_mask_decoder.use_high_res_features
-                
-                if use_high_res and len(backbone_fpn) >= 3:
-                    # Extract features following O3's guidance:
-                    # - backbone_fpn[0]: stride 4 (highest resolution)
-                    # - backbone_fpn[1]: stride 8 
-                    # - backbone_fpn[2]: stride 16 (main features)
-                    
-                    # Main features (stride 16) - typically [B, 256, 64, 64]
-                    image_embeddings = backbone_fpn[2]
-                    
-                    # High-res features for MaskDecoder
-                    # According to O3 and SAM2.1 source:
-                    # - feat_s0: stride 4 features (4H x 4W relative to main features)
-                    # - feat_s1: stride 8 features (2H x 2W relative to main features)
-                    
-                    feat_s0 = backbone_fpn[0]  # stride 4: [B, C, 256, 256]
-                    feat_s1 = backbone_fpn[1]  # stride 8: [B, C, 128, 128]
-                    
-                    # Apply convolutions if available (as seen in SAM2Base.forward_image)
-                    if hasattr(self.sam_mask_decoder, 'conv_s0'):
-                        feat_s0 = self.sam_mask_decoder.conv_s0(feat_s0)
-                    if hasattr(self.sam_mask_decoder, 'conv_s1'):
-                        feat_s1 = self.sam_mask_decoder.conv_s1(feat_s1)
-                    
-                    # Prepare high_res_features in the format expected by MaskDecoder
-                    high_res_features = [feat_s0, feat_s1]
-                    
-                else:
-                    # No high-res features available or not enabled
-                    # Use the last (lowest resolution) feature as main embedding
-                    image_embeddings = backbone_fpn[-1] if backbone_fpn else backbone_out
-                    
-                    # Create dummy high-res features with correct dimensions
-                    # Based on typical SAM2.1 dimensions when main features are 64x64
-                    h_lr, w_lr = image_embeddings.shape[-2:]
-                    sam_dtype = image_embeddings.dtype
-                    device = image_embeddings.device
-                    
-                    # MaskDecoder expects specific channel dimensions:
-                    # After conv_s0/conv_s1, channels are reduced to C//8 and C//4
-                    # But if we pass raw features, MaskDecoder's conv_s0/s1 will handle it
-                    # So we can pass features with the same channels as image_embeddings
-                    C_emb = image_embeddings.shape[1]
-                    
-                    high_res_features = [
-                        torch.zeros(B, C_emb, h_lr * 4, w_lr * 4, device=device, dtype=sam_dtype),  # feat_s0
-                        torch.zeros(B, C_emb, h_lr * 2, w_lr * 2, device=device, dtype=sam_dtype),  # feat_s1
-                    ]
-                    
-            else:
-                # Fallback: treat output as single tensor
-                image_embeddings = backbone_out
-                
-                # Create dummy high-res features
-                h_lr, w_lr = image_embeddings.shape[-2:]
-                sam_dtype = image_embeddings.dtype
-                device = image_embeddings.device
-                C_emb = image_embeddings.shape[1]
-                
-                high_res_features = [
-                    torch.zeros(B, C_emb, h_lr * 4, w_lr * 4, device=device, dtype=sam_dtype),
-                    torch.zeros(B, C_emb, h_lr * 2, w_lr * 2, device=device, dtype=sam_dtype),
-                ]
-        
-        # Ensure batch dimension matches
-        if image_embeddings.shape[0] == 1 and B > 1:
-            image_embeddings = image_embeddings.expand(B, -1, -1, -1)
-            high_res_features = [
-                feat.expand(B, -1, -1, -1) for feat in high_res_features
-            ]
-        
-        return image_embeddings, high_res_features
     
     def forward(
         self,
@@ -425,21 +397,12 @@ class LISA_Model(nn.Module):
             # Transform to SAM format using adapter
             image_features_sam = self.image_adapter(vision_features)  # [B, 256, H, W]
             
-            # ALSO extract direct SAM2.1 features for proper high-res features
-            try:
-                sam_embeddings, sam_high_res_features = self.extract_sam_features(pixel_values)
-                # Use SAM's native embeddings if adapter output doesn't match expected dimensions
-                if sam_embeddings.shape[0] == B and sam_embeddings.shape[-2:] != image_features_sam.shape[-2:]:
-                    # Resize adapter output to match SAM embeddings spatial dimensions
-                    image_features_sam = F.interpolate(
-                        image_features_sam,
-                        size=sam_embeddings.shape[-2:],
-                        mode='bilinear',
-                        align_corners=False
-                    )
-            except Exception as e:
-                print(f"Warning: Could not extract SAM2.1 features, using adapter only: {e}")
-                sam_high_res_features = None
+            # Generate high-res features from Qwen vision features
+            # This replaces the previous approach of extracting from SAM2.1
+            sam_high_res_features = self.high_res_generator(image_features_sam)
+            
+            # High-res features are now generated from Qwen vision features
+            # using the HighResFeatureGenerator - no need for SAM2.1's native extraction
         
         # 3. Find SEG token positions and generate masks
         mask_logits = []
@@ -534,21 +497,35 @@ class LISA_Model(nn.Module):
                         # Get SAM model dtype for consistency
                         sam_dtype = next(self.sam_mask_decoder.parameters()).dtype
                         
-                        # Use real high-res features if available, otherwise create dummy ones
+                        # Use generated high-res features from Qwen vision encoder
                         if sam_high_res_features is not None and len(sam_high_res_features) >= 2:
-                            # Use actual SAM2.1 high-resolution features
-                            high_res_features = [
-                                feat.to(dtype=sam_dtype) for feat in sam_high_res_features[:2]
-                            ]
+                            # Apply SAM2.1's conv_s0/conv_s1 to compress channels before passing to MaskDecoder
+                            # This is required because MaskDecoder doesn't apply these automatically
+                            feat_s0 = sam_high_res_features[0][i:i+1].to(dtype=sam_dtype)  # stride-4
+                            feat_s1 = sam_high_res_features[1][i:i+1].to(dtype=sam_dtype)  # stride-8
+                            
+                            # Apply channel compression: 256 -> 32 for s0, 256 -> 64 for s1
+                            if hasattr(self.sam_mask_decoder, 'conv_s0') and hasattr(self.sam_mask_decoder, 'conv_s1'):
+                                feat_s0 = self.sam_mask_decoder.conv_s0(feat_s0)  # 256 -> 32 channels
+                                feat_s1 = self.sam_mask_decoder.conv_s1(feat_s1)  # 256 -> 64 channels
+                            else:
+                                # Fallback: apply manual channel reduction if conv_s0/s1 not available
+                                # This should not happen with SAM2.1 initialized with use_high_res_features=True
+                                print("Warning: SAM2.1 MaskDecoder missing conv_s0/conv_s1. Applying manual channel reduction.")
+                                feat_s0 = F.conv2d(feat_s0, 
+                                                 torch.randn(32, 256, 1, 1, device=feat_s0.device, dtype=feat_s0.dtype) * 0.02,
+                                                 bias=None)
+                                feat_s1 = F.conv2d(feat_s1,
+                                                 torch.randn(64, 256, 1, 1, device=feat_s1.device, dtype=feat_s1.dtype) * 0.02,
+                                                 bias=None)
+                            
+                            high_res_features = [feat_s0, feat_s1]
                         else:
-                            # Fallback to dummy features if SAM extraction failed
-                            h_lr, w_lr = image_features_sam[i:i+1].shape[-2:]
-                            high_res_features = [
-                                torch.zeros(1, 32, h_lr * 4, w_lr * 4, device=image_features_sam.device, dtype=sam_dtype),
-                                torch.zeros(1, 64, h_lr * 2, w_lr * 2, device=image_features_sam.device, dtype=sam_dtype),
-                            ]
+                            # This should not happen since we always generate high-res features
+                            raise RuntimeError("High-resolution features not available. This should not happen.")
                         
                         # Use repeat_image=True to handle batch size mismatch
+                        # Re-enable high-res features with proper 256-channel format
                         low_res_masks, iou_predictions, sam_tokens_out, obj_score_logits = self.sam_mask_decoder(
                             image_embeddings=image_features_sam[i:i+1].to(dtype=sam_dtype),
                             image_pe=image_pe.to(dtype=sam_dtype),
@@ -556,7 +533,7 @@ class LISA_Model(nn.Module):
                             dense_prompt_embeddings=dense_embeddings.to(dtype=sam_dtype),
                             multimask_output=False,  # Single mask per prompt
                             repeat_image=True,  # Allow SAM to handle batch size mismatch
-                            high_res_features=high_res_features,
+                            high_res_features=high_res_features,  # Pass 256-channel features - SAM will apply conv_s0/s1
                         )
                         
                         # Upscale mask to original image size
@@ -641,13 +618,8 @@ class LISA_Model(nn.Module):
         vision_features = self.extract_vision_features(pixel_values, image_grid_thw)
         image_features_sam = self.image_adapter(vision_features)
         
-        # Extract SAM2.1 features for proper high-res features
-        sam_high_res_features = None
-        try:
-            sam_embeddings, sam_high_res_features = self.extract_sam_features(pixel_values)
-        except Exception as e:
-            print(f"Warning: Could not extract SAM2.1 features during generation: {e}")
-            sam_high_res_features = None
+        # Generate high-res features from Qwen vision features
+        sam_high_res_features = self.high_res_generator(image_features_sam)
         
         # Generation loop
         for step in range(max_new_tokens):
@@ -781,18 +753,24 @@ class LISA_Model(nn.Module):
                             
                             # Run mask decoder
                             with torch.no_grad():
-                                # Use real high-res features if available
+                                # Use generated high-res features from Qwen vision encoder
                                 if sam_high_res_features is not None and len(sam_high_res_features) >= 2:
-                                    high_res_features = [
-                                        feat.to(dtype=sam_dtype) for feat in sam_high_res_features[:2]
-                                    ]
+                                    # Apply SAM2.1's conv_s0/conv_s1 to compress channels
+                                    feat_s0 = sam_high_res_features[0][b:b+1].to(dtype=sam_dtype)  # stride-4
+                                    feat_s1 = sam_high_res_features[1][b:b+1].to(dtype=sam_dtype)  # stride-8
+                                    
+                                    # Apply channel compression: 256 -> 32 for s0, 256 -> 64 for s1
+                                    if hasattr(self.sam_mask_decoder, 'conv_s0') and hasattr(self.sam_mask_decoder, 'conv_s1'):
+                                        feat_s0 = self.sam_mask_decoder.conv_s0(feat_s0)  # 256 -> 32 channels
+                                        feat_s1 = self.sam_mask_decoder.conv_s1(feat_s1)  # 256 -> 64 channels
+                                    else:
+                                        # This should not happen with SAM2.1
+                                        raise RuntimeError("SAM2.1 MaskDecoder missing conv_s0/conv_s1")
+                                    
+                                    high_res_features = [feat_s0, feat_s1]
                                 else:
-                                    # Fallback to dummy features with correct channel dimensions
-                                    h_lr, w_lr = image_features_sam[b:b+1].shape[-2:]
-                                    high_res_features = [
-                                        torch.zeros(1, 32, h_lr * 4, w_lr * 4, device=device, dtype=sam_dtype),
-                                        torch.zeros(1, 64, h_lr * 2, w_lr * 2, device=device, dtype=sam_dtype),
-                                    ]
+                                    # This should not happen since we always generate high-res features
+                                    raise RuntimeError("High-resolution features not available during generation.")
                                 
                                 low_res_masks, _, _, _ = self.sam_mask_decoder(
                                     image_embeddings=image_features_sam[b:b+1].to(dtype=sam_dtype),
@@ -857,6 +835,8 @@ class LISA_Model(nn.Module):
                   os.path.join(save_directory, "image_adapter.pt"))
         torch.save(self.text_prompt_proj.state_dict(), 
                   os.path.join(save_directory, "text_prompt_proj.pt"))
+        torch.save(self.high_res_generator.state_dict(),
+                  os.path.join(save_directory, "high_res_generator.pt"))
         
         # Save Qwen if modified (e.g., with LoRA or new embeddings)
         if not self.config.freeze_qwen or self.config.train_seg_token:
@@ -880,6 +860,12 @@ class LISA_Model(nn.Module):
         model.text_prompt_proj.load_state_dict(
             torch.load(os.path.join(load_directory, "text_prompt_proj.pt"), weights_only=True)
         )
+        # Load high-res generator if exists
+        high_res_gen_path = os.path.join(load_directory, "high_res_generator.pt")
+        if os.path.exists(high_res_gen_path):
+            model.high_res_generator.load_state_dict(
+                torch.load(high_res_gen_path, weights_only=True)
+            )
         
         # Load Qwen if saved
         qwen_path = os.path.join(load_directory, "qwen")

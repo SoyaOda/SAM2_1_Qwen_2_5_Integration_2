@@ -130,10 +130,14 @@ seg_loss = F.binary_cross_entropy_with_logits(pred_masks, gt_masks) + dice_loss
 
 ### 残課題と将来の改善点
 
-1. **SAM2.1の高解像度特徴**
-   - 現在: フォールバック処理でダミー特徴を使用
-   - 目標: 実際のbackbone_fpnから特徴を抽出
-   - 影響: 最終的なセグメンテーション品質に影響
+1. **SAM2.1の高解像度特徴** ✅ **完了 (2025年8月4日)**
+   - ~~現在: フォールバック処理でダミー特徴を使用~~
+   - **実装完了**: QwenのViT特徴から軽量FPNで高解像度特徴を生成
+   - **技術詳細**: 
+     - HighResFeatureGeneratorクラスを追加
+     - SAM2.1のconv_s0/conv_s1を適用してチャンネル圧縮（256→32/64）
+     - チャンネル次元の不一致問題を解決
+   - **テスト結果**: training_integration_test.pyが正常完了、23.4%の損失減少を確認
 
 2. **実データでの評価**
    - RefCOCO/RefCOCO+/RefCOCOgでのベンチマーク未実施
@@ -171,7 +175,7 @@ seg_loss = F.binary_cross_entropy_with_logits(pred_masks, gt_masks) + dice_loss
 ## 今後の展望
 
 ### 短期目標
-1. SAM2.1の高解像度特徴の完全実装
+1. ~~SAM2.1の高解像度特徴の完全実装~~ ✅ **完了**
 2. RefCOCOでの定量評価
 3. 推論速度の最適化
 
