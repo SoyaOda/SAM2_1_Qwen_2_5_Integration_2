@@ -28,7 +28,8 @@ o3への直接問い合わせは禁止です。必ずクエリ生成→人間が
 md_files/current/o3_spec1.mdとmd_files/implementation_record_20250804.mdと現状のコードをよく読み、現状を理解して。
 現状tests/training_integration_test.pyが問題なく最後まで走ることが確認できている。
 現在、high_res_featuresはフォールバックでランダム生成することになっているが、md_files/current/high_res_features_spec.mdno
-## Q2. SAM2.1の`high_res_features`入力改善方針の方針に従い、最終的に実装してフォールバックが作動しないようにしてほしい。
+## Q2. SAM2.1の`high_res_features`入力改善方針の方針（提案としては**両アプローチを組み合わせる形**で、**QwenのViT特徴に軽量FPNを適用して高解像度特徴を生成**する方法を採用する！）に従い、最終的に実装してフォールバックが作動しないようにしてほしい。
+
 
 ※実装の際に注意すること
 ・自信のない部分は適宜正規（Qwen, SAM, Huggingface, Pytorchなど公式の実装）の実装をWebでしらべながら予想や自前の実装を少なくして実装すること
