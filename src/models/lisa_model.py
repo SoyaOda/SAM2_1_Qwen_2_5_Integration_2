@@ -509,15 +509,12 @@ class LISA_Model(nn.Module):
                                 feat_s0 = self.sam_mask_decoder.conv_s0(feat_s0)  # 256 -> 32 channels
                                 feat_s1 = self.sam_mask_decoder.conv_s1(feat_s1)  # 256 -> 64 channels
                             else:
-                                # Fallback: apply manual channel reduction if conv_s0/s1 not available
                                 # This should not happen with SAM2.1 initialized with use_high_res_features=True
-                                print("Warning: SAM2.1 MaskDecoder missing conv_s0/conv_s1. Applying manual channel reduction.")
-                                feat_s0 = F.conv2d(feat_s0, 
-                                                 torch.randn(32, 256, 1, 1, device=feat_s0.device, dtype=feat_s0.dtype) * 0.02,
-                                                 bias=None)
-                                feat_s1 = F.conv2d(feat_s1,
-                                                 torch.randn(64, 256, 1, 1, device=feat_s1.device, dtype=feat_s1.dtype) * 0.02,
-                                                 bias=None)
+                                # According to spec: "異常時には明示的に例外を投げるよう修正します（ダミー入力でエラーを隠蔽しないようにする）"
+                                raise RuntimeError(
+                                    "SAM2.1 MaskDecoder missing conv_s0/conv_s1. "
+                                    "Ensure SAM2.1 is initialized with use_high_res_features=True"
+                                )
                             
                             high_res_features = [feat_s0, feat_s1]
                         else:
