@@ -42,7 +42,7 @@ Web searchの際は、必ずo3-query MCPを利用すること！
 
 ②本番タスク
 大まかな指針としてはo3_spec2.mdの指針を参考に実装を進めてほしい。ただし、reference_filesにはほかの統合モデル（Gemma＋SAM）のプロジェクトのDataset関連のScriptsを格納しているが、本プロジェクトと全く同様のDatasetを用いているので細かいデータへのアクセスや前処理の仕方はreference_filesの方が参考になるはず。
-
+※DATASET_BASE_DIR = "/mnt/h/download/LISA-dataset/dataset"
 
 ※実装の際に注意すること
 ・自信のない部分は適宜正規（Qwen2.5-VL(3B), SAM2.1, Huggingface, Pytorchなど公式の実装）の実装をWebでしらべながら予想や自前の実装を少なくして実装すること
