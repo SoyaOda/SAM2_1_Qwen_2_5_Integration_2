@@ -25,7 +25,10 @@ o3への直接問い合わせは禁止です。必ずクエリ生成→人間が
 現状：md_files/current/o3_spec1.mdを元にLISA改を段階的に実装していきたい。
 
 [命令]
-md_files/current/o3_spec1.mdと現状のコードを理解して、段階的に実装していきたい。モジュールのScriptの実装が終わった後はTest scriptでo3_spec1.mdに記載されているQwen2.5-VL-3BやSAM2.1のモデルのロード方法や各モジュールのや出力、隠れ層の情報（その他、確かめておいた方がいい情報があればそれも含めて）が想定されている次元数やShapeで取得可能か確認して。
+md_files/current/o3_spec1.mdとmd_files/implementation_record_20250804.mdと現状のコードをよく読み、現状を理解して。
+現状tests/training_integration_test.pyが問題なく最後まで走ることが確認できている。
+現在、high_res_featuresはフォールバックでランダム生成することになっているが、md_files/current/high_res_features_spec.mdno
+## Q2. SAM2.1の`high_res_features`入力改善方針の方針に従い、最終的に実装してフォールバックが作動しないようにしてほしい。
 
 ※実装の際に注意すること
 ・自信のない部分は適宜正規（Qwen, SAM, Huggingface, Pytorchなど公式の実装）の実装をWebでしらべながら予想や自前の実装を少なくして実装すること
