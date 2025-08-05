@@ -159,7 +159,7 @@ class DummyTrainingDataset(Dataset):
             'input_ids': input_ids,
             'labels': labels,
             'attention_mask': attention_mask,
-            'mask_labels': mask
+            'ground_truth_mask': mask  # Changed from mask_labels to match dataset output
         }
         
         # Add image_grid_thw if available

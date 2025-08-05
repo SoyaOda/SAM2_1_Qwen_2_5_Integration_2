@@ -88,12 +88,13 @@ class MultiModalDataCollator:
                 labels.append(label)
             batch['labels'] = torch.stack(labels)
         
-        # Handle mask labels (optional)
-        if 'mask_labels' in features[0] and features[0]['mask_labels'] is not None:
+        # Handle mask labels (optional) - support both 'mask_labels' and 'ground_truth_mask'
+        mask_key = 'mask_labels' if 'mask_labels' in features[0] else 'ground_truth_mask'
+        if mask_key in features[0] and features[0][mask_key] is not None:
             mask_labels = []
             for f in features:
-                if f.get('mask_labels') is not None:
-                    mask_labels.append(f['mask_labels'])
+                if f.get(mask_key) is not None:
+                    mask_labels.append(f[mask_key])
                 else:
                     # Create dummy mask if missing
                     h, w = f['pixel_values'].shape[-2:]

@@ -184,6 +184,37 @@ return {
 - original_imagesはCPUメモリに保持
 - GPUには前処理済みテンソルのみ転送
 
+## データセットとモデルの統合
+
+### キー名の不整合解決
+
+**問題**: 
+- データセットが`ground_truth_mask`を返す
+- モデルが`mask_labels`を期待
+
+**解決**:
+- MultiModalDataCollatorでキー名を自動変換
+```python
+# Handle mask labels (optional) - support both 'mask_labels' and 'ground_truth_mask'
+mask_key = 'mask_labels' if 'mask_labels' in features[0] else 'ground_truth_mask'
+if mask_key in features[0] and features[0][mask_key] is not None:
+    # ... 処理 ...
+    batch['mask_labels'] = torch.stack(mask_labels)
+```
+
+### 統合テストの実施
+
+1. **quick_collate_test.py**: Collatorのキー変換機能を確認
+2. **minimal_model_test.py**: データセット形式でのモデル動作確認
+3. **test_with_real_dataset.py**: 実データセットとの統合テスト
+4. **training_integration_test.py**: 学習フロー全体の検証
+
+**結果**:
+- すべてのテストが成功
+- 損失が22.5%減少（3エポック）
+- 勾配が正常に伝播
+- SEGトークンが正しく認識
+
 ## 今後の課題と改善点
 
 1. **SAM画像の活用**
@@ -197,6 +228,10 @@ return {
 3. **データ拡張**
    - RandomResizedCropなどの拡張手法
    - MixUpやCutMixの実装検討
+
+4. **警告の解消**
+   - preprocessor.jsonの更新
+   - Qwen2VLImageProcessorの設定調整
 
 ## 実装ファイル一覧
 

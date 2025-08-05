@@ -1,217 +1,91 @@
-(base) oda@DESKTOP-45J3R3T:~/SAM2_1_Qwen_2_5_Integration_2$ python tests/test_all_datasets.py
-設定: LISAConfig を使用
-=== 全データセット統合テスト ===
-
-1. Qwen2.5-VLプロセッサの準備...
+(base) oda@DESKTOP-45J3R3T:~/SAM2_1_Qwen_2_5_Integration_2$ python tests/training_integration_test.py
+08/05/2025 16:05:47 - INFO - __main__ - Starting LISA改 Training Integration Tests
+08/05/2025 16:05:47 - INFO - __main__ - ======================================================================
+08/05/2025 16:05:47 - INFO - __main__ - ==================================================
+08/05/2025 16:05:47 - INFO - __main__ - Setting up model with actual weights
+08/05/2025 16:05:47 - INFO - __main__ - ==================================================
+08/05/2025 16:05:47 - INFO - __main__ - Downloading SAM2.1 checkpoint from facebook/sam2.1-hiera-large
+08/05/2025 16:05:47 - INFO - __main__ - SAM2.1 checkpoint already exists at checkpoints/sam2.1_hiera_large.pt
+08/05/2025 16:05:47 - INFO - __main__ - Loading tokenizer and processor
+Added 1 special tokens to tokenizer
+Tokenizer prepared with vocab size: 151666
+Special tokens: {'<SEG>': 151665}
 The image processor of type `Qwen2VLImageProcessor` is now loaded as a fast processor by default, even if the model checkpoint was saved with a slow processor. This is a breaking change and may produce slightly different outputs. To continue using the slow processor, instantiate this class with `use_fast=False`. Note that this behavior will be extended to all models in a future release.
 You have video processor config saved in `preprocessor.json` file which is deprecated. Video processor configs should be saved in their own `video_preprocessor.json` file. You can rename the file or load and save the processor back which renames it automatically. Loading from `preprocessor.json` will be removed in v5.0.
-   ✓ SEGトークンID: 151665
-
-2. Semantic Segmentation (ADE20K)のテスト...
-[SEG]トークンセットアップ完了:
-  - 追加されたトークン数: 1
-  - [SEG]トークンID: 151665
-HybridDataset初期化:
-  - ベースディレクトリ: /mnt/h/download/LISA-dataset/data/dataset
-  - Qwen画像サイズ: 448
-  - SAM画像サイズ: 1024
-  - 対象データセット: ['sem_seg']
-  - Semantic Segmentation: ade20k||cocostuff
-ade20k: 20210 サンプル
-cocostuff: 118287 サンプル
-有効なデータセット: ['ade20k', 'cocostuff']
-✅ HybridDataset初期化完了: 1 データセット
-   ✓ データセット作成成功
-   - データセット数: 1
-   - 総サンプル数: 5
-   ✓ サンプル取得成功
-   ✓ 全必須フィールドが存在
-   ✓ image_grid_thw: torch.Size([3])
-
-3. Referring Segmentation (RefCOCO)のテスト...
-[SEG]トークンセットアップ完了:
-  - 追加されたトークン数: 0
-  - [SEG]トークンID: 151665
-HybridDataset初期化:
-  - ベースディレクトリ: /mnt/h/download/LISA-dataset/data/dataset
-  - Qwen画像サイズ: 448
-  - SAM画像サイズ: 1024
-  - 対象データセット: ['refer_seg']
-  - Referring Segmentation: refcoco||refcoco+||refcocog
-loading dataset refcoco into memory...
-ref_file:  /mnt/h/download/LISA-dataset/data/dataset/refer_seg/refcoco/refs(unc).p
-creating index...
-index created.
-DONE (t=4.43s)
-データセット refcoco (unc): 16994 サンプル, 196771 アノテーション
-loading dataset refcoco+ into memory...
-ref_file:  /mnt/h/download/LISA-dataset/data/dataset/refer_seg/refcoco+/refs(unc).p
-creating index...
-index created.
-DONE (t=4.26s)
-データセット refcoco+ (unc): 16992 サンプル, 196737 アノテーション
-loading dataset refcocog into memory...
-ref_file:  /mnt/h/download/LISA-dataset/data/dataset/refer_seg/refcocog/refs(umd).p
-creating index...
-index created.
-DONE (t=5.62s)
-データセット refcocog (umd): 21899 サンプル, 208960 アノテーション
-✅ HybridDataset初期化完了: 1 データセット
-   ✓ データセット作成成功
-   - データセット数: 1
-   - 総サンプル数: 5
-データセット取得エラー: 'ReferSegDataset' object has no attribute 'transform'
-   ✗ サンプル取得エラー: 'ReferSegDataset' object has no attribute 'transform'
-Traceback (most recent call last):
-  File "/home/oda/SAM2_1_Qwen_2_5_Integration_2/src/data/dataset.py", line 420, in __getitem__
-    sample = selected_dataset[idx % len(selected_dataset)]
-             ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/oda/SAM2_1_Qwen_2_5_Integration_2/src/data/refer_seg_dataset.py", line 200, in __getitem__
-    image_for_sam = self.transform.apply_image(image)
-                    ^^^^^^^^^^^^^^
-AttributeError: 'ReferSegDataset' object has no attribute 'transform'
-
-During handling of the above exception, another exception occurred:
-
-Traceback (most recent call last):
-  File "/home/oda/SAM2_1_Qwen_2_5_Integration_2/tests/test_all_datasets.py", line 122, in test_all_datasets
-    sample = hybrid_dataset[0]
-             ~~~~~~~~~~~~~~^^^
-  File "/home/oda/SAM2_1_Qwen_2_5_Integration_2/src/data/dataset.py", line 424, in __getitem__
-    sample = self.all_datasets[0][0]
-             ~~~~~~~~~~~~~~~~~~~~^^^
-  File "/home/oda/SAM2_1_Qwen_2_5_Integration_2/src/data/refer_seg_dataset.py", line 200, in __getitem__
-    image_for_sam = self.transform.apply_image(image)
-                    ^^^^^^^^^^^^^^
-AttributeError: 'ReferSegDataset' object has no attribute 'transform'
-
-4. VQAのテスト...
-[SEG]トークンセットアップ完了:
-  - 追加されたトークン数: 0
-  - [SEG]トークンID: 151665
-HybridDataset初期化:
-  - ベースディレクトリ: /mnt/h/download/LISA-dataset/data/dataset
-  - Qwen画像サイズ: 448
-  - SAM画像サイズ: 1024
-  - 対象データセット: ['vqa']
-  - VQA: llava_instruct_150k
-VQAデータセット 'llava_instruct_150k': 157712 サンプル
-VQA総サンプル数: 157712
-✅ HybridDataset初期化完了: 1 データセット
-   ✓ データセット作成成功
-   - データセット数: 1
-   - 総サンプル数: 5
-   ✓ サンプル取得成功
-   ✓ 全必須フィールドが存在
-   ✓ image_grid_thw: torch.Size([3])
-
-5. Reasoning Segmentationのテスト...
-[SEG]トークンセットアップ完了:
-  - 追加されたトークン数: 0
-  - [SEG]トークンID: 151665
-HybridDataset初期化:
-  - ベースディレクトリ: /mnt/h/download/LISA-dataset/data/dataset
-  - Qwen画像サイズ: 448
-  - SAM画像サイズ: 1024
-  - 対象データセット: ['reason_seg']
-  - Reasoning Segmentation: ReasonSeg|train
-ReasonSegデータセット 'ReasonSeg' (['train']): 239 サンプル
-explanatory 'ReasonSeg': 239 説明
-✅ HybridDataset初期化完了: 1 データセット
-   ✓ データセット作成成功
-   - データセット数: 1
-   - 総サンプル数: 5
-   ✓ サンプル取得成功
-   ✓ 全必須フィールドが存在
-   ✓ image_grid_thw: torch.Size([3])
-
-6. Mixed Dataset (All Types)のテスト...
-[SEG]トークンセットアップ完了:
-  - 追加されたトークン数: 0
-  - [SEG]トークンID: 151665
-HybridDataset初期化:
-  - ベースディレクトリ: /mnt/h/download/LISA-dataset/data/dataset
-  - Qwen画像サイズ: 448
-  - SAM画像サイズ: 1024
-  - 対象データセット: ['sem_seg', 'refer_seg', 'vqa', 'reason_seg']
-  - Semantic Segmentation: ade20k||cocostuff
-ade20k: 20210 サンプル
-cocostuff: 118287 サンプル
-有効なデータセット: ['ade20k', 'cocostuff']
-  - Referring Segmentation: refcoco||refcoco+||refcocog
-loading dataset refcoco into memory...
-ref_file:  /mnt/h/download/LISA-dataset/data/dataset/refer_seg/refcoco/refs(unc).p
-creating index...
-index created.
-DONE (t=4.46s)
-データセット refcoco (unc): 16994 サンプル, 196771 アノテーション
-loading dataset refcoco+ into memory...
-ref_file:  /mnt/h/download/LISA-dataset/data/dataset/refer_seg/refcoco+/refs(unc).p
-creating index...
-index created.
-DONE (t=4.36s)
-データセット refcoco+ (unc): 16992 サンプル, 196737 アノテーション
-loading dataset refcocog into memory...
-ref_file:  /mnt/h/download/LISA-dataset/data/dataset/refer_seg/refcocog/refs(umd).p
-creating index...
-index created.
-DONE (t=5.63s)
-データセット refcocog (umd): 21899 サンプル, 208960 アノテーション
-  - VQA: llava_instruct_150k
-VQAデータセット 'llava_instruct_150k': 157712 サンプル
-VQA総サンプル数: 157712
-  - Reasoning Segmentation: ReasonSeg|train
-ReasonSegデータセット 'ReasonSeg' (['train']): 239 サンプル
-explanatory 'ReasonSeg': 239 説明
-✅ HybridDataset初期化完了: 4 データセット
-   ✓ データセット作成成功
-   - データセット数: 4
-   - 総サンプル数: 10
-   ✓ サンプル取得成功
-   ✓ 全必須フィールドが存在
-   ✓ image_grid_thw: torch.Size([3])
-
-8. DataLoaderバッチ処理テスト（混合データセット）...
-[SEG]トークンセットアップ完了:
-  - 追加されたトークン数: 0
-  - [SEG]トークンID: 151665
-HybridDataset初期化:
-  - ベースディレクトリ: /mnt/h/download/LISA-dataset/data/dataset
-  - Qwen画像サイズ: 448
-  - SAM画像サイズ: 1024
-  - 対象データセット: ['sem_seg', 'refer_seg', 'vqa']
-  - Semantic Segmentation: ade20k||cocostuff
-ade20k: 20210 サンプル
-cocostuff: 118287 サンプル
-有効なデータセット: ['ade20k', 'cocostuff']
-  - Referring Segmentation: refcoco||refcoco+||refcocog
-loading dataset refcoco into memory...
-ref_file:  /mnt/h/download/LISA-dataset/data/dataset/refer_seg/refcoco/refs(unc).p
-creating index...
-index created.
-DONE (t=4.47s)
-データセット refcoco (unc): 16994 サンプル, 196771 アノテーション
-loading dataset refcoco+ into memory...
-ref_file:  /mnt/h/download/LISA-dataset/data/dataset/refer_seg/refcoco+/refs(unc).p
-creating index...
-index created.
-DONE (t=4.39s)
-データセット refcoco+ (unc): 16992 サンプル, 196737 アノテーション
-loading dataset refcocog into memory...
-ref_file:  /mnt/h/download/LISA-dataset/data/dataset/refer_seg/refcocog/refs(umd).p
-creating index...
-index created.
-DONE (t=6.84s)
-データセット refcocog (umd): 21899 サンプル, 208960 アノテーション
-  - VQA: llava_instruct_150k
-VQAデータセット 'llava_instruct_150k': 157712 サンプル
-VQA総サンプル数: 157712
-✅ HybridDataset初期化完了: 3 データセット
-   ✓ バッチ取得成功
-   - バッチサイズ: 4
-   - input_ids shape: torch.Size([4, 1628])
-   - pixel_values shape: torch.Size([4, 5476, 1176])
-   - sam_images shape: torch.Size([4, 3, 1024, 1024])
-   - image_grid_thw shape: torch.Size([4, 3])
-
-=== テスト完了 ===
+08/05/2025 16:05:51 - INFO - __main__ - Loading LISA model
+Loading checkpoint shards: 100%|███████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 2/2 [00:01<00:00,  1.03it/s]
+08/05/2025 16:05:56 - INFO - root - Loaded checkpoint sucessfully
+08/05/2025 16:05:57 - INFO - __main__ - Setting up LoRA
+08/05/2025 16:05:57 - INFO - __main__ - Total parameters: 3,982,555,058
+08/05/2025 16:05:57 - INFO - __main__ - Trainable parameters: 223,710,753
+08/05/2025 16:05:57 - INFO - __main__ - Percentage trainable: 5.62%
+08/05/2025 16:05:57 - INFO - __main__ -
+Creating dummy training dataset
+08/05/2025 16:05:57 - INFO - __main__ - ==================================================
+08/05/2025 16:05:57 - INFO - __main__ - Testing gradient flow
+08/05/2025 16:05:57 - INFO - __main__ - ==================================================
+You're using a Qwen2TokenizerFast tokenizer. Please note that with a fast tokenizer, using the `__call__` method is faster than using a method to encode the text followed by a call to the `pad` method to get a padded encoding.
+08/05/2025 16:05:57 - INFO - __main__ - Initial losses - Total: 18.6668, LM: 18.1250, Seg: 1.0835
+08/05/2025 16:05:57 - INFO - __main__ - SEG token ID: 151665
+08/05/2025 16:05:57 - INFO - __main__ - Batches with SEG in labels: 2/2
+08/05/2025 16:05:57 - INFO - __main__ - Sample decoded text: <|im_start|>system
+You are a helpful assistant.<|im_end|>
+<|im_start|>user
+<|vision_start|><|image_pad|><|image_pad|><|image_pad|><|image_pad|><|image_pad|><|image_pad|><|image_pad|><|image_pad|><|ima...
+08/05/2025 16:05:58 - INFO - __main__ -
+Gradient statistics:
+08/05/2025 16:05:58 - INFO - __main__ -   adapter: avg_norm=0.088918, has_nan=False
+08/05/2025 16:05:58 - INFO - __main__ -   prompt_proj: avg_norm=0.147114, has_nan=False
+08/05/2025 16:05:58 - INFO - __main__ -   lora: avg_norm=0.194275, has_nan=False
+08/05/2025 16:05:58 - INFO - __main__ - ✓ Gradient flow test passed
+08/05/2025 16:05:58 - INFO - __main__ - ==================================================
+08/05/2025 16:05:58 - INFO - __main__ - Testing training loop for 3 epochs
+08/05/2025 16:05:58 - INFO - __main__ - ==================================================
+Epoch 1/3: 100%|███████████████████████████████████████████████████████████████████████████████████████████████| 10/10 [00:04<00:00,  2.43it/s, loss=17.2785, lm=16.7500, seg=1.0571]
+08/05/2025 16:06:02 - INFO - __main__ -
+Epoch 1 - Avg Loss: 18.4139, LM: 17.8750, Seg: 1.0779
+Epoch 2/3: 100%|███████████████████████████████████████████████████████████████████████████████████████████████| 10/10 [00:04<00:00,  2.45it/s, loss=15.1814, lm=14.6875, seg=0.9878]
+08/05/2025 16:06:06 - INFO - __main__ -
+Epoch 2 - Avg Loss: 16.6507, LM: 16.1562, Seg: 0.9888
+Epoch 3/3: 100%|███████████████████████████████████████████████████████████████████████████████████████████████| 10/10 [00:04<00:00,  2.45it/s, loss=12.0916, lm=11.7500, seg=0.6833]
+08/05/2025 16:06:10 - INFO - __main__ -
+Epoch 3 - Avg Loss: 14.2650, LM: 13.8375, Seg: 0.8549
+08/05/2025 16:06:10 - INFO - __main__ -
+==================================================
+08/05/2025 16:06:10 - INFO - __main__ - Loss progression analysis:
+08/05/2025 16:06:10 - INFO - __main__ - Epoch 1 → 2:
+08/05/2025 16:06:10 - INFO - __main__ -   Total loss change: -1.7633
+08/05/2025 16:06:10 - INFO - __main__ -   LM loss change: -1.7188
+08/05/2025 16:06:10 - INFO - __main__ -   Seg loss change: -0.0891
+08/05/2025 16:06:10 - INFO - __main__ - Epoch 2 → 3:
+08/05/2025 16:06:10 - INFO - __main__ -   Total loss change: -2.3857
+08/05/2025 16:06:10 - INFO - __main__ -   LM loss change: -2.3187
+08/05/2025 16:06:10 - INFO - __main__ -   Seg loss change: -0.1339
+08/05/2025 16:06:10 - INFO - __main__ -
+Overall loss decrease: 4.1490 (22.5%)
+08/05/2025 16:06:10 - INFO - __main__ - Loss plot saved to test_outputs/training_losses.png
+08/05/2025 16:06:10 - INFO - __main__ - ✓ Loss is decreasing - training is working!
+08/05/2025 16:06:10 - INFO - __main__ - ==================================================
+08/05/2025 16:06:10 - INFO - __main__ - Testing model save/load
+08/05/2025 16:06:10 - INFO - __main__ - ==================================================
+08/05/2025 16:06:11 - INFO - __main__ - Model saved to /tmp/tmpjf3csjg4/test_model
+08/05/2025 16:06:11 - INFO - __main__ - Saved files: ['qwen', 'text_prompt_proj.pt', 'config.json', 'high_res_generator.pt', 'chat_template.jinja', 'special_tokens_map.json', 'merges.txt', 'image_adapter.pt', 'tokenizer_config.json', 'added_tokens.json', 'tokenizer.json', 'config.pt', 'vocab.json']
+Loading checkpoint shards: 100%|███████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 2/2 [00:01<00:00,  1.08it/s]
+08/05/2025 16:06:16 - INFO - root - Loaded checkpoint sucessfully
+Fetching 2 files: 100%|██████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 2/2 [00:00<00:00, 7102.97it/s]
+Loading checkpoint shards: 100%|███████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 2/2 [00:02<00:00,  1.23s/it]
+08/05/2025 16:06:25 - INFO - __main__ - ✓ Model loaded successfully
+08/05/2025 16:06:25 - INFO - __main__ - Testing model save/load with proper inputs...
+08/05/2025 16:06:25 - INFO - __main__ - Max difference between logits: 7.750000
+08/05/2025 16:06:25 - INFO - __main__ - ✓ Model inference after loading successful
+08/05/2025 16:06:26 - INFO - __main__ -
+======================================================================
+08/05/2025 16:06:26 - INFO - __main__ - ✅ ALL TRAINING TESTS PASSED!
+08/05/2025 16:06:26 - INFO - __main__ - ======================================================================
+08/05/2025 16:06:26 - INFO - __main__ -
+Training Test Summary:
+08/05/2025 16:06:26 - INFO - __main__ - - Gradient flow: ✓ Confirmed
+08/05/2025 16:06:26 - INFO - __main__ - - Loss reduction: ✓ 22.5% decrease
+08/05/2025 16:06:26 - INFO - __main__ - - Model save/load: ✓ Working
+08/05/2025 16:06:26 - INFO - __main__ - - Device used: cuda
+(base) oda@DESKTOP-45J3R3T:~/SAM2_1_Qwen_2_5_Integration_2$
