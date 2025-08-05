@@ -1,3 +1,8 @@
+
+小田惣也 <odssuu@gmail.com>
+16:22 (0 分前)
+To 自分
+
 # CLAUDE.md
 
 
@@ -27,25 +32,29 @@ Web searchの際は、必ずo3-query MCPを利用すること！
 
 [命令]
 ①事前タスク：以下のファイルをよく読んで現状を理解して
-現状実装が完了した指針
-・md_files/past/o3_spec1.md
+1. モデル周辺の実装とTest関連Script実装
+- 実装の指針：md_files/past/o3_spec1.md
+2. Dataset関連Script実装
+- 実装の指針：md_files/past/o3_spec2.md
+- md_files/past/o3_img_processing.md
+- md_files/past/img_processing.md
 
-実装レコード
-・md_files/implementation_record_20250804.md
+○実装のまとめ
+- md_files/implementation_record_20250804.md
+- md_files/dataset_implementation_record_20250805.md
 
-走ることが確認できているTest Script（必要があれば実際に実行してログを確認すること）
-・tests/training_integration_test.py
-
-今回参照したい指針
-・md_files/current/o3_spec2.md
+○走るのが確認されたScript（関連Scriptも適宜読んで理解すること）
+- tests/training_integration_test.py
+- tests/visualize_preprocessing.py
 
 ②本番タスク
-大まかな指針としてはo3_spec2.mdの指針を参考に実装を進めてほしい。ただし、reference_filesにはほかの統合モデル（Gemma＋SAM）のプロジェクトのDataset関連のScriptsを格納しているが、本プロジェクトと全く同様のDatasetを用いているので細かいデータへのアクセスや前処理の仕方はreference_filesの方が参考になるはず。
-※DATASET_BASE_DIR = "/mnt/h/download/LISA-dataset/dataset"
+実際のデータを使ってMinimalにTrainingするscriptを作って
+
+※まずは一つの種類のデータ（SemSegなど）にフォーカスし、それでTrainはりし終えること確認できたら全ての種類のデータで
 
 ※実装の際に注意すること
 ・自信のない部分は適宜正規（Qwen2.5-VL(3B), SAM2.1, Huggingface, Pytorchなど公式の実装）の実装をWebでしらべながら予想や自前の実装を少なくして実装すること
-・o3_spec2.mdはあくまでおおまかな指針であるので、細かな実装はWebでベストプラクティスをリサーチして[Introduction]に述べている目的に沿うように、本質的に実装を進めること（簡易な実装でとりあえず走るコードは必要ない、本質的に目標を達成するコードが欲しい）
+・細かな実装はWebでベストプラクティスをリサーチして[Introduction]に述べている目的に沿うように、本質的に実装を進めること（簡易な実装でとりあえず走るコードは必要ない、本質的に目標を達成するコードが欲しい）
 ・Webリサーチを積極的に行い、Qwen2.5-VL(3B), SAM2.1, Huggingface, Peftの正規の実装をできるだけ用いること
 ・フォールバック的もしくはダミーコードはエラーを隠蔽するので適切にエラーを出して止め、次のデバッグに繋がる情報を提供するように修正すること
 ・解決した問題に関するデバッグログや必要のないデバッグログは削除、デバッグ作業により解決した部分はシンプル（分岐のない確定的な実装）にして、コードをシンプルに保つようにすること
