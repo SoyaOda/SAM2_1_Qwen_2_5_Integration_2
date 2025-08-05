@@ -1,0 +1,20 @@
+{
+  "dataset": "sem_seg",
+  "sample_index": 0,
+  "has_mask": true,
+  "text_prompt": "Can you identify and segment the wall? Sure, <SEG>.",
+  "image_shape": [
+    768,
+    1176
+  ],
+  "mask_shape": [
+    1,
+    1024,
+    1024
+  ],
+  "mask_unique_values": [
+    0.0,
+    1.0
+  ],
+  "mask_num_unique_values": 2
+}

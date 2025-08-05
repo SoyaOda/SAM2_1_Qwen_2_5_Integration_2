@@ -2,6 +2,9 @@ import glob
 import json
 import os
 import random
+import sys
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
+from src.utils.coordinate_transform import CoordinateTransform
 from collections import defaultdict
 
 import cv2
@@ -391,10 +394,38 @@ class SemSegDataset(torch.utils.data.Dataset):
         image = cv2.imread(image_path)
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
 
+        # 座標変換システムの初期化
+        orig_h, orig_w = image.shape[:2]
+        coord_transform = CoordinateTransform(orig_size=(orig_h, orig_w))
+        
         # デュアルエンコーダ対応: Qwen用とSAM用の画像前処理
-        # Qwen用画像前処理（448x448）
-        image_for_qwen = cv2.resize(image, (448, 448))
+        # Qwen用画像前処理（アスペクト比維持・14の倍数パディング）
+        h, w = image.shape[:2]
+        scale = 448 / max(h, w)
+        new_h = int(h * scale)
+        new_w = int(w * scale)
+        
+        # 縮小時はINTER_AREA、拡大時はINTER_CUBIC
+        interpolation = cv2.INTER_AREA if scale < 1 else cv2.INTER_CUBIC
+        image_for_qwen = cv2.resize(image, (new_w, new_h), interpolation=interpolation)
+        
+        # 14の倍数にパディング
+        pad_h = (-new_h) % 14
+        pad_w = (-new_w) % 14
+        top, bottom = pad_h // 2, pad_h - pad_h // 2
+        left, right = pad_w // 2, pad_w - pad_w // 2
+        
+        image_for_qwen = cv2.copyMakeBorder(
+            image_for_qwen, top, bottom, left, right, 
+            cv2.BORDER_CONSTANT, value=(0, 0, 0)
+        )
+        
+        # テンソル化と正規化（Qwen2.5-VLの正しいパラメータ）
         image_for_qwen = torch.from_numpy(image_for_qwen).permute(2, 0, 1).float() / 255.0
+        # 正規化
+        qwen_mean = torch.tensor([0.48145466, 0.4578275, 0.40821073]).view(3, 1, 1)
+        qwen_std = torch.tensor([0.26862954, 0.26130258, 0.27577711]).view(3, 1, 1)
+        image_for_qwen = (image_for_qwen - qwen_mean) / qwen_std
         
         # SAM用画像前処理（1024x1024）
         # ResizeLongestSideの代わりにcv2.resizeを使用
@@ -402,9 +433,11 @@ class SemSegDataset(torch.utils.data.Dataset):
         scale = sam_size / max(image.shape[:2])
         new_h = int(image.shape[0] * scale)
         new_w = int(image.shape[1] * scale)
-        image_for_sam = cv2.resize(image, (new_w, new_h))
+        # 補間方法を明示（縮小時はINTER_AREA、拡大時はINTER_LINEAR）
+        interpolation = cv2.INTER_AREA if scale < 1 else cv2.INTER_LINEAR
+        image_for_sam = cv2.resize(image, (new_w, new_h), interpolation=interpolation)
         
-        # パディングして正方形にする
+        # パディングして正方形にする（32の倍数を考慮）
         h, w = image_for_sam.shape[:2]
         pad_h = sam_size - h
         pad_w = sam_size - w
@@ -412,7 +445,12 @@ class SemSegDataset(torch.utils.data.Dataset):
             image_for_sam, 0, pad_h, 0, pad_w, cv2.BORDER_CONSTANT, value=(0, 0, 0)
         )
         
-        image_for_sam = self.preprocess(torch.from_numpy(image_for_sam).permute(2, 0, 1).contiguous())
+        # テンソル化と正規化（SAM2.1の正しいパラメータ）
+        image_for_sam = torch.from_numpy(image_for_sam).permute(2, 0, 1).float() / 255.0
+        # SAM2.1の正規化
+        sam_mean = torch.tensor([0.485, 0.456, 0.406]).view(3, 1, 1)
+        sam_std = torch.tensor([0.229, 0.224, 0.225]).view(3, 1, 1)
+        image_for_sam = (image_for_sam - sam_mean) / sam_std
         resize = image.shape[:2]
 
         # アノテーションの取得
@@ -452,36 +490,36 @@ class SemSegDataset(torch.utils.data.Dataset):
         if len(masks) == 0:
             return self.__getitem__(0)
 
-        # 会話形式の生成（オリジナルLISA準拠）
+        # 会話形式の生成（messages形式）
         questions = []
         answers = []
-        for i, sampled_cls in enumerate(sampled_classes):
+        for sampled_cls in sampled_classes:
             question_template = random.choice(self.short_question_list)
-            # 最初の質問にのみ画像トークンを含める
-            if i == 0 and DEFAULT_IMAGE_TOKEN not in question_template:
-                question = DEFAULT_IMAGE_TOKEN + "\n" + question_template.format(class_name=sampled_cls.lower())
-            else:
-                question = question_template.format(class_name=sampled_cls.lower())
+            question = question_template.format(class_name=sampled_cls.lower())
             questions.append(question)
             answers.append(random.choice(self.answer_list))
 
+        # messages形式でconversationsを生成
         conversations = []
-        conv = default_conversation.copy()
-        
-        i = 0
-        while i < len(questions):
-            conv.messages = []
-            conv.append_message(conv.roles[0], questions[i])
-            conv.append_message(conv.roles[1], answers[i])
-            conversations.append(conv.get_prompt())
-            i += 1
+        for i in range(len(questions)):
+            messages = [
+                {
+                    "role": "user",
+                    "content": questions[i]
+                },
+                {
+                    "role": "assistant", 
+                    "content": answers[i]
+                }
+            ]
+            conversations.append(messages)
 
         # マスクをテンソルに変換
         masks = np.stack(masks, axis=0)
         masks = torch.from_numpy(masks)
         label = torch.ones(masks.shape[1], masks.shape[2]) * self.ignore_label
 
-        # オリジナルLISA準拠の返り値形式
+        # オリジナルLISA準拠の返り値形式（10要素 - coord_transform追加）
         return (
             image_path,        # 0: 画像パス
             image_for_sam,     # 1: SAM用前処理済み画像 (torch.Tensor)
@@ -491,7 +529,8 @@ class SemSegDataset(torch.utils.data.Dataset):
             label,             # 5: ラベル (torch.Tensor)
             resize,            # 6: リサイズ情報 (Tuple)
             questions,         # 7: 質問リスト (List[str])
-            sampled_classes    # 8: クラス名リスト (List[str])
+            sampled_classes,   # 8: クラス名リスト (List[str])
+            coord_transform    # 9: 座標変換オブジェクト
         )
 
     def _get_semseg_item(self, ds):
@@ -510,10 +549,38 @@ class SemSegDataset(torch.utils.data.Dataset):
         image = cv2.imread(image_path)
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
 
+        # 座標変換システムの初期化
+        orig_h, orig_w = image.shape[:2]
+        coord_transform = CoordinateTransform(orig_size=(orig_h, orig_w))
+        
         # デュアルエンコーダ対応: Qwen用とSAM用の画像前処理
-        # Qwen用画像前処理（448x448）
-        image_for_qwen = cv2.resize(image, (448, 448))
+        # Qwen用画像前処理（アスペクト比維持・14の倍数パディング）
+        h, w = image.shape[:2]
+        scale = 448 / max(h, w)
+        new_h = int(h * scale)
+        new_w = int(w * scale)
+        
+        # 縮小時はINTER_AREA、拡大時はINTER_CUBIC
+        interpolation = cv2.INTER_AREA if scale < 1 else cv2.INTER_CUBIC
+        image_for_qwen = cv2.resize(image, (new_w, new_h), interpolation=interpolation)
+        
+        # 14の倍数にパディング
+        pad_h = (-new_h) % 14
+        pad_w = (-new_w) % 14
+        top, bottom = pad_h // 2, pad_h - pad_h // 2
+        left, right = pad_w // 2, pad_w - pad_w // 2
+        
+        image_for_qwen = cv2.copyMakeBorder(
+            image_for_qwen, top, bottom, left, right, 
+            cv2.BORDER_CONSTANT, value=(0, 0, 0)
+        )
+        
+        # テンソル化と正規化（Qwen2.5-VLの正しいパラメータ）
         image_for_qwen = torch.from_numpy(image_for_qwen).permute(2, 0, 1).float() / 255.0
+        # 正規化
+        qwen_mean = torch.tensor([0.48145466, 0.4578275, 0.40821073]).view(3, 1, 1)
+        qwen_std = torch.tensor([0.26862954, 0.26130258, 0.27577711]).view(3, 1, 1)
+        image_for_qwen = (image_for_qwen - qwen_mean) / qwen_std
         
         # SAM用画像前処理（1024x1024）
         # ResizeLongestSideの代わりにcv2.resizeを使用
@@ -521,9 +588,11 @@ class SemSegDataset(torch.utils.data.Dataset):
         scale = sam_size / max(image.shape[:2])
         new_h = int(image.shape[0] * scale)
         new_w = int(image.shape[1] * scale)
-        image_for_sam = cv2.resize(image, (new_w, new_h))
+        # 補間方法を明示（縮小時はINTER_AREA、拡大時はINTER_LINEAR）
+        interpolation = cv2.INTER_AREA if scale < 1 else cv2.INTER_LINEAR
+        image_for_sam = cv2.resize(image, (new_w, new_h), interpolation=interpolation)
         
-        # パディングして正方形にする
+        # パディングして正方形にする（32の倍数を考慮）
         h, w = image_for_sam.shape[:2]
         pad_h = sam_size - h
         pad_w = sam_size - w
@@ -531,7 +600,12 @@ class SemSegDataset(torch.utils.data.Dataset):
             image_for_sam, 0, pad_h, 0, pad_w, cv2.BORDER_CONSTANT, value=(0, 0, 0)
         )
         
-        image_for_sam = self.preprocess(torch.from_numpy(image_for_sam).permute(2, 0, 1).contiguous())
+        # テンソル化と正規化（SAM2.1の正しいパラメータ）
+        image_for_sam = torch.from_numpy(image_for_sam).permute(2, 0, 1).float() / 255.0
+        # SAM2.1の正規化
+        sam_mean = torch.tensor([0.485, 0.456, 0.406]).view(3, 1, 1)
+        sam_std = torch.tensor([0.229, 0.224, 0.225]).view(3, 1, 1)
+        image_for_sam = (image_for_sam - sam_mean) / sam_std
         resize = image.shape[:2]
 
         # ラベルの読み込み
@@ -562,7 +636,7 @@ class SemSegDataset(torch.utils.data.Dataset):
         else:
             sampled_classes = classes_list
 
-        # 会話形式の生成（オリジナルLISA準拠）
+        # 会話形式の生成（messages形式）
         questions = []
         answers = []
         for sampled_cls in sampled_classes:
@@ -570,16 +644,20 @@ class SemSegDataset(torch.utils.data.Dataset):
             questions.append(question_template.format(class_name=sampled_cls.lower()))
             answers.append(random.choice(self.answer_list))
 
+        # messages形式でconversationsを生成
         conversations = []
-        conv = default_conversation.copy()
-        
-        i = 0
-        while i < len(questions):
-            conv.messages = []
-            conv.append_message(conv.roles[0], questions[i])
-            conv.append_message(conv.roles[1], answers[i])
-            conversations.append(conv.get_prompt())
-            i += 1
+        for i in range(len(questions)):
+            messages = [
+                {
+                    "role": "user",
+                    "content": questions[i]
+                },
+                {
+                    "role": "assistant", 
+                    "content": answers[i]
+                }
+            ]
+            conversations.append(messages)
 
         # マスクの作成
         label_tensor = torch.from_numpy(label).long()
@@ -610,7 +688,7 @@ class SemSegDataset(torch.utils.data.Dataset):
             
         masks = torch.stack(masks, dim=0)
 
-        # オリジナルLISA準拠の返り値形式
+        # オリジナルLISA準拠の返り値形式（10要素 - coord_transform追加）
         return (
             image_path,        # 0: 画像パス
             image_for_sam,     # 1: SAM用前処理済み画像 (torch.Tensor)
@@ -620,5 +698,6 @@ class SemSegDataset(torch.utils.data.Dataset):
             label_tensor,      # 5: ラベル (torch.Tensor)
             resize,            # 6: リサイズ情報 (Tuple)
             questions,         # 7: 質問リスト (List[str])
-            sampled_classes    # 8: クラス名リスト (List[str])
+            sampled_classes,   # 8: クラス名リスト (List[str])
+            coord_transform    # 9: 座標変換オブジェクト
         )

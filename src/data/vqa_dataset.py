@@ -155,22 +155,28 @@ class VQADataset(torch.utils.data.Dataset):
         image_for_sam = torch.from_numpy(image_for_sam).permute(2, 0, 1).float() / 255.0
         image_for_sam = self.preprocess(image_for_sam)
 
-        conv = conversation_lib.default_conversation.copy()
+        # 会話形式の生成（messages形式）
         source = item["conversations"]
         source = preprocess_multimodal(source, mm_use_im_start_end=False)
         
-        roles = {"human": conv.roles[0], "gpt": conv.roles[1]}
         conversations = []
+        messages = []
         
-        if len(source) > 0 and roles.get(source[0]["from"]) != conv.roles[0]:
-            # Skip the first one if it is not from human
-            source = source[1:]
-        
-        conv.messages = []
+        # 各メッセージをmessages形式に変換
         for j, sentence in enumerate(source):
-            role = roles.get(sentence["from"], conv.roles[j % 2])
-            conv.append_message(role, sentence["value"])
-        conversations.append(conv.get_prompt())
+            role = "user" if sentence["from"] in ["human", "user"] else "assistant"
+            content = sentence["value"]
+            messages.append({
+                "role": role,
+                "content": content
+            })
+        
+        # 会話のペアをconversationsに追加
+        i = 0
+        while i < len(messages) - 1:
+            conv_messages = [messages[i], messages[i + 1]]
+            conversations.append(conv_messages)
+            i += 2
 
         # VQAデータセットではマスクは不要（オリジナル準拠）
         # 空のマスクではなく、適切なサイズのゼロマスクを作成

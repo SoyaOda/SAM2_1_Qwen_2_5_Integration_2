@@ -110,6 +110,7 @@ def compute_segmentation_loss(
     return total_loss, losses
 
 
+
 def compute_lisa_loss(
     logits: torch.Tensor,
     labels: torch.Tensor,
@@ -151,6 +152,7 @@ def compute_lisa_loss(
             if sample_preds is not None and sample_labels is not None:
                 # Handle multiple masks per sample
                 for pred_mask, true_mask in zip(sample_preds, sample_labels):
+                    # Use standard segmentation loss
                     mask_loss, mask_loss_dict = compute_segmentation_loss(
                         pred_mask, true_mask
                     )

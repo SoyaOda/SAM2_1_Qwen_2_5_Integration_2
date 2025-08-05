@@ -1,4 +1,7 @@
 import os
+import sys
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
+from src.utils.coordinate_transform import CoordinateTransform
 import random
 
 import cv2
@@ -190,11 +193,39 @@ class ReferSegDataset(torch.utils.data.Dataset):
         # 画像の読み込み（オリジナルのようにエラーチェック最小限）
         image = cv2.imread(image_path)
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        
+        # 座標変換システムの初期化
+        orig_h, orig_w = image.shape[:2]
+        coord_transform = CoordinateTransform(orig_size=(orig_h, orig_w))
 
         # デュアルエンコーダ対応: Qwen用とSAM用の画像前処理
-        # Qwen用画像前処理（448x448）
-        image_for_qwen = cv2.resize(image, (448, 448))
+        # Qwen用画像前処理（アスペクト比維持・14の倍数パディング）
+        h, w = image.shape[:2]
+        scale = 448 / max(h, w)
+        new_h = int(h * scale)
+        new_w = int(w * scale)
+        
+        # 縮小時はINTER_AREA、拡大時はINTER_CUBIC
+        interpolation = cv2.INTER_AREA if scale < 1 else cv2.INTER_CUBIC
+        image_for_qwen = cv2.resize(image, (new_w, new_h), interpolation=interpolation)
+        
+        # 14の倍数にパディング
+        pad_h = (-new_h) % 14
+        pad_w = (-new_w) % 14
+        top, bottom = pad_h // 2, pad_h - pad_h // 2
+        left, right = pad_w // 2, pad_w - pad_w // 2
+        
+        image_for_qwen = cv2.copyMakeBorder(
+            image_for_qwen, top, bottom, left, right, 
+            cv2.BORDER_CONSTANT, value=(0, 0, 0)
+        )
+        
+        # テンソル化と正規化（Qwen2.5-VLの正しいパラメータ）
         image_for_qwen = torch.from_numpy(image_for_qwen).permute(2, 0, 1).float() / 255.0
+        # 正規化
+        qwen_mean = torch.tensor([0.48145466, 0.4578275, 0.40821073]).view(3, 1, 1)
+        qwen_std = torch.tensor([0.26862954, 0.26130258, 0.27577711]).view(3, 1, 1)
+        image_for_qwen = (image_for_qwen - qwen_mean) / qwen_std
 
         # SAM用の前処理（1024x1024）
         # ResizeLongestSideの代わりにcv2.resizeを使用
@@ -202,9 +233,11 @@ class ReferSegDataset(torch.utils.data.Dataset):
         scale = sam_size / max(image.shape[:2])
         new_h = int(image.shape[0] * scale)
         new_w = int(image.shape[1] * scale)
-        image_for_sam = cv2.resize(image, (new_w, new_h))
+        # 補間方法を明示（縮小時はINTER_AREA、拡大時はINTER_LINEAR）
+        interpolation = cv2.INTER_AREA if scale < 1 else cv2.INTER_LINEAR
+        image_for_sam = cv2.resize(image, (new_w, new_h), interpolation=interpolation)
         
-        # パディングして正方形にする
+        # パディングして正方形にする（32の倍数を考慮）
         h, w = image_for_sam.shape[:2]
         pad_h = sam_size - h
         pad_w = sam_size - w
@@ -214,8 +247,12 @@ class ReferSegDataset(torch.utils.data.Dataset):
         
         resize = image_for_sam.shape[:2]
         
-        # テンソル前処理
-        image_for_sam = self.preprocess(torch.from_numpy(image_for_sam).permute(2, 0, 1).contiguous())
+        # テンソル化と正規化（SAM2.1の正しいパラメータ）
+        image_for_sam = torch.from_numpy(image_for_sam).permute(2, 0, 1).float() / 255.0
+        # SAM2.1の正規化
+        sam_mean = torch.tensor([0.485, 0.456, 0.406]).view(3, 1, 1)
+        sam_std = torch.tensor([0.229, 0.224, 0.225]).view(3, 1, 1)
+        image_for_sam = (image_for_sam - sam_mean) / sam_std
 
         # 質問と回答の生成
         questions = []
@@ -232,17 +269,20 @@ class ReferSegDataset(torch.utils.data.Dataset):
             questions.append(question)
             answers.append(random.choice(self.answer_list))
 
-        # 会話形式の生成（オリジナルLISA準拠）
+        # 会話形式の生成（messages形式）
         conversations = []
-        conv = conversation_lib.default_conversation.copy()
-
-        i = 0
-        while i < len(questions):
-            conv.messages = []
-            conv.append_message(conv.roles[0], questions[i])
-            conv.append_message(conv.roles[1], answers[i])
-            conversations.append(conv.get_prompt())
-            i += 1
+        for i in range(len(questions)):
+            messages = [
+                {
+                    "role": "user",
+                    "content": questions[i]
+                },
+                {
+                    "role": "assistant", 
+                    "content": answers[i]
+                }
+            ]
+            conversations.append(messages)
 
         # マスクの生成（オリジナルLISA準拠）
         masks = []
@@ -295,7 +335,7 @@ class ReferSegDataset(torch.utils.data.Dataset):
         masks = torch.from_numpy(masks)
         label = torch.ones(masks.shape[1], masks.shape[2]) * self.ignore_label
 
-        # オリジナルLISA準拠の返り値形式（9要素）
+        # オリジナルLISA準拠の返り値形式（10要素 - coord_transform追加）
         return (
             image_path,        # 0: 画像パス
             image_for_sam,     # 1: SAM用前処理済み画像 (torch.Tensor)
@@ -305,5 +345,6 @@ class ReferSegDataset(torch.utils.data.Dataset):
             label,             # 5: ラベル (torch.Tensor)
             resize,            # 6: リサイズ情報 (Tuple)
             questions,         # 7: 質問リスト (List[str])
-            sampled_classes    # 8: クラス名リスト (List[str])
+            sampled_classes,   # 8: クラス名リスト (List[str])
+            coord_transform    # 9: 座標変換オブジェクト
         )

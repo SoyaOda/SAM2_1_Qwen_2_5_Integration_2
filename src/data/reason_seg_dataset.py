@@ -189,15 +189,19 @@ class ReasonSegDataset(torch.utils.data.Dataset):
 
         # 会話形式の生成（オリジナルLISA準拠）
         conversations = []
-        conv = conversation_lib.default_conversation.copy()
-
-        i = 0
-        while i < len(questions):
-            conv.messages = []
-            conv.append_message(conv.roles[0], questions[i])
-            conv.append_message(conv.roles[1], answers[i])
-            conversations.append(conv.get_prompt())
-            i += 1
+        # messages形式でconversationsを生成
+        for i in range(len(questions)):
+            messages = [
+                {
+                    "role": "user",
+                    "content": questions[i]
+                },
+                {
+                    "role": "assistant", 
+                    "content": answers[i]
+                }
+            ]
+            conversations.append(messages)
 
         # マスクの処理
         if len(sampled_masks) > 0:

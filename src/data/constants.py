@@ -30,7 +30,7 @@ IMAGE_TOKEN_INDEX = 262146  # 画像パッチトークンの開始インデッ�
 # システムプロンプト
 SYSTEM_PROMPT = """You are a helpful assistant that can analyze images and understand visual content. You can describe what you see in images and answer questions about them."""
 
-GEMMA_SYSTEM_PROMPT = """You are a helpful assistant that can analyze images and perform segmentation tasks. When asked to segment objects, you should respond with the [SEG] token."""
+GEMMA_SYSTEM_PROMPT = """You are a helpful assistant that can analyze images and perform segmentation tasks. When asked to segment objects, you should respond with the <SEG> token."""
 
 # Gemma-3専用システムプロンプト
 GEMMA3_SEGMENTATION_PROMPT = """You are LISA (Large-language Instructed Segmentation Assistant), a multimodal AI assistant that can understand images and perform precise object segmentation. When asked to segment objects or regions in images, respond with the [SEG] token to indicate the segmentation mask."""
@@ -63,11 +63,11 @@ EXPLANATORY_QUESTION_LIST = [
 ]
 
 ANSWER_LIST = [
-    "It is [SEG].",
-    "Sure, [SEG].",
-    "Sure, it is [SEG].",
-    "Sure, the segmentation result is [SEG].",
-    "[SEG].",
+    "It is <SEG>.",
+    "Sure, <SEG>.",
+    "Sure, it is <SEG>.",
+    "Sure, the segmentation result is <SEG>.",
+    "<SEG>.",
 ]
 
 # 画像前処理の定数

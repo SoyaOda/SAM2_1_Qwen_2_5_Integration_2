@@ -8,6 +8,8 @@ import os
 import random
 from typing import Dict, List, Tuple, Optional, Any
 import json
+import sys
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 
 import cv2
 import numpy as np
@@ -18,6 +20,8 @@ import torch.utils.data
 from pycocotools import mask
 from transformers import AutoProcessor
 from torchvision import transforms
+
+from src.utils.coordinate_transform import CoordinateTransform
 
 from .conversation import get_default_conv_template
 from .data_processing import get_mask_from_json
@@ -81,7 +85,7 @@ IGNORE_INDEX = -100
 
 def setup_seg_token(tokenizer, seg_token="<SEG>"):
     """
-    オリジナルLISA準拠の[SEG]トークンセットアップ
+    オリジナルLISA準拠の<SEG>トークンセットアップ
     一元化された処理でフォールバックなし
     """
     # オリジナルLISA準拠: tokenizer.add_tokens("[SEG]")
@@ -89,9 +93,9 @@ def setup_seg_token(tokenizer, seg_token="<SEG>"):
     # オリジナルLISA準拠: tokenizer("[SEG]", add_special_tokens=False).input_ids[0]
     seg_token_idx = tokenizer(seg_token, add_special_tokens=False).input_ids[0]
     
-    print(f"[SEG]トークンセットアップ完了:")
+    print(f"<SEG>トークンセットアップ完了:")
     print(f"  - 追加されたトークン数: {num_added_tokens}")
-    print(f"  - [SEG]トークンID: {seg_token_idx}")
+    print(f"  - <SEG>トークンID: {seg_token_idx}")
     
     return seg_token_idx
 
@@ -124,8 +128,8 @@ def preprocess_sam_image(image: Image.Image, target_size: Optional[int] = None) 
     transform = transforms.Compose([
         transforms.ToTensor(),
         transforms.Normalize(
-            mean=[123.675/255, 116.28/255, 103.53/255],  # SAMの標準正規化値
-            std=[58.395/255, 57.12/255, 57.375/255]
+            mean=[0.485, 0.456, 0.406],  # SAM2.1の正しい正規化値
+            std=[0.229, 0.224, 0.225]
         )
     ])
     
@@ -133,25 +137,64 @@ def preprocess_sam_image(image: Image.Image, target_size: Optional[int] = None) 
 
 def preprocess_qwen_image(image: Image.Image, processor: AutoProcessor, target_size: Optional[int] = None) -> torch.Tensor:
     """
-    Qwen用画像前処理：448x448にリサイズ・正規化
+    Qwen用画像前処理：アスペクト比を維持して448x448以下にリサイズし、14の倍数にパディング
+    
+    Qwen2.5-VLのViTパッチサイズは14pxなので、14の倍数にすることで効率的な処理が可能
     """
     if target_size is None:
         target_size = getattr(config, 'QWEN_IMAGE_SIZE', 448)
     
-    # AutoProcessorを使用してQwen用前処理
+    # PILをnumpy配列に変換
+    if isinstance(image, Image.Image):
+        image_np = np.array(image)
+    else:
+        image_np = image
+    
+    h, w = image_np.shape[:2]
+    
+    # アスペクト比を維持してリサイズ
+    scale = target_size / max(h, w)
+    new_h = int(h * scale)
+    new_w = int(w * scale)
+    
+    # 縮小時はINTER_AREA、拡大時はINTER_CUBIC
+    interpolation = cv2.INTER_AREA if scale < 1 else cv2.INTER_CUBIC
+    resized = cv2.resize(image_np, (new_w, new_h), interpolation=interpolation)
+    
+    # 14の倍数になるようにパディング
+    # (-new_h) % 14 は、new_hを14の倍数に切り上げるための追加分
+    pad_h = (-new_h) % 14
+    pad_w = (-new_w) % 14
+    
+    # 上下左右に均等にパディング
+    top = pad_h // 2
+    bottom = pad_h - top
+    left = pad_w // 2
+    right = pad_w - left
+    
+    # ゼロパディング（黒色）
+    padded = cv2.copyMakeBorder(resized, top, bottom, left, right, 
+                                cv2.BORDER_CONSTANT, value=(0, 0, 0))
+    
+    # PILイメージに戻してprocessorに渡す
+    padded_pil = Image.fromarray(padded)
+    
+    # AutoProcessorを使用してQwen用前処理（正規化も自動実行）
     try:
-        processed = processor(images=image, return_tensors="pt")
+        processed = processor(images=padded_pil, return_tensors="pt")
         image_tensor = processed['pixel_values'].squeeze(0)  # (1, C, H, W) -> (C, H, W)
         return image_tensor
     except Exception as e:
         print(f"Qwen画像前処理エラー: {e}")
-        # フォールバック: 手動前処理
-        image_resized = image.resize((target_size, target_size), Image.LANCZOS)
+        # フォールバック: 手動前処理（Qwen2.5-VLの正しい正規化パラメータを使用）
         transform = transforms.Compose([
             transforms.ToTensor(),
-            transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])
+            transforms.Normalize(
+                mean=[0.48145466, 0.4578275, 0.40821073],
+                std=[0.26862954, 0.26130258, 0.27577711]
+            )
         ])
-        return transform(image_resized)
+        return transform(padded_pil)
 
 
 
@@ -181,67 +224,84 @@ def build_correct_labels_for_qwen(input_ids: torch.Tensor, tokenizer) -> torch.T
 
 def preprocess_mask(mask: np.ndarray, target_size: Optional[int] = None) -> torch.Tensor:
     """
-    マスクの前処理
+    マスクの前処理（最適化版）
+    - F.interpolateでnearest補間を使用（セグメンテーションマスクのベストプラクティス）
+    - データ型の適切な管理（float32→nearest補間→bool/uint8）
     """
     if target_size is None:
         target_size = getattr(config, 'SAM_IMAGE_SIZE', 1024)
     
+    # numpy配列に変換
     if isinstance(mask, torch.Tensor):
-        mask = mask.cpu().numpy()
+        mask_np = mask.cpu().numpy()
+    else:
+        mask_np = mask
     
     # マスクの形状を検証
-    if mask.size == 0:
+    if mask_np.size == 0:
         raise ValueError("空のマスクです")
     
-    if mask.ndim < 2:
-        raise ValueError(f"マスクの次元が不正です: {mask.ndim}D (最低2D必要)")
+    if mask_np.ndim < 2:
+        raise ValueError(f"マスクの次元が不正です: {mask_np.ndim}D (最低2D必要)")
     
     # マスクを2次元に変換
-    if mask.ndim == 2:
-        h, w = mask.shape
-        mask_2d = mask
-    elif mask.ndim == 3:
-        if mask.shape[0] == 1:  # (1, H, W)
-            mask_2d = mask[0]
+    if mask_np.ndim == 2:
+        h, w = mask_np.shape
+        mask_2d = mask_np
+    elif mask_np.ndim == 3:
+        if mask_np.shape[0] == 1:  # (1, H, W)
+            mask_2d = mask_np[0]
             h, w = mask_2d.shape
-        elif mask.shape[-1] == 1:  # (H, W, 1)
-            mask_2d = mask[:, :, 0]
+        elif mask_np.shape[-1] == 1:  # (H, W, 1)
+            mask_2d = mask_np[:, :, 0]
             h, w = mask_2d.shape
-        elif mask.shape[0] == 3 or mask.shape[-1] == 3:  # RGB マスク
+        elif mask_np.shape[0] == 3 or mask_np.shape[-1] == 3:  # RGB マスク
             # RGB マスクの場合、最初のチャンネルを使用
-            if mask.shape[0] == 3:  # (3, H, W)
-                mask_2d = mask[0]
-                h, w = mask_2d.shape
+            if mask_np.shape[0] == 3:  # (3, H, W)
+                mask_2d = mask_np[0]
             else:  # (H, W, 3)
-                mask_2d = mask[:, :, 0]
-                h, w = mask_2d.shape
+                mask_2d = mask_np[:, :, 0]
+            h, w = mask_2d.shape
         else:
-            # その他の場合、最後の2次元を使用
-            mask_2d = mask.reshape(-1, mask.shape[-2], mask.shape[-1])[0]
+            # その他の場合、最初の2次元を使用
+            mask_2d = mask_np.reshape(-1, mask_np.shape[-2], mask_np.shape[-1])[0]
             h, w = mask_2d.shape
     else:
-        raise ValueError(f"サポートされていないマスクの次元: {mask.ndim}D")
+        raise ValueError(f"サポートされていないマスクの次元: {mask_np.ndim}D")
     
     # サイズの検証
     if h == 0 or w == 0:
         raise ValueError(f"無効なマスクサイズ: {h}x{w}")
     
-    # マスクのリサイズ（OpenCVのバグ回避のためPillowを使用）
+    # PyTorchテンソルに変換（F.interpolateはfloat型のみサポート）
+    mask_tensor = torch.from_numpy(mask_2d).float()
+    
+    # バッチ次元とチャンネル次元を追加: (H, W) -> (1, 1, H, W)
+    if mask_tensor.ndim == 2:
+        mask_tensor = mask_tensor.unsqueeze(0).unsqueeze(0)
+    elif mask_tensor.ndim == 3:
+        mask_tensor = mask_tensor.unsqueeze(0)
+    
+    # リサイズが必要な場合のみ補間
     if (h, w) != (target_size, target_size):
-        try:
-            # numpy -> PIL Image -> リサイズ -> numpy
-            mask_uint8 = mask_2d.astype(np.uint8)
-            mask_pil = Image.fromarray(mask_uint8, mode='L')  # グレースケール
-            mask_resized_pil = mask_pil.resize((target_size, target_size), Image.NEAREST)
-            mask_2d = np.array(mask_resized_pil)
-        except Exception as e:
-            raise ValueError(f"マスクリサイズ失敗 (元サイズ: {h}x{w}, target: {target_size}x{target_size}): {e}")
+        # nearest補間でリサイズ（セグメンテーションマスクのベストプラクティス）
+        mask_resized = F.interpolate(
+            mask_tensor,
+            size=(target_size, target_size),
+            mode='nearest'
+        )
+    else:
+        mask_resized = mask_tensor
     
-    # テンソル化 (常に1次元追加して (1, H, W) 形式にする)
-    if mask_2d.ndim == 2:
-        mask_2d = mask_2d[None, ...]  # (H, W) -> (1, H, W)
+    # バッチ次元を削除: (1, 1, H, W) -> (1, H, W)
+    mask_resized = mask_resized.squeeze(0)
     
-    return torch.from_numpy(mask_2d).float()
+    # bool型に変換（メモリ効率化）
+    # しきい値0.5で2値化（nearest補間後も念のため）
+    mask_bool = mask_resized > 0.5
+    
+    # float型で返す（後続の処理で必要な場合があるため）
+    return mask_bool.float()
 
 class HybridDataset(torch.utils.data.Dataset):
     """
@@ -288,7 +348,7 @@ class HybridDataset(torch.utils.data.Dataset):
         sample_rate = np.array(sample_rate)
         self.sample_rate = sample_rate / sample_rate.sum()
 
-        # [SEG]トークンの一元セットアップ（オリジナルLISA準拠）
+        # <SEG>トークンの一元セットアップ（オリジナルLISA準拠）
         if self.qwen_processor and self.qwen_processor.tokenizer:
             self.seg_token = getattr(config, 'SEG_TOKEN', '[SEG]')
             self.seg_token_idx = setup_seg_token(self.qwen_processor.tokenizer, self.seg_token)
@@ -424,20 +484,65 @@ class HybridDataset(torch.utils.data.Dataset):
             sample = self.all_datasets[0][0]
         
         # サンプルの形式を確認
-        if len(sample) == 9:
-            # 新しい9要素形式（SemSegDataset, ReferSegDataset）
-            image_path, image_sam, image_qwen, conversations, masks, label, resize, questions, sampled_classes = sample
+        if len(sample) == 10:
+            # 新しい10要素形式（座標変換オブジェクト付き）
+            image_path, image_sam, image_qwen_tensor, conversations, masks, label, resize, questions, sampled_classes, coord_transform = sample
             
             # conversationsからテキストプロンプトを抽出
             if isinstance(conversations, list) and len(conversations) > 0:
-                text_prompt = conversations[0]  # 最初の会話を使用
+                # messages形式の場合
+                if isinstance(conversations[0], list) and len(conversations[0]) >= 2:
+                    # messages形式: [[{"role": "user", "content": ...}, {"role": "assistant", "content": ...}]]
+                    user_msg = conversations[0][0]
+                    assistant_msg = conversations[0][1]
+                    user_content = user_msg.get("content", "")
+                    assistant_content = assistant_msg.get("content", "")
+                    text_prompt = f"{user_content} {assistant_content}"
+                elif isinstance(conversations[0], str):
+                    # 文字列形式（後方互換性）
+                    text_prompt = conversations[0]
+                else:
+                    text_prompt = "Segment the object in this image. <SEG>"
             else:
-                text_prompt = "Segment the object in this image. [SEG]"
+                text_prompt = "Segment the object in this image. <SEG>"
             
             # resize と questions, sampled_classes を保持（オリジナルLISAとの互換性）
             resize = resize if 'resize' in locals() else None
             questions = questions if 'questions' in locals() else None
             sampled_classes = sampled_classes if 'sampled_classes' in locals() else None
+            
+            # image_qwenはテンソルとして受け取る（後でPILに変換）
+            image_qwen = image_qwen_tensor
+            
+        elif len(sample) == 9:
+            # 古い9要素形式（SemSegDataset, ReferSegDataset）座標変換オブジェクトなし
+            image_path, image_sam, image_qwen_tensor, conversations, masks, label, resize, questions, sampled_classes = sample
+            
+            # conversationsからテキストプロンプトを抽出
+            if isinstance(conversations, list) and len(conversations) > 0:
+                # messages形式の場合
+                if isinstance(conversations[0], list) and len(conversations[0]) >= 2:
+                    # messages形式: [[{"role": "user", "content": ...}, {"role": "assistant", "content": ...}]]
+                    user_msg = conversations[0][0]
+                    assistant_msg = conversations[0][1]
+                    user_content = user_msg.get("content", "")
+                    assistant_content = assistant_msg.get("content", "")
+                    text_prompt = f"{user_content} {assistant_content}"
+                elif isinstance(conversations[0], str):
+                    # 文字列形式（後方互換性）
+                    text_prompt = conversations[0]
+                else:
+                    text_prompt = "Segment the object in this image. <SEG>"
+            else:
+                text_prompt = "Segment the object in this image. <SEG>"
+            
+            # resize と questions, sampled_classes を保持（オリジナルLISAとの互換性）
+            resize = resize if 'resize' in locals() else None
+            questions = questions if 'questions' in locals() else None
+            sampled_classes = sampled_classes if 'sampled_classes' in locals() else None
+            
+            # image_qwenはテンソルとして受け取る（後でPILに変換）
+            image_qwen = image_qwen_tensor
             
         elif len(sample) == 5:
             # 古い5要素形式（VQADataset, ReasonSegDataset）
@@ -491,8 +596,7 @@ class HybridDataset(torch.utils.data.Dataset):
                 else:
                     raise ValueError(f"サポートされていない画像形式: {type(image_data)}")
             
-            # デュアル前処理
-            image_qwen = preprocess_qwen_image(image_pil, self.qwen_processor, self.qwen_image_size)
+            # SAM用画像前処理（現在は使用されていない）
             image_sam = preprocess_sam_image(image_pil, self.sam_image_size)
             
             # オリジナルLISAとの互換性のために初期化
@@ -500,52 +604,35 @@ class HybridDataset(torch.utils.data.Dataset):
             questions = None
             sampled_classes = None
             
+            # image_qwenは後でapply_chat_templateで処理されるため、ここではimage_pilを保持
+            image_qwen = image_pil
+            
         else:
             raise ValueError(f"不明なサンプル形式: {len(sample)} 要素")
         
 
 
-        # [SEG]トークンが含まれていることを確認
+        # <SEG>トークンが含まれていることを確認
         if self.seg_token not in text_prompt:
             text_prompt += f" {self.seg_token}"
 
-        # Qwen-3の正しいマルチモーダル処理
-        # PIL画像を準備
-        if len(sample) == 9:
-            # 新しい9要素形式の場合、既にPIL画像がある
-            if isinstance(image_sam, torch.Tensor):
-                # SAM画像テンソルからPIL画像を復元
-                if image_sam.dim() == 3:  # (C, H, W)
-                    image_np = image_sam.permute(1, 2, 0).cpu().numpy()
-                    if image_np.max() <= 1.0:
-                        image_np = (image_np * 255).astype(np.uint8)
-                    
-                    # 形状の検証
-                    if image_np.shape[0] == 1 or image_np.shape[1] == 1:
-                        raise ValueError(f"無効な画像サイズ: {image_np.shape}")
-                    
-                    # データ型の検証と変換
-                    if image_np.dtype == np.float32 or image_np.dtype == np.float64:
-                        if image_np.max() <= 1.0:
-                            image_np = (image_np * 255).astype(np.uint8)
-                        else:
-                            image_np = image_np.astype(np.uint8)
-                    elif image_np.dtype != np.uint8:
-                        image_np = image_np.astype(np.uint8)
-                    
-                    image_pil = Image.fromarray(image_np)
-                else:
-                    raise ValueError(f"無効なテンソル次元: {image_sam.dim()}")
-            else:
-                if isinstance(image_sam, Image.Image):
-                    image_pil = image_sam
-                else:
-                    raise ValueError(f"サポートされていない画像形式: {type(image_sam)}")
+        # PIL画像に変換（apply_chat_templateに必要）
+        if isinstance(image_qwen, torch.Tensor):
+            # 正規化を元に戻す
+            qwen_mean = torch.tensor([0.48145466, 0.4578275, 0.40821073]).view(3, 1, 1)
+            qwen_std = torch.tensor([0.26862954, 0.26130258, 0.27577711]).view(3, 1, 1)
+            image_denorm = image_qwen * qwen_std + qwen_mean
+            image_denorm = torch.clamp(image_denorm, 0, 1)
+            
+            # (C, H, W) -> (H, W, C)
+            image_np = image_denorm.permute(1, 2, 0).cpu().numpy()
+            image_np = (image_np * 255).astype(np.uint8)
+            image_pil = Image.fromarray(image_np)
         else:
-            # 5要素形式の場合、既にimage_pilが準備されている
-            pass
-        
-        # Qwen-3の公式apply_chat_templateを使用
+            # 既にPIL画像の場合
+            image_pil = image_qwen
+
+        # Qwen2.5-VLのapply_chat_templateで画像とテキストを一緒に処理
         messages = [
             {
                 "role": "user",
@@ -556,45 +643,33 @@ class HybridDataset(torch.utils.data.Dataset):
             }
         ]
         
-        try:
-            # Qwen-3プロセッサーでマルチモーダル処理
-            qwen_processed = self.qwen_processor.apply_chat_template(
-                messages,
-                add_generation_prompt=True,
-                tokenize=True,
-                return_dict=True,
-                return_tensors="pt"
-            )
-            
-            # 処理結果から必要な要素を抽出
-            input_ids = qwen_processed['input_ids'].squeeze(0)
-            attention_mask = qwen_processed['attention_mask'].squeeze(0)
-            pixel_values = qwen_processed['pixel_values'].squeeze(0)
-            
-            # image_grid_thwを取得（存在する場合）
-            image_grid_thw = qwen_processed.get('image_grid_thw', None)
-            if image_grid_thw is not None:
-                image_grid_thw = image_grid_thw.squeeze(0) if image_grid_thw.dim() > 1 else image_grid_thw
-            
-            # pixel_valuesをimage_qwenとして使用
-            image_qwen = pixel_values
-            
-            # SAM用画像を別途処理
-            image_sam = preprocess_sam_image(image_pil, self.sam_image_size)
-            
-        except Exception as e:
-            print(f"❌ Qwen-3マルチモーダル処理エラー: {e}")
-            print(f"   テキスト: {text_prompt[:100]}...")
-            raise RuntimeError(f"Qwen-3マルチモーダル処理に失敗: {e}")
-
-        # 画像の形状を確認（apply_chat_templateで処理済みなので基本的に正しい形状）
+        # apply_chat_templateで画像とテキストを処理
+        qwen_processed = self.qwen_processor.apply_chat_template(
+            messages,
+            add_generation_prompt=True,
+            tokenize=True,
+            return_dict=True,
+            return_tensors="pt"
+        )
+        
+        input_ids = qwen_processed['input_ids'].squeeze(0)
+        attention_mask = qwen_processed['attention_mask'].squeeze(0)
+        pixel_values = qwen_processed['pixel_values'].squeeze(0)  # 処理済み画像
+        image_grid_thw = qwen_processed.get('image_grid_thw')
+        if image_grid_thw is not None:
+            image_grid_thw = image_grid_thw.squeeze(0)
+        
+        # 処理済みのpixel_valuesをimage_qwenとして使用
+        image_qwen = pixel_values
+        
+        # 画像の形状を確認
         if image_qwen.dim() == 4:  # (1, C, H, W) → (C, H, W)
             image_qwen = image_qwen.squeeze(0)
         
         if image_sam.dim() == 4:  # (1, C, H, W) → (C, H, W)
             image_sam = image_sam.squeeze(0)
 
-        # [SEG]トークンの位置を特定（オリジナルLISA準拠）
+        # <SEG>トークンの位置を特定（オリジナルLISA準拠）
         seg_token_mask = (input_ids == self.seg_token_idx)
 
         # ラベルの処理（言語生成用）
@@ -638,7 +713,7 @@ class HybridDataset(torch.utils.data.Dataset):
             'labels': labels,
             'attention_mask': attention_mask,
             'sam_images': image_sam,      # SAM用画像 (C, 1024, 1024)
-            'pixel_values': image_qwen,  # Qwen用画像 (C, 448, 448)
+            'pixel_values': image_qwen,  # Qwen用画像 (C, 448, 448) - 前処理済み
             'ground_truth_mask': ground_truth_mask if has_mask else None,
             'has_mask': has_mask,
             'seg_token_mask': seg_token_mask,
@@ -649,6 +724,7 @@ class HybridDataset(torch.utils.data.Dataset):
             'resize': resize if 'resize' in locals() else None,
             'questions': questions if 'questions' in locals() else None,
             'sampled_classes': sampled_classes if 'sampled_classes' in locals() else None,
+            'original_image': image_pil,  # 可視化用の元画像（PIL形式）
         }
 
 def collate_fn(batch: List[Dict]) -> Dict[str, Any]:
@@ -679,6 +755,7 @@ def collate_fn(batch: List[Dict]) -> Dict[str, Any]:
     questions_list = []  # オリジナルLISA互換
     sampled_classes_list = []  # オリジナルLISA互換
     image_grid_thws = []  # Qwen2.5-VL用
+    original_images = []  # 可視化用の元画像
     
     for item in batch:
         pixel_values.append(item["pixel_values"])
@@ -716,6 +793,7 @@ def collate_fn(batch: List[Dict]) -> Dict[str, Any]:
         
         # Qwen2.5-VL用
         image_grid_thws.append(item.get("image_grid_thw"))
+        original_images.append(item.get("original_image"))
     
     # テンソルのスタック
     pixel_values = torch.stack(pixel_values)  # (B, 3, 448, 448)
@@ -787,6 +865,7 @@ def collate_fn(batch: List[Dict]) -> Dict[str, Any]:
         # 追加の互換性フィールド
         "images": sam_images,                       # エイリアス: オリジナルLISAでの名前
         "images_clip": pixel_values,                # エイリアス: オリジナルLISAでCLIP画像として使用
+        "original_images": original_images,          # 可視化用の元画像（PIL形式）
     }
 
 # エイリアスは削除 - 明確な命名を使用
@@ -865,7 +944,7 @@ class LisaQwen3ValDataset(torch.utils.data.Dataset):
         
         image_path = sample[0]
         image = sample[1]
-        text_prompt = sample[2] if len(sample) > 2 else "Segment the object in this image. [SEG]"
+        text_prompt = sample[2] if len(sample) > 2 else "Segment the object in this image. <SEG>"
         mask = sample[3] if len(sample) > 3 else None
         label = sample[4] if len(sample) > 4 else torch.tensor(0)
         
@@ -921,7 +1000,7 @@ class LisaQwen3ValDataset(torch.utils.data.Dataset):
         
         seg_token_id = self.qwen_processor.tokenizer.convert_tokens_to_ids("[SEG]")
         if seg_token_id is None:
-            raise ValueError("[SEG]トークンがトークナイザーに見つかりません")
+            raise ValueError("<SEG>トークンがトークナイザーに見つかりません")
         
         seg_token_mask = (input_ids == seg_token_id)
         

@@ -277,16 +277,16 @@ conv_rwkv = Conversation(
     stop_str="\n\n",
 )
 
-# Gemma-3 default template
-conv_gemma3 = Conversation(
-    system="",
-    roles=("user", "model"),
+# Simple template (Original LISA style)
+conv_simple = Conversation(
+    system="A chat between a curious human and an artificial intelligence assistant. "
+           "The assistant gives helpful, detailed, and polite answers to the human's questions.",
+    roles=("Human", "Assistant"),
     messages=(),
     offset=0,
-    sep_style=SeparatorStyle.GEMMA3,
-    sep="<start_of_turn>",
-    sep2="<end_of_turn>",
-    stop_str="<end_of_turn>",
+    sep_style=SeparatorStyle.ADD_COLON_SINGLE,
+    sep="\n### ",
+    stop_str="###",
 )
 
 conv_templates = {
@@ -298,15 +298,13 @@ conv_templates = {
     "stablelm": conv_stablelm,
     "vicuna_v1.1": conv_vicuna_v1_1,
     "rwkv": conv_rwkv,
-    "gemma3": conv_gemma3,
+    "simple": conv_simple,
 }
 
 
 def get_default_conv_template(model_name):
     model_name = model_name.lower()
-    if "gemma" in model_name or "gemma-3" in model_name:
-        return conv_gemma3
-    elif "vicuna" in model_name or "output" in model_name:
+    if "vicuna" in model_name or "output" in model_name:
         return conv_vicuna_v1_1
     elif "koala" in model_name:
         return conv_koala_v1
@@ -331,5 +329,5 @@ if __name__ == "__main__":
     conv.append_message(conv.roles[1], None)
     print(conv.get_prompt())
 
-# デフォルト会話テンプレート（LISA互換）
-default_conversation = conv_gemma3
+# デフォルト会話テンプレート（Original LISA互換）
+default_conversation = conv_one_shot
