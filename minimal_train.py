@@ -123,18 +123,31 @@ class MinimalTrainer:
         logger.info(f"学習可能パラメータ数: {trainable_params:,}")
         logger.info(f"学習可能パラメータの割合: {100 * trainable_params / total_params:.2f}%")
         
-        # データセットの作成（セマンティックセグメンテーションのみ）
+        # データセットの作成
         logger.info("データセットの作成")
         # LISAConfigのデータセットパスを使用
         data_dir = self.lisa_config.dataset_base_dir if self.config.data_dir is None else self.config.data_dir
         logger.info(f"データセットディレクトリ: {data_dir}")
         
+        # データセットタイプとサンプルレートの設定
+        dataset_types = self.config.dataset_types.split('||')
+        sample_rates = [float(x) for x in self.config.sample_rates.split(',')]
+        
+        # 長さが一致しない場合は均等に分配
+        if len(sample_rates) != len(dataset_types):
+            logger.warning(f"sample_rates数({len(sample_rates)})とdataset_types数({len(dataset_types)})が一致しません")
+            sample_rates = [1.0 / len(dataset_types)] * len(dataset_types)
+            logger.info(f"均等なサンプルレートを使用: {sample_rates}")
+        
+        logger.info(f"データセットタイプ: {dataset_types}")
+        logger.info(f"サンプルレート: {sample_rates}")
+        
         self.train_dataset = HybridDataset(
             base_image_dir=data_dir,
             qwen_processor=self.processor,
             samples_per_epoch=self.config.samples_per_epoch,
-            dataset="sem_seg",  # セマンティックセグメンテーションのみ
-            sample_rate=[1.0],
+            dataset='||'.join(dataset_types),
+            sample_rate=sample_rates,
             qwen_image_size=self.lisa_config.qwen_image_size,
             sam_image_size=self.lisa_config.sam_image_size,
         )
@@ -317,6 +330,23 @@ class MinimalTrainer:
                 logger.debug(f"input_ids shape: {batch['input_ids'].shape}")
                 if 'image_grid_thw' in batch and batch['image_grid_thw'] is not None:
                     logger.debug(f"image_grid_thw: {batch['image_grid_thw']}")
+                
+                # データセットタイプ別の統計（初回のみ）
+                if batch_idx == 0 and hasattr(self.train_dataset, 'dataset_indices'):
+                    dataset_stats = {}
+                    for i, ds in enumerate(self.train_dataset.all_datasets):
+                        ds_name = type(ds).__name__
+                        dataset_stats[ds_name] = 0
+                    
+                    # 現在のエポックのサンプル分布を計算
+                    for idx in self.train_dataset.dataset_indices[:self.config.samples_per_epoch]:
+                        ds_name = type(self.train_dataset.all_datasets[idx[0]]).__name__
+                        dataset_stats[ds_name] += 1
+                    
+                    logger.info("データセットサンプル分布:")
+                    for ds_name, count in dataset_stats.items():
+                        percentage = (count / self.config.samples_per_epoch) * 100
+                        logger.info(f"  {ds_name}: {count} ({percentage:.1f}%)")
             
             # Forward pass
             forward_kwargs = {
@@ -536,6 +566,10 @@ def main():
                        help='データセットのベースディレクトリ（Noneの場合はLISAConfigのデフォルトを使用）')
     parser.add_argument('--samples_per_epoch', type=int, default=1000,
                        help='1エポックあたりのサンプル数')
+    parser.add_argument('--dataset_types', type=str, default='sem_seg||refer_seg||vqa||reason_seg',
+                       help='データセットタイプ（||で区切る）: sem_seg||refer_seg||vqa||reason_seg')
+    parser.add_argument('--sample_rates', type=str, default='9,3,3,1',
+                       help='各データセットのサンプルレート（,で区切る）例: 9,3,3,1')
     
     # 訓練設定
     parser.add_argument('--batch_size', type=int, default=4,
@@ -579,6 +613,13 @@ def main():
     
     args = parser.parse_args()
     
+    # データセット設定の検証
+    valid_dataset_types = {'sem_seg', 'refer_seg', 'vqa', 'reason_seg'}
+    dataset_types = args.dataset_types.split('||')
+    for dt in dataset_types:
+        if dt not in valid_dataset_types:
+            raise ValueError(f"無効なデータセットタイプ: {dt}. 有効なタイプ: {valid_dataset_types}")
+    
     # WandBの初期化
     if args.use_wandb:
         wandb.init(project=args.wandb_project, config=vars(args))
@@ -596,3 +637,8 @@ def main():
 
 if __name__ == "__main__":
     main()
+    
+# 使用例:
+# python minimal_train.py --dataset_types sem_seg --samples_per_epoch 1000
+# python minimal_train.py --dataset_types "sem_seg||refer_seg" --sample_rates "7,3" --samples_per_epoch 1000
+# python minimal_train.py --dataset_types "sem_seg||refer_seg||vqa||reason_seg" --sample_rates "9,3,3,1" --samples_per_epoch 10000

@@ -1,1 +1,43 @@
 checkpoints/*.pt
+
+# 出力ディレクトリ
+outputs/
+visualization_results/
+
+# ログファイル
+logs/
+*.log
+
+# 一時ファイル
+*.tmp
+*.temp
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Jupyter Notebook
+.ipynb_checkpoints/
+
+# IDEファイル
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS生成ファイル
+.DS_Store
+Thumbs.db
+
+# 大きなモデルファイル
+*.safetensors
+*.bin
+*.pth
+
+# WandBログ
+wandb/
+
+# トレーニングの一時ファイル
+train_debug.log
