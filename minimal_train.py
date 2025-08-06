@@ -1,0 +1,598 @@
+#!/usr/bin/env python3
+"""
+実データを使用したミニマルなトレーニングスクリプト
+セマンティックセグメンテーションデータセット（ADE20K）に絞って実装
+"""
+
+import os
+import sys
+import torch
+import torch.nn as nn
+from torch.utils.data import DataLoader
+import logging
+from pathlib import Path
+from datetime import datetime
+import json
+from tqdm import tqdm
+import numpy as np
+import wandb
+import argparse
+import matplotlib.pyplot as plt
+import matplotlib
+matplotlib.use('Agg')  # バックエンドを設定
+
+# プロジェクトルートをパスに追加
+sys.path.append(str(Path(__file__).parent))
+
+from src.config import LISAConfig
+from src.models import LISA_Model
+from src.utils import prepare_tokenizer_for_lisa
+from src.data.dataset import HybridDataset
+from src.data.collators import MultiModalDataCollator
+from transformers import AutoProcessor, get_linear_schedule_with_warmup
+from peft import LoraConfig, get_peft_model, TaskType
+
+# ロギング設定
+logging.basicConfig(
+    format='%(asctime)s - %(levelname)s - %(name)s - %(message)s',
+    datefmt='%m/%d/%Y %H:%M:%S',
+    level=logging.DEBUG if '--debug' in sys.argv else logging.INFO
+)
+logger = logging.getLogger(__name__)
+
+
+class MinimalTrainer:
+    """ミニマルなトレーニングクラス"""
+    
+    def __init__(self, config):
+        self.config = config
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.best_loss = float('inf')
+        self.global_step = 0
+        
+        # Loss履歴を記録
+        self.loss_history = {
+            'steps': [],
+            'total_loss': [],
+            'lm_loss': [],
+            'seg_loss': [],
+            'learning_rate': []
+        }
+        
+        # 保存ディレクトリの設定
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        self.output_dir = Path(f"outputs/minimal_train_{timestamp}")
+        self.output_dir.mkdir(parents=True, exist_ok=True)
+        
+        # チェックポイントディレクトリ
+        self.checkpoint_dir = self.output_dir / "checkpoints"
+        self.checkpoint_dir.mkdir(exist_ok=True)
+        
+        # 設定を保存
+        with open(self.output_dir / "config.json", 'w') as f:
+            json.dump(vars(config), f, indent=2)
+    
+    def setup_model_and_data(self):
+        """モデルとデータセットのセットアップ"""
+        logger.info("モデルとデータセットのセットアップを開始")
+        
+        # LISAConfig作成
+        self.lisa_config = LISAConfig(
+            qwen_model_name="Qwen/Qwen2.5-VL-3B-Instruct",
+            sam_model_name="./checkpoints/sam2.1_hiera_large.pt",
+            device_map=str(self.device),
+            torch_dtype="auto",
+            freeze_qwen=True,
+            freeze_sam=True,
+            train_seg_token=True,
+            use_flash_attention=False
+        )
+        
+        # トークナイザーとプロセッサの準備
+        logger.info("トークナイザーとプロセッサの準備")
+        self.tokenizer = prepare_tokenizer_for_lisa(
+            model_name=self.lisa_config.qwen_model_name,
+            seg_token=self.lisa_config.seg_token
+        )
+        self.processor = AutoProcessor.from_pretrained(self.lisa_config.qwen_model_name)
+        
+        # モデルの読み込み
+        logger.info("LISA改モデルの読み込み")
+        self.model = LISA_Model(self.lisa_config)
+        self.model.set_tokenizer(self.tokenizer)
+        
+        # LoRAの設定
+        logger.info("LoRAの設定")
+        lora_config = LoraConfig(
+            r=self.config.lora_r,
+            lora_alpha=self.config.lora_alpha,
+            target_modules=["q_proj", "v_proj", "k_proj"],
+            lora_dropout=0.1,
+            bias="none",
+            task_type=TaskType.CAUSAL_LM,
+        )
+        self.model.qwen = get_peft_model(self.model.qwen, lora_config)
+        
+        # デバイスに移動
+        self.model = self.model.to(self.device)
+        
+        # パラメータ統計の表示
+        total_params = sum(p.numel() for p in self.model.parameters())
+        trainable_params = sum(p.numel() for p in self.model.parameters() if p.requires_grad)
+        logger.info(f"総パラメータ数: {total_params:,}")
+        logger.info(f"学習可能パラメータ数: {trainable_params:,}")
+        logger.info(f"学習可能パラメータの割合: {100 * trainable_params / total_params:.2f}%")
+        
+        # データセットの作成（セマンティックセグメンテーションのみ）
+        logger.info("データセットの作成")
+        # LISAConfigのデータセットパスを使用
+        data_dir = self.lisa_config.dataset_base_dir if self.config.data_dir is None else self.config.data_dir
+        logger.info(f"データセットディレクトリ: {data_dir}")
+        
+        self.train_dataset = HybridDataset(
+            base_image_dir=data_dir,
+            qwen_processor=self.processor,
+            samples_per_epoch=self.config.samples_per_epoch,
+            dataset="sem_seg",  # セマンティックセグメンテーションのみ
+            sample_rate=[1.0],
+            qwen_image_size=self.lisa_config.qwen_image_size,
+            sam_image_size=self.lisa_config.sam_image_size,
+        )
+        
+        # DataLoaderの作成
+        self.collator = MultiModalDataCollator(
+            tokenizer=self.tokenizer,
+            max_length=512
+        )
+        
+        self.train_loader = DataLoader(
+            self.train_dataset,
+            batch_size=self.config.batch_size,
+            shuffle=True,
+            collate_fn=self.collator,
+            num_workers=0,  # Set to 0 for debugging to avoid duplicate messages
+            pin_memory=True
+        )
+        
+        logger.info(f"データセットサイズ: {len(self.train_dataset)}")
+        logger.info(f"バッチ数: {len(self.train_loader)}")
+    
+    def setup_optimizer_and_scheduler(self):
+        """オプティマイザとスケジューラのセットアップ"""
+        # パラメータグループの作成
+        adapter_params = []
+        lora_params = []
+        seg_token_params = []
+        
+        for name, param in self.model.named_parameters():
+            if param.requires_grad:
+                if "adapter" in name or "prompt_proj" in name:
+                    adapter_params.append(param)
+                elif "lora" in name:
+                    lora_params.append(param)
+                elif "word_embeddings" in name:
+                    seg_token_params.append(param)
+        
+        # パラメータグループ
+        param_groups = [
+            {"params": adapter_params, "lr": self.config.adapter_lr},
+            {"params": lora_params, "lr": self.config.lora_lr},
+            {"params": seg_token_params, "lr": self.config.seg_token_lr}
+        ]
+        
+        # オプティマイザ
+        self.optimizer = torch.optim.AdamW(
+            param_groups,
+            weight_decay=self.config.weight_decay
+        )
+        
+        # スケジューラ
+        # Gradient Accumulationを考慮した実際の最適化ステップ数
+        # 切り上げ処理で最後のバッチも含める
+        import math
+        num_training_steps = math.ceil(len(self.train_loader) / self.config.gradient_accumulation_steps) * self.config.num_epochs
+        num_warmup_steps = int(num_training_steps * self.config.warmup_ratio)
+        
+        self.scheduler = get_linear_schedule_with_warmup(
+            self.optimizer,
+            num_warmup_steps=num_warmup_steps,
+            num_training_steps=num_training_steps
+        )
+        
+        logger.info(f"総ステップ数: {num_training_steps}")
+        logger.info(f"ウォームアップステップ数: {num_warmup_steps}")
+    
+    def compute_loss(self, outputs, labels, mask_labels):
+        """損失計算"""
+        # 言語モデリング損失
+        vocab_size = outputs.logits.size(-1)
+        lm_loss = nn.functional.cross_entropy(
+            outputs.logits.view(-1, vocab_size),
+            labels.view(-1),
+            ignore_index=-100
+        )
+        
+        # セグメンテーション損失
+        seg_loss = 0.0
+        seg_count = 0
+        
+        if outputs.mask_logits is not None:
+            for batch_idx, batch_masks in enumerate(outputs.mask_logits):
+                if batch_masks is not None and len(batch_masks) > 0:
+                    gt_mask = mask_labels[batch_idx]
+                    
+                    for pred_mask in batch_masks:
+                        # デバッグ情報
+                        logger.debug(f"pred_mask shape: {pred_mask.shape}")
+                        logger.debug(f"gt_mask shape: {gt_mask.shape}")
+                        
+                        # マスクの次元を確認して適切に処理
+                        # pred_maskとgt_maskの形状を合わせる
+                        if pred_mask.dim() == 2:
+                            pred_h, pred_w = pred_mask.shape
+                        else:
+                            pred_h, pred_w = pred_mask.shape[-2:]
+                            
+                        if gt_mask.dim() == 2:
+                            gt_h, gt_w = gt_mask.shape
+                        else:
+                            gt_h, gt_w = gt_mask.shape[-2:]
+                        
+                        # サイズが異なる場合はリサイズ
+                        if (pred_h, pred_w) != (gt_h, gt_w):
+                            # gt_maskを(B, C, H, W)形式に変換
+                            if gt_mask.dim() == 2:
+                                gt_mask_4d = gt_mask.unsqueeze(0).unsqueeze(0)  # (H, W) -> (1, 1, H, W)
+                            elif gt_mask.dim() == 3:
+                                gt_mask_4d = gt_mask.unsqueeze(1)  # (B, H, W) -> (B, 1, H, W)
+                            else:
+                                gt_mask_4d = gt_mask
+                            
+                            # float型に変換してinterpolate
+                            gt_mask_4d = gt_mask_4d.float()
+                            gt_mask_resized = nn.functional.interpolate(
+                                gt_mask_4d,
+                                size=(pred_h, pred_w),
+                                mode='nearest'
+                            )
+                            
+                            # 元の次元に戻す
+                            if gt_mask.dim() == 2:
+                                gt_mask_resized = gt_mask_resized.squeeze(0).squeeze(0)
+                            elif gt_mask.dim() == 3:
+                                gt_mask_resized = gt_mask_resized.squeeze(1)
+                        else:
+                            gt_mask_resized = gt_mask
+                        
+                        # BCE損失
+                        bce_loss = nn.functional.binary_cross_entropy_with_logits(
+                            pred_mask.squeeze(0),
+                            gt_mask_resized.squeeze(0)
+                        )
+                        
+                        # Dice損失
+                        pred_sigmoid = torch.sigmoid(pred_mask.squeeze(0))
+                        intersection = (pred_sigmoid * gt_mask_resized.squeeze(0)).sum()
+                        dice = 2 * intersection / (pred_sigmoid.sum() + gt_mask_resized.squeeze(0).sum() + 1e-8)
+                        dice_loss = 1 - dice
+                        
+                        seg_loss += bce_loss + dice_loss
+                        seg_count += 1
+        
+        # 平均セグメンテーション損失
+        if seg_count > 0:
+            seg_loss = seg_loss / seg_count
+        
+        # 総合損失
+        total_loss = lm_loss + self.config.seg_loss_weight * seg_loss
+        
+        return total_loss, lm_loss, seg_loss
+    
+    def train_epoch(self, epoch):
+        """1エポックの学習"""
+        self.model.train()
+        
+        epoch_loss = 0.0
+        epoch_lm_loss = 0.0
+        epoch_seg_loss = 0.0
+        
+        # Gradient Accumulation用の変数
+        accumulation_steps = self.config.gradient_accumulation_steps
+        accumulated_loss = 0.0
+        
+        progress_bar = tqdm(self.train_loader, desc=f"Epoch {epoch+1}/{self.config.num_epochs}")
+        
+        for batch_idx, batch in enumerate(progress_bar):
+            # デバイスに移動
+            batch = {k: v.to(self.device) if torch.is_tensor(v) else v for k, v in batch.items()}
+            
+            # デバッグ: トークン数を確認
+            if batch_idx == 0 or self.config.debug:
+                img_tokens = batch['pixel_values'].shape[1] if batch['pixel_values'].dim() == 3 else 0
+                txt_tokens = batch['input_ids'].shape[1]
+                total_tokens = img_tokens + txt_tokens
+                logger.debug(f"Batch {batch_idx}: img_tokens={img_tokens}, txt_tokens={txt_tokens}, total={total_tokens}")
+                if batch['pixel_values'].dim() == 3:
+                    logger.debug(f"pixel_values shape: {batch['pixel_values'].shape}")
+                logger.debug(f"input_ids shape: {batch['input_ids'].shape}")
+                if 'image_grid_thw' in batch and batch['image_grid_thw'] is not None:
+                    logger.debug(f"image_grid_thw: {batch['image_grid_thw']}")
+            
+            # Forward pass
+            forward_kwargs = {
+                'input_ids': batch['input_ids'],
+                'pixel_values': batch['pixel_values'],
+                'attention_mask': batch['attention_mask'],
+                'labels': batch['labels'],
+                'mask_labels': [batch['mask_labels'][i] for i in range(batch['mask_labels'].size(0))]
+            }
+            
+            # image_grid_thwがある場合は追加
+            if 'image_grid_thw' in batch:
+                forward_kwargs['image_grid_thw'] = batch['image_grid_thw']
+            
+            outputs = self.model(**forward_kwargs)
+            
+            # 損失計算
+            total_loss, lm_loss, seg_loss = self.compute_loss(
+                outputs, batch['labels'], batch['mask_labels']
+            )
+            
+            # Gradient Accumulationを考慮したloss
+            # 各ミニバッチの損失を累積ステップ数で割る
+            scaled_loss = total_loss / accumulation_steps
+            
+            # Backward pass
+            scaled_loss.backward()
+            accumulated_loss += total_loss.item()
+            
+            # Gradient Accumulation: 指定ステップごとに最適化
+            if (batch_idx + 1) % accumulation_steps == 0 or (batch_idx + 1) == len(self.train_loader):
+                # 勾配クリッピング
+                torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
+                
+                # 最適化ステップ
+                self.optimizer.step()
+                self.scheduler.step()
+                self.optimizer.zero_grad()
+                
+                # 累積損失をリセット
+                accumulated_loss = 0.0
+            
+            # 損失の記録
+            epoch_loss += total_loss.item()
+            epoch_lm_loss += lm_loss.item()
+            epoch_seg_loss += seg_loss.item() if isinstance(seg_loss, torch.Tensor) else seg_loss
+            
+            # プログレスバーの更新
+            progress_bar.set_postfix({
+                'loss': f"{total_loss.item():.4f}",
+                'lm': f"{lm_loss.item():.4f}",
+                'seg': f"{seg_loss:.4f}" if isinstance(seg_loss, torch.Tensor) else f"{seg_loss:.4f}",
+                'lr': f"{self.scheduler.get_last_lr()[0]:.2e}"
+            })
+            
+            # WandBログ（使用する場合）
+            if self.config.use_wandb:
+                wandb.log({
+                    'train/loss': total_loss.item(),
+                    'train/lm_loss': lm_loss.item(),
+                    'train/seg_loss': seg_loss if isinstance(seg_loss, float) else seg_loss.item(),
+                    'train/learning_rate': self.scheduler.get_last_lr()[0],
+                    'train/epoch': epoch,
+                    'train/step': self.global_step
+                })
+            
+            # Loss履歴を記録
+            self.loss_history['steps'].append(self.global_step)
+            self.loss_history['total_loss'].append(total_loss.item())
+            self.loss_history['lm_loss'].append(lm_loss.item())
+            self.loss_history['seg_loss'].append(seg_loss.item() if isinstance(seg_loss, torch.Tensor) else seg_loss)
+            self.loss_history['learning_rate'].append(self.scheduler.get_last_lr()[0])
+            
+            self.global_step += 1
+            
+            # 定期的なチェックポイント保存
+            if self.global_step % self.config.save_steps == 0:
+                self.save_checkpoint(f"step_{self.global_step}")
+        
+        # エポック平均
+        avg_loss = epoch_loss / len(self.train_loader)
+        avg_lm_loss = epoch_lm_loss / len(self.train_loader)
+        avg_seg_loss = epoch_seg_loss / len(self.train_loader)
+        
+        logger.info(f"Epoch {epoch+1} - 平均損失: {avg_loss:.4f}, LM: {avg_lm_loss:.4f}, Seg: {avg_seg_loss:.4f}")
+        
+        # エポック終了時に可視化を保存
+        self.plot_loss_history()
+        
+        return avg_loss
+    
+    def save_checkpoint(self, name="best"):
+        """チェックポイントの保存"""
+        save_path = self.checkpoint_dir / name
+        save_path.mkdir(exist_ok=True)
+        
+        # モデルとトークナイザーの保存
+        self.model.save_pretrained(str(save_path))
+        self.tokenizer.save_pretrained(str(save_path))
+        
+        # 訓練状態の保存
+        torch.save({
+            'global_step': self.global_step,
+            'optimizer_state_dict': self.optimizer.state_dict(),
+            'scheduler_state_dict': self.scheduler.state_dict(),
+            'best_loss': self.best_loss,
+        }, save_path / 'training_state.pt')
+        
+        logger.info(f"チェックポイント保存: {save_path}")
+    
+    def plot_loss_history(self):
+        """Loss履歴を可視化して保存"""
+        if len(self.loss_history['steps']) == 0:
+            return
+        
+        # 2x2のサブプロットを作成
+        fig, axes = plt.subplots(2, 2, figsize=(12, 10))
+        
+        # 1. Total Loss
+        ax = axes[0, 0]
+        ax.plot(self.loss_history['steps'], self.loss_history['total_loss'], 'b-', linewidth=2)
+        ax.set_xlabel('Steps')
+        ax.set_ylabel('Total Loss')
+        ax.set_title('Total Loss')
+        ax.grid(True, alpha=0.3)
+        
+        # 2. LM Loss
+        ax = axes[0, 1]
+        ax.plot(self.loss_history['steps'], self.loss_history['lm_loss'], 'g-', linewidth=2)
+        ax.set_xlabel('Steps')
+        ax.set_ylabel('Language Model Loss')
+        ax.set_title('Language Model Loss')
+        ax.grid(True, alpha=0.3)
+        
+        # 3. Segmentation Loss
+        ax = axes[1, 0]
+        ax.plot(self.loss_history['steps'], self.loss_history['seg_loss'], 'r-', linewidth=2)
+        ax.set_xlabel('Steps')
+        ax.set_ylabel('Segmentation Loss')
+        ax.set_title('Segmentation Loss')
+        ax.grid(True, alpha=0.3)
+        
+        # 4. Learning Rate
+        ax = axes[1, 1]
+        ax.plot(self.loss_history['steps'], self.loss_history['learning_rate'], 'm-', linewidth=2)
+        ax.set_xlabel('Steps')
+        ax.set_ylabel('Learning Rate')
+        ax.set_title('Learning Rate Schedule')
+        ax.grid(True, alpha=0.3)
+        ax.set_yscale('log')  # 対数スケール
+        
+        # レイアウト調整
+        plt.tight_layout()
+        
+        # 保存
+        save_path = self.output_dir / 'loss_curves.png'
+        plt.savefig(save_path, dpi=150, bbox_inches='tight')
+        plt.close()
+        
+        # ステップごとの詳細グラフも保存
+        fig, ax = plt.subplots(figsize=(10, 6))
+        
+        # 全Lossを1つのグラフに
+        ax.plot(self.loss_history['steps'], self.loss_history['total_loss'], 'b-', label='Total Loss', linewidth=2)
+        ax.plot(self.loss_history['steps'], self.loss_history['lm_loss'], 'g--', label='LM Loss', linewidth=2)
+        ax.plot(self.loss_history['steps'], self.loss_history['seg_loss'], 'r:', label='Seg Loss', linewidth=2)
+        
+        ax.set_xlabel('Training Steps')
+        ax.set_ylabel('Loss')
+        ax.set_title('Training Loss Curves')
+        ax.legend()
+        ax.grid(True, alpha=0.3)
+        
+        # 保存
+        save_path = self.output_dir / 'combined_loss_curves.png'
+        plt.savefig(save_path, dpi=150, bbox_inches='tight')
+        plt.close()
+        
+        logger.info(f"Loss curves saved to {self.output_dir}")
+    
+    def train(self):
+        """訓練のメインループ"""
+        logger.info("訓練開始")
+        
+        for epoch in range(self.config.num_epochs):
+            avg_loss = self.train_epoch(epoch)
+            
+            # ベストモデルの保存
+            if avg_loss < self.best_loss:
+                self.best_loss = avg_loss
+                self.save_checkpoint("best")
+                logger.info(f"ベストモデル更新: 損失 = {self.best_loss:.4f}")
+            
+            # エポック終了時の保存
+            self.save_checkpoint(f"epoch_{epoch+1}")
+        
+        logger.info("訓練完了")
+        logger.info(f"ベスト損失: {self.best_loss:.4f}")
+        
+        # 最終的な可視化を保存
+        self.plot_loss_history()
+        
+        # Loss履歴をJSONで保存
+        import json
+        with open(self.output_dir / "loss_history.json", 'w') as f:
+            json.dump(self.loss_history, f, indent=2)
+        
+        # 最終チェックポイント
+        self.save_checkpoint("final")
+
+
+def main():
+    parser = argparse.ArgumentParser(description="LISA改ミニマルトレーニング")
+    
+    # データ設定
+    parser.add_argument('--data_dir', type=str, default=None,
+                       help='データセットのベースディレクトリ（Noneの場合はLISAConfigのデフォルトを使用）')
+    parser.add_argument('--samples_per_epoch', type=int, default=1000,
+                       help='1エポックあたりのサンプル数')
+    
+    # 訓練設定
+    parser.add_argument('--batch_size', type=int, default=4,
+                       help='バッチサイズ')
+    parser.add_argument('--gradient_accumulation_steps', type=int, default=4,
+                       help='勾配累積ステップ数（実効バッチサイズ = batch_size * gradient_accumulation_steps）')
+    parser.add_argument('--num_epochs', type=int, default=3,
+                       help='エポック数')
+    parser.add_argument('--warmup_ratio', type=float, default=0.1,
+                       help='ウォームアップ比率')
+    
+    # 学習率設定
+    parser.add_argument('--adapter_lr', type=float, default=1e-3,
+                       help='アダプター学習率')
+    parser.add_argument('--lora_lr', type=float, default=1e-4,
+                       help='LoRA学習率')
+    parser.add_argument('--seg_token_lr', type=float, default=5e-5,
+                       help='SEGトークン学習率')
+    parser.add_argument('--weight_decay', type=float, default=0.01,
+                       help='Weight decay')
+    
+    # LoRA設定
+    parser.add_argument('--lora_r', type=int, default=8,
+                       help='LoRAランク')
+    parser.add_argument('--lora_alpha', type=int, default=32,
+                       help='LoRAアルファ（32推奨：学習初期の発散を抑制）')
+    
+    # 損失設定
+    parser.add_argument('--seg_loss_weight', type=float, default=1.0,
+                       help='セグメンテーション損失の重み')
+    
+    # その他
+    parser.add_argument('--save_steps', type=int, default=100,
+                       help='チェックポイント保存間隔')
+    parser.add_argument('--use_wandb', action='store_true',
+                       help='WandBを使用')
+    parser.add_argument('--wandb_project', type=str, default='lisa-kai-minimal',
+                       help='WandBプロジェクト名')
+    parser.add_argument('--debug', action='store_true',
+                       help='デバッグモードを有効化')
+    
+    args = parser.parse_args()
+    
+    # WandBの初期化
+    if args.use_wandb:
+        wandb.init(project=args.wandb_project, config=vars(args))
+    
+    # 訓練の実行
+    trainer = MinimalTrainer(args)
+    trainer.setup_model_and_data()
+    trainer.setup_optimizer_and_scheduler()
+    trainer.train()
+    
+    # WandBの終了
+    if args.use_wandb:
+        wandb.finish()
+
+
+if __name__ == "__main__":
+    main()

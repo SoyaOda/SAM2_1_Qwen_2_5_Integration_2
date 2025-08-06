@@ -115,11 +115,12 @@ class TextPromptProjector(nn.Module):
         self.out_dim = out_dim
         
         if use_mlp:
-            # Two-layer MLP with ReLU activation
-            hidden_dim = (in_dim + out_dim) // 2
+            # O3推奨: Two-layer MLP with LayerNorm and GELU activation
+            hidden_dim = 512  # Fixed hidden dimension as recommended
             self.proj = nn.Sequential(
                 nn.Linear(in_dim, hidden_dim),
-                nn.ReLU(),
+                nn.LayerNorm(hidden_dim),
+                nn.GELU(),
                 nn.Linear(hidden_dim, out_dim)
             )
         else:

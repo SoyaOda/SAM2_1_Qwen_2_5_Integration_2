@@ -1,0 +1,3 @@
+08/06/2025 11:40:19 - INFO - __main__ - モデルとデータセットのセットアップを開始
+08/06/2025 11:40:19 - INFO - __main__ - トークナイザーとプロセッサの準備
+The image processor of type `Qwen2VLImageProcessor` is now loaded as a fast processor by default, even if the model checkpoint was saved with a slow processor. This is a breaking change and may produce slightly different outputs. To continue using the slow processor, instantiate this class with `use_fast=False`. Note that this behavior will be extended to all models in a future release.

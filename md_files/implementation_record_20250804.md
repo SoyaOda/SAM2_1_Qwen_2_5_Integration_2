@@ -1,4 +1,4 @@
-# LISA改 実装記録 (2025年8月4日更新)
+# LISA改 実装記録 (2025年8月6日更新)
 
 ## プロジェクト概要
 
@@ -180,7 +180,7 @@ total_loss = lm_loss + seg_weight * seg_loss
 seg_loss = F.binary_cross_entropy_with_logits(pred_masks, gt_masks) + dice_loss
 ```
 
-## 現在の実装状態（2025年8月4日）
+## 現在の実装状態（2025年8月6日）
 
 ### 完了項目
 1. **モデルアーキテクチャ**: 完全実装 ✅
@@ -192,7 +192,9 @@ seg_loss = F.binary_cross_entropy_with_logits(pred_masks, gt_masks) + dice_loss
 3. **学習インフラ**: LoRA、勾配累積、混合精度対応 ✅
 4. **推論パイプライン**: ストリーミング生成、バッチ処理対応 ✅
 5. **テストスイート**: 統合テストで23.4%の損失減少を確認 ✅
-6. **データセット統合**: 全データセットタイプで動作確認完了 ✅ **New!**
+6. **データセット統合**: 全データセットタイプで動作確認完了 ✅
+7. **実データでのトレーニング実装**: ミニマルトレーニングスクリプト完成 ✅ **New!**
+8. **O3推奨の最適化実装**: 全項目完了 ✅ **New!**
 
 ### 技術的な成果
 - **パラメータ効率**: 全パラメータの5.60%（222M/3.98B）のみ学習
@@ -202,35 +204,57 @@ seg_loss = F.binary_cross_entropy_with_logits(pred_masks, gt_masks) + dice_loss
 - **処理効率**: デュアルストリーム処理でQwen/SAM双方の最適解像度を実現 ✅ **New!**
 - **拡張性**: HybridDatasetによる柔軟なタスク組み合わせ ✅ **New!**
 
+### 2025年8月6日の重要な実装改善
+
+#### Qwen2.5-VLの4:1パッチ圧縮対応
+**問題**: Qwen2.5-VLのapply_chat_template(tokenize=True)が2D形式（N_patch, D_v）の特徴を返す
+**解決**: MultiModalDataCollatorを改修し、4:1パッチ圧縮に対応
+
+```python
+# Qwen2.5-VLは4:1パッチ圧縮を使用
+expected_pads = pv.shape[0] // 4
+image_pad_to_add = pad_len // 4
+
+# パッチ数を4の倍数に調整
+max_patches = ((max_patches_raw + 3) // 4) * 4
+```
+
+#### O3推奨の最適化実装
+1. **Gradient Accumulation** (4ステップ)
+   - 実効バッチサイズの増加でより安定した学習
+   
+2. **LoRA α値の調整** (16→32)
+   - 学習初期の安定性向上
+   
+3. **TextPromptProjectorの改善**
+   - Linear層→2層MLP + LayerNorm
+   - マッチング精度の向上
+   
+4. **トークン数上限チェック**
+   - Qwen2.5-VLのRoPE制限（2048トークン）への対応
+
+5. **Loss推移の可視化**
+   - 4つの詳細グラフ（Total/LM/Seg Loss、学習率）
+   - JSONでの履歴保存
+
 ### 残課題と将来の改善点
 
 1. **SAM2.1の高解像度特徴** ✅ **完了 (2025年8月4日)**
-   - ~~現在: フォールバック処理でダミー特徴を使用~~
-   - **実装完了**: QwenのViT特徴から軽量FPNで高解像度特徴を生成
-   - **技術詳細**: 
-     - HighResFeatureGeneratorクラスを追加
-     - SAM2.1のconv_s0/conv_s1を適用してチャンネル圧縮（256→32/64）
-     - チャンネル次元の不一致問題を解決
-   - **テスト結果**: training_integration_test.pyが正常完了、23.4%の損失減少を確認
+   - QwenのViT特徴から軽量FPNで高解像度特徴を生成
 
 2. **データセット統合の完全実装** ✅ **完了 (2025年8月4日)**
-   - ~~データ処理パイプライン: RefCOCO/VQA/Caption対応のみ~~
-   - **実装完了**: HybridDatasetによる4データセットタイプの統合
-   - **対応データセット**: 
-     - Semantic Segmentation: ADE20K (20,210サンプル), COCOStuff (118,287サンプル)
-     - Referring Segmentation: RefCOCO系 (合計55,885サンプル)
-     - VQA: LLaVA Instruct 150k (157,712サンプル)
-     - Reasoning Segmentation: ReasonSeg (239サンプル)
-   - **技術詳細**:
-     - デュアルストリーム画像処理（Qwen: 448x448, SAM: 1024x1024）
-     - image_grid_thw対応でQwen2.5-VLのマルチ画像RoPE機能を活用
-     - カスタムcollate_fnによる可変長シーケンスの適切なパディング
-     - ResizeLongestSide依存を除去してcv2ベース実装に変更
-   - **テスト結果**: 全データセットで正常動作、バッチ処理も成功
+   - HybridDatasetによる4データセットタイプの統合
 
-3. **高解像度画像対応**
+3. **実データでのトレーニング** ✅ **完了 (2025年8月6日)**
+   - minimal_train.pyによる実データトレーニング実装
+   - 100サンプルで安定した学習を確認（Loss: 19.0→17.4）
+
+4. **高解像度画像対応**
    - 現在: 448×448 (Qwen), 1024×1024 (SAM)でテスト
    - 目標: Qwen2.5-VLの動的解像度（最大16384トークン）活用
+
+5. **EdgeLoss実装** (低優先度)
+   - エッジ認識精度の向上
 
 ## 重要な実装知見
 
@@ -278,4 +302,6 @@ seg_loss = F.binary_cross_entropy_with_logits(pred_masks, gt_masks) + dice_loss
 
 ## 結論
 
-LISA改の実装は、技術的な課題を克服しながら成功裏に完了しました。特にQwen2.5-VLの視覚特徴抽出とSAM2.1の統合において重要な知見が得られ、将来のFoodLMM改開発への道筋が明確になりました。現在の実装は研究・開発用として十分な品質を持ち、さらなる改善の基盤となります。
+LISA改の実装は、技術的な課題を克服しながら成功裏に完了しました。特にQwen2.5-VLの視覚特徴抽出とSAM2.1の統合において重要な知見が得られ、将来のFoodLMM改開発への道筋が明確になりました。
+
+2025年8月6日の更新により、実データでのトレーニングが可能となり、O3推奨の最適化も全て実装されました。現在の実装は研究・開発用として十分な品質を持ち、実用的なファインチューニングの基盤となります。

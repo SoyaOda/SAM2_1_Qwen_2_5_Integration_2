@@ -1,91 +1,170 @@
-(base) oda@DESKTOP-45J3R3T:~/SAM2_1_Qwen_2_5_Integration_2$ python tests/training_integration_test.py
-08/05/2025 16:05:47 - INFO - __main__ - Starting LISA改 Training Integration Tests
-08/05/2025 16:05:47 - INFO - __main__ - ======================================================================
-08/05/2025 16:05:47 - INFO - __main__ - ==================================================
-08/05/2025 16:05:47 - INFO - __main__ - Setting up model with actual weights
-08/05/2025 16:05:47 - INFO - __main__ - ==================================================
-08/05/2025 16:05:47 - INFO - __main__ - Downloading SAM2.1 checkpoint from facebook/sam2.1-hiera-large
-08/05/2025 16:05:47 - INFO - __main__ - SAM2.1 checkpoint already exists at checkpoints/sam2.1_hiera_large.pt
-08/05/2025 16:05:47 - INFO - __main__ - Loading tokenizer and processor
+(base) oda@DESKTOP-45J3R3T:~/SAM2_1_Qwen_2_5_Integration_2$ python minimal_train.py --samples_per_epoch 10 --batch_size 2 --num_epochs 1 --save_steps 5 --debug 2>&1 | tee train_debug.log
+08/06/2025 11:12:44 - INFO - __main__ - モデルとデータセットのセットアップを開始
+08/06/2025 11:12:44 - INFO - __main__ - トークナイザーとプロセッサの準備
+08/06/2025 11:12:44 - DEBUG - urllib3.connectionpool - Starting new HTTPS connection (1): huggingface.co:443
+08/06/2025 11:12:44 - DEBUG - urllib3.connectionpool - https://huggingface.co:443 "HEAD /Qwen/Qwen2.5-VL-3B-Instruct/resolve/main/tokenizer_config.json HTTP/1.1" 307 0
+08/06/2025 11:12:44 - DEBUG - urllib3.connectionpool - https://huggingface.co:443 "HEAD /api/resolve-cache/models/Qwen/Qwen2.5-VL-3B-Instruct/66285546d2b821cf421d4f5eb2576359d3770cd3/tokenizer_config.json HTTP/1.1" 200 0
+08/06/2025 11:12:44 - DEBUG - urllib3.connectionpool - https://huggingface.co:443 "GET /api/models/Qwen/Qwen2.5-VL-3B-Instruct/tree/main/additional_chat_templates?recursive=False&expand=False HTTP/1.1" 404 64
+08/06/2025 11:12:45 - DEBUG - urllib3.connectionpool - https://huggingface.co:443 "HEAD /Qwen/Qwen2.5-VL-3B-Instruct/resolve/main/processor_config.json HTTP/1.1" 404 0
+08/06/2025 11:12:45 - DEBUG - urllib3.connectionpool - https://huggingface.co:443 "HEAD /Qwen/Qwen2.5-VL-3B-Instruct/resolve/main/preprocessor_config.json HTTP/1.1" 307 0
+08/06/2025 11:12:45 - DEBUG - urllib3.connectionpool - https://huggingface.co:443 "HEAD /api/resolve-cache/models/Qwen/Qwen2.5-VL-3B-Instruct/66285546d2b821cf421d4f5eb2576359d3770cd3/preprocessor_config.json HTTP/1.1" 200 0
+08/06/2025 11:12:45 - DEBUG - urllib3.connectionpool - https://huggingface.co:443 "HEAD /Qwen/Qwen2.5-VL-3B-Instruct/resolve/main/preprocessor_config.json HTTP/1.1" 307 0
+08/06/2025 11:12:45 - DEBUG - urllib3.connectionpool - https://huggingface.co:443 "HEAD /api/resolve-cache/models/Qwen/Qwen2.5-VL-3B-Instruct/66285546d2b821cf421d4f5eb2576359d3770cd3/preprocessor_config.json HTTP/1.1" 200 0
+08/06/2025 11:12:45 - DEBUG - urllib3.connectionpool - https://huggingface.co:443 "HEAD /Qwen/Qwen2.5-VL-3B-Instruct/resolve/main/preprocessor_config.json HTTP/1.1" 307 0
+08/06/2025 11:12:45 - DEBUG - urllib3.connectionpool - https://huggingface.co:443 "HEAD /api/resolve-cache/models/Qwen/Qwen2.5-VL-3B-Instruct/66285546d2b821cf421d4f5eb2576359d3770cd3/preprocessor_config.json HTTP/1.1" 200 0
+The image processor of type `Qwen2VLImageProcessor` is now loaded as a fast processor by default, even if the model checkpoint was saved with a slow processor. This is a breaking change and may produce slightly different outputs. To continue using the slow processor, instantiate this class with `use_fast=False`. Note that this behavior will be extended to all models in a future release.
+08/06/2025 11:12:46 - DEBUG - urllib3.connectionpool - https://huggingface.co:443 "HEAD /Qwen/Qwen2.5-VL-3B-Instruct/resolve/main/tokenizer_config.json HTTP/1.1" 307 0
+08/06/2025 11:12:46 - DEBUG - urllib3.connectionpool - https://huggingface.co:443 "HEAD /api/resolve-cache/models/Qwen/Qwen2.5-VL-3B-Instruct/66285546d2b821cf421d4f5eb2576359d3770cd3/tokenizer_config.json HTTP/1.1" 200 0
+08/06/2025 11:12:46 - DEBUG - urllib3.connectionpool - https://huggingface.co:443 "GET /api/models/Qwen/Qwen2.5-VL-3B-Instruct/tree/main/additional_chat_templates?recursive=False&expand=False HTTP/1.1" 404 64
+08/06/2025 11:12:46 - DEBUG - urllib3.connectionpool - https://huggingface.co:443 "HEAD /Qwen/Qwen2.5-VL-3B-Instruct/resolve/main/video_preprocessor_config.json HTTP/1.1" 404 0
+08/06/2025 11:12:46 - DEBUG - urllib3.connectionpool - https://huggingface.co:443 "HEAD /Qwen/Qwen2.5-VL-3B-Instruct/resolve/main/preprocessor_config.json HTTP/1.1" 307 0
+08/06/2025 11:12:46 - DEBUG - urllib3.connectionpool - https://huggingface.co:443 "HEAD /api/resolve-cache/models/Qwen/Qwen2.5-VL-3B-Instruct/66285546d2b821cf421d4f5eb2576359d3770cd3/preprocessor_config.json HTTP/1.1" 200 0
+You have video processor config saved in `preprocessor.json` file which is deprecated. Video processor configs should be saved in their own `video_preprocessor.json` file. You can rename the file or load and save the processor back which renames it automatically. Loading from `preprocessor.json` will be removed in v5.0.
+08/06/2025 11:12:47 - DEBUG - urllib3.connectionpool - https://huggingface.co:443 "GET /api/models/Qwen/Qwen2.5-VL-3B-Instruct/tree/main/additional_chat_templates?recursive=False&expand=False HTTP/1.1" 404 64
+08/06/2025 11:12:47 - DEBUG - urllib3.connectionpool - https://huggingface.co:443 "HEAD /Qwen/Qwen2.5-VL-3B-Instruct/resolve/main/processor_config.json HTTP/1.1" 404 0
+08/06/2025 11:12:47 - DEBUG - urllib3.connectionpool - https://huggingface.co:443 "HEAD /Qwen/Qwen2.5-VL-3B-Instruct/resolve/main/chat_template.json HTTP/1.1" 307 0
+08/06/2025 11:12:47 - DEBUG - urllib3.connectionpool - https://huggingface.co:443 "HEAD /api/resolve-cache/models/Qwen/Qwen2.5-VL-3B-Instruct/66285546d2b821cf421d4f5eb2576359d3770cd3/chat_template.json HTTP/1.1" 200 0
+08/06/2025 11:12:47 - DEBUG - urllib3.connectionpool - https://huggingface.co:443 "HEAD /Qwen/Qwen2.5-VL-3B-Instruct/resolve/main/chat_template.jinja HTTP/1.1" 404 0
+08/06/2025 11:12:47 - DEBUG - urllib3.connectionpool - https://huggingface.co:443 "HEAD /Qwen/Qwen2.5-VL-3B-Instruct/resolve/main/audio_tokenizer_config.json HTTP/1.1" 404 0
+08/06/2025 11:12:48 - INFO - __main__ - LISA改モデルの読み込み
+08/06/2025 11:12:48 - DEBUG - urllib3.connectionpool - https://huggingface.co:443 "HEAD /Qwen/Qwen2.5-VL-3B-Instruct/resolve/main/config.json HTTP/1.1" 307 0
+08/06/2025 11:12:48 - DEBUG - urllib3.connectionpool - https://huggingface.co:443 "HEAD /api/resolve-cache/models/Qwen/Qwen2.5-VL-3B-Instruct/66285546d2b821cf421d4f5eb2576359d3770cd3/config.json HTTP/1.1" 200 0
+08/06/2025 11:12:48 - DEBUG - urllib3.connectionpool - https://huggingface.co:443 "HEAD /Qwen/Qwen2.5-VL-3B-Instruct/resolve/main/config.json HTTP/1.1" 307 0
+08/06/2025 11:12:48 - DEBUG - urllib3.connectionpool - https://huggingface.co:443 "HEAD /api/resolve-cache/models/Qwen/Qwen2.5-VL-3B-Instruct/66285546d2b821cf421d4f5eb2576359d3770cd3/config.json HTTP/1.1" 200 0
+設定: LISAConfig を使用
 Added 1 special tokens to tokenizer
 Tokenizer prepared with vocab size: 151666
 Special tokens: {'<SEG>': 151665}
-The image processor of type `Qwen2VLImageProcessor` is now loaded as a fast processor by default, even if the model checkpoint was saved with a slow processor. This is a breaking change and may produce slightly different outputs. To continue using the slow processor, instantiate this class with `use_fast=False`. Note that this behavior will be extended to all models in a future release.
-You have video processor config saved in `preprocessor.json` file which is deprecated. Video processor configs should be saved in their own `video_preprocessor.json` file. You can rename the file or load and save the processor back which renames it automatically. Loading from `preprocessor.json` will be removed in v5.0.
-08/05/2025 16:05:51 - INFO - __main__ - Loading LISA model
-Loading checkpoint shards: 100%|███████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 2/2 [00:01<00:00,  1.03it/s]
-08/05/2025 16:05:56 - INFO - root - Loaded checkpoint sucessfully
-08/05/2025 16:05:57 - INFO - __main__ - Setting up LoRA
-08/05/2025 16:05:57 - INFO - __main__ - Total parameters: 3,982,555,058
-08/05/2025 16:05:57 - INFO - __main__ - Trainable parameters: 223,710,753
-08/05/2025 16:05:57 - INFO - __main__ - Percentage trainable: 5.62%
-08/05/2025 16:05:57 - INFO - __main__ -
-Creating dummy training dataset
-08/05/2025 16:05:57 - INFO - __main__ - ==================================================
-08/05/2025 16:05:57 - INFO - __main__ - Testing gradient flow
-08/05/2025 16:05:57 - INFO - __main__ - ==================================================
-You're using a Qwen2TokenizerFast tokenizer. Please note that with a fast tokenizer, using the `__call__` method is faster than using a method to encode the text followed by a call to the `pad` method to get a padded encoding.
-08/05/2025 16:05:57 - INFO - __main__ - Initial losses - Total: 18.6668, LM: 18.1250, Seg: 1.0835
-08/05/2025 16:05:57 - INFO - __main__ - SEG token ID: 151665
-08/05/2025 16:05:57 - INFO - __main__ - Batches with SEG in labels: 2/2
-08/05/2025 16:05:57 - INFO - __main__ - Sample decoded text: <|im_start|>system
-You are a helpful assistant.<|im_end|>
-<|im_start|>user
-<|vision_start|><|image_pad|><|image_pad|><|image_pad|><|image_pad|><|image_pad|><|image_pad|><|image_pad|><|image_pad|><|ima...
-08/05/2025 16:05:58 - INFO - __main__ -
-Gradient statistics:
-08/05/2025 16:05:58 - INFO - __main__ -   adapter: avg_norm=0.088918, has_nan=False
-08/05/2025 16:05:58 - INFO - __main__ -   prompt_proj: avg_norm=0.147114, has_nan=False
-08/05/2025 16:05:58 - INFO - __main__ -   lora: avg_norm=0.194275, has_nan=False
-08/05/2025 16:05:58 - INFO - __main__ - ✓ Gradient flow test passed
-08/05/2025 16:05:58 - INFO - __main__ - ==================================================
-08/05/2025 16:05:58 - INFO - __main__ - Testing training loop for 3 epochs
-08/05/2025 16:05:58 - INFO - __main__ - ==================================================
-Epoch 1/3: 100%|███████████████████████████████████████████████████████████████████████████████████████████████| 10/10 [00:04<00:00,  2.43it/s, loss=17.2785, lm=16.7500, seg=1.0571]
-08/05/2025 16:06:02 - INFO - __main__ -
-Epoch 1 - Avg Loss: 18.4139, LM: 17.8750, Seg: 1.0779
-Epoch 2/3: 100%|███████████████████████████████████████████████████████████████████████████████████████████████| 10/10 [00:04<00:00,  2.45it/s, loss=15.1814, lm=14.6875, seg=0.9878]
-08/05/2025 16:06:06 - INFO - __main__ -
-Epoch 2 - Avg Loss: 16.6507, LM: 16.1562, Seg: 0.9888
-Epoch 3/3: 100%|███████████████████████████████████████████████████████████████████████████████████████████████| 10/10 [00:04<00:00,  2.45it/s, loss=12.0916, lm=11.7500, seg=0.6833]
-08/05/2025 16:06:10 - INFO - __main__ -
-Epoch 3 - Avg Loss: 14.2650, LM: 13.8375, Seg: 0.8549
-08/05/2025 16:06:10 - INFO - __main__ -
-==================================================
-08/05/2025 16:06:10 - INFO - __main__ - Loss progression analysis:
-08/05/2025 16:06:10 - INFO - __main__ - Epoch 1 → 2:
-08/05/2025 16:06:10 - INFO - __main__ -   Total loss change: -1.7633
-08/05/2025 16:06:10 - INFO - __main__ -   LM loss change: -1.7188
-08/05/2025 16:06:10 - INFO - __main__ -   Seg loss change: -0.0891
-08/05/2025 16:06:10 - INFO - __main__ - Epoch 2 → 3:
-08/05/2025 16:06:10 - INFO - __main__ -   Total loss change: -2.3857
-08/05/2025 16:06:10 - INFO - __main__ -   LM loss change: -2.3187
-08/05/2025 16:06:10 - INFO - __main__ -   Seg loss change: -0.1339
-08/05/2025 16:06:10 - INFO - __main__ -
-Overall loss decrease: 4.1490 (22.5%)
-08/05/2025 16:06:10 - INFO - __main__ - Loss plot saved to test_outputs/training_losses.png
-08/05/2025 16:06:10 - INFO - __main__ - ✓ Loss is decreasing - training is working!
-08/05/2025 16:06:10 - INFO - __main__ - ==================================================
-08/05/2025 16:06:10 - INFO - __main__ - Testing model save/load
-08/05/2025 16:06:10 - INFO - __main__ - ==================================================
-08/05/2025 16:06:11 - INFO - __main__ - Model saved to /tmp/tmpjf3csjg4/test_model
-08/05/2025 16:06:11 - INFO - __main__ - Saved files: ['qwen', 'text_prompt_proj.pt', 'config.json', 'high_res_generator.pt', 'chat_template.jinja', 'special_tokens_map.json', 'merges.txt', 'image_adapter.pt', 'tokenizer_config.json', 'added_tokens.json', 'tokenizer.json', 'config.pt', 'vocab.json']
-Loading checkpoint shards: 100%|███████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 2/2 [00:01<00:00,  1.08it/s]
-08/05/2025 16:06:16 - INFO - root - Loaded checkpoint sucessfully
-Fetching 2 files: 100%|██████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 2/2 [00:00<00:00, 7102.97it/s]
-Loading checkpoint shards: 100%|███████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 2/2 [00:02<00:00,  1.23s/it]
-08/05/2025 16:06:25 - INFO - __main__ - ✓ Model loaded successfully
-08/05/2025 16:06:25 - INFO - __main__ - Testing model save/load with proper inputs...
-08/05/2025 16:06:25 - INFO - __main__ - Max difference between logits: 7.750000
-08/05/2025 16:06:25 - INFO - __main__ - ✓ Model inference after loading successful
-08/05/2025 16:06:26 - INFO - __main__ -
-======================================================================
-08/05/2025 16:06:26 - INFO - __main__ - ✅ ALL TRAINING TESTS PASSED!
-08/05/2025 16:06:26 - INFO - __main__ - ======================================================================
-08/05/2025 16:06:26 - INFO - __main__ -
-Training Test Summary:
-08/05/2025 16:06:26 - INFO - __main__ - - Gradient flow: ✓ Confirmed
-08/05/2025 16:06:26 - INFO - __main__ - - Loss reduction: ✓ 22.5% decrease
-08/05/2025 16:06:26 - INFO - __main__ - - Model save/load: ✓ Working
-08/05/2025 16:06:26 - INFO - __main__ - - Device used: cuda
+Loading checkpoint shards: 100%|██████████| 2/2 [00:17<00:00,  8.62s/it]
+08/06/2025 11:13:06 - DEBUG - urllib3.connectionpool - https://huggingface.co:443 "HEAD /Qwen/Qwen2.5-VL-3B-Instruct/resolve/main/generation_config.json HTTP/1.1" 307 0
+08/06/2025 11:13:06 - DEBUG - urllib3.connectionpool - https://huggingface.co:443 "HEAD /api/resolve-cache/models/Qwen/Qwen2.5-VL-3B-Instruct/66285546d2b821cf421d4f5eb2576359d3770cd3/generation_config.json HTTP/1.1" 200 0
+08/06/2025 11:13:06 - DEBUG - urllib3.connectionpool - https://huggingface.co:443 "HEAD /Qwen/Qwen2.5-VL-3B-Instruct/resolve/main/custom_generate/generate.py HTTP/1.1" 404 0
+08/06/2025 11:13:06 - DEBUG - urllib3.connectionpool - https://huggingface.co:443 "HEAD /facebook/sam2.1-hiera-large/resolve/main/sam2.1_hiera_large.pt HTTP/1.1" 302 0
+08/06/2025 11:13:10 - INFO - root - Loaded checkpoint sucessfully
+08/06/2025 11:13:11 - INFO - __main__ - LoRAの設定
+08/06/2025 11:13:11 - DEBUG - bitsandbytes.cextension - Loading bitsandbytes native library from: /home/oda/miniconda3/lib/python3.13/site-packages/bitsandbytes/libbitsandbytes_cuda124.so
+08/06/2025 11:13:11 - INFO - __main__ - 総パラメータ数: 3,983,875,506
+08/06/2025 11:13:11 - INFO - __main__ - 学習可能パラメータ数: 225,031,201
+08/06/2025 11:13:11 - INFO - __main__ - 学習可能パラメータの割合: 5.65%
+08/06/2025 11:13:11 - INFO - __main__ - データセットの作成
+08/06/2025 11:13:11 - INFO - __main__ - データセットディレクトリ: /mnt/h/download/LISA-dataset/data/dataset
+08/06/2025 11:20:15 - INFO - __main__ - データセットサイズ: 10
+08/06/2025 11:20:15 - INFO - __main__ - バッチ数: 5
+08/06/2025 11:20:15 - INFO - __main__ - 総ステップ数: 2
+08/06/2025 11:20:15 - INFO - __main__ - ウォームアップステップ数: 0
+08/06/2025 11:20:15 - INFO - __main__ - 訓練開始
+<SEG>トークンセットアップ完了:
+  - 追加されたトークン数: 1
+  - <SEG>トークンID: 151665
+HybridDataset初期化:
+  - ベースディレクトリ: /mnt/h/download/LISA-dataset/data/dataset
+  - Qwen画像サイズ: 448
+  - SAM画像サイズ: 1024
+  - 対象データセット: ['sem_seg']
+  - Semantic Segmentation: ade20k||cocostuff
+ade20k: 20210 サンプル
+cocostuff: 118287 サンプル
+有効なデータセット: ['ade20k', 'cocostuff']
+✅ HybridDataset初期化完了: 1 データセット
+Epoch 1/1:   0%|          | 0/5 [00:00<?, ?it/s]08/06/2025 11:20:15 - DEBUG - PIL.PngImagePlugin - STREAM b'IHDR' 16 13
+08/06/2025 11:20:15 - DEBUG - PIL.PngImagePlugin - STREAM b'IDAT' 41 6251
+08/06/2025 11:20:15 - DEBUG - PIL.PngImagePlugin - STREAM b'IHDR' 16 13
+08/06/2025 11:20:15 - DEBUG - PIL.PngImagePlugin - STREAM b'tIME' 41 7
+08/06/2025 11:20:15 - DEBUG - PIL.PngImagePlugin - b'tIME' 41 7 (unknown)
+08/06/2025 11:20:15 - DEBUG - PIL.PngImagePlugin - STREAM b'IDAT' 60 1715
+08/06/2025 11:20:15 - DEBUG - __main__ - Batch 0: img_tokens=1024, txt_tokens=293, total=1317
+08/06/2025 11:20:15 - DEBUG - __main__ - pixel_values shape: torch.Size([2, 1024, 1176])
+08/06/2025 11:20:15 - DEBUG - __main__ - input_ids shape: torch.Size([2, 293])
+08/06/2025 11:20:15 - DEBUG - __main__ - image_grid_thw: tensor([[ 1, 32, 32],
+        [ 1, 32, 32]], device='cuda:0')
+08/06/2025 11:20:18 - DEBUG - __main__ - pred_mask shape: torch.Size([1, 1024, 1176])
+08/06/2025 11:20:18 - DEBUG - __main__ - gt_mask shape: torch.Size([1, 1024, 1024])
+Epoch 1/1:  20%|██        | 1/5 [00:03<00:13,  3.43s/it, loss=18.9755, lm=17.6250, seg=1.3505, lr=1.00e-03]08/06/2025 11:20:18 - DEBUG - PIL.PngImagePlugin - STREAM b'IHDR' 16 13
+08/06/2025 11:20:18 - DEBUG - PIL.PngImagePlugin - STREAM b'tIME' 41 7
+08/06/2025 11:20:18 - DEBUG - PIL.PngImagePlugin - b'tIME' 41 7 (unknown)
+08/06/2025 11:20:18 - DEBUG - PIL.PngImagePlugin - STREAM b'IDAT' 60 1912
+08/06/2025 11:20:18 - DEBUG - PIL.PngImagePlugin - STREAM b'IHDR' 16 13
+08/06/2025 11:20:18 - DEBUG - PIL.PngImagePlugin - STREAM b'tIME' 41 7
+08/06/2025 11:20:18 - DEBUG - PIL.PngImagePlugin - b'tIME' 41 7 (unknown)
+08/06/2025 11:20:18 - DEBUG - PIL.PngImagePlugin - STREAM b'IDAT' 60 912
+08/06/2025 11:20:18 - DEBUG - __main__ - Batch 1: img_tokens=1024, txt_tokens=295, total=1319
+08/06/2025 11:20:18 - DEBUG - __main__ - pixel_values shape: torch.Size([2, 1024, 1176])
+08/06/2025 11:20:18 - DEBUG - __main__ - input_ids shape: torch.Size([2, 295])
+08/06/2025 11:20:18 - DEBUG - __main__ - image_grid_thw: tensor([[ 1, 32, 32],
+        [ 1, 32, 32]], device='cuda:0')
+08/06/2025 11:20:19 - DEBUG - __main__ - pred_mask shape: torch.Size([1, 1024, 1176])
+08/06/2025 11:20:19 - DEBUG - __main__ - gt_mask shape: torch.Size([1, 1024, 1024])
+Epoch 1/1:  40%|████      | 2/5 [00:04<00:05,  1.85s/it, loss=18.6465, lm=17.2500, seg=1.3965, lr=1.00e-03]08/06/2025 11:20:19 - DEBUG - PIL.PngImagePlugin - STREAM b'IHDR' 16 13
+08/06/2025 11:20:19 - DEBUG - PIL.PngImagePlugin - STREAM b'tIME' 41 7
+08/06/2025 11:20:19 - DEBUG - PIL.PngImagePlugin - b'tIME' 41 7 (unknown)
+08/06/2025 11:20:19 - DEBUG - PIL.PngImagePlugin - STREAM b'IDAT' 60 1672
+08/06/2025 11:20:19 - DEBUG - PIL.PngImagePlugin - STREAM b'IHDR' 16 13
+08/06/2025 11:20:19 - DEBUG - PIL.PngImagePlugin - STREAM b'IDAT' 41 5964
+08/06/2025 11:20:19 - DEBUG - __main__ - Batch 2: img_tokens=1024, txt_tokens=293, total=1317
+08/06/2025 11:20:19 - DEBUG - __main__ - pixel_values shape: torch.Size([2, 1024, 1176])
+08/06/2025 11:20:19 - DEBUG - __main__ - input_ids shape: torch.Size([2, 293])
+08/06/2025 11:20:19 - DEBUG - __main__ - image_grid_thw: tensor([[ 1, 32, 32],
+        [ 1, 32, 32]], device='cuda:0')
+08/06/2025 11:20:19 - DEBUG - __main__ - pred_mask shape: torch.Size([1, 1024, 1176])
+08/06/2025 11:20:19 - DEBUG - __main__ - gt_mask shape: torch.Size([1, 1024, 1024])
+Epoch 1/1:  60%|██████    | 3/5 [00:04<00:02,  1.34s/it, loss=19.0741, lm=17.7500, seg=1.3241, lr=1.00e-03]08/06/2025 11:20:20 - DEBUG - PIL.PngImagePlugin - STREAM b'IHDR' 16 13
+08/06/2025 11:20:20 - DEBUG - PIL.PngImagePlugin - STREAM b'IDAT' 41 3681
+08/06/2025 11:20:20 - DEBUG - PIL.PngImagePlugin - STREAM b'IHDR' 16 13
+08/06/2025 11:20:20 - DEBUG - PIL.PngImagePlugin - STREAM b'IDAT' 41 4067
+08/06/2025 11:20:20 - DEBUG - __main__ - Batch 3: img_tokens=1024, txt_tokens=289, total=1313
+08/06/2025 11:20:20 - DEBUG - __main__ - pixel_values shape: torch.Size([2, 1024, 1176])
+08/06/2025 11:20:20 - DEBUG - __main__ - input_ids shape: torch.Size([2, 289])
+08/06/2025 11:20:20 - DEBUG - __main__ - image_grid_thw: tensor([[ 1, 32, 32],
+        [ 1, 32, 32]], device='cuda:0')
+08/06/2025 11:20:20 - DEBUG - __main__ - pred_mask shape: torch.Size([1, 1024, 1176])
+08/06/2025 11:20:20 - DEBUG - __main__ - gt_mask shape: torch.Size([1, 1024, 1024])
+Epoch 1/1:  80%|████████  | 4/5 [00:05<00:01,  1.15s/it, loss=18.7060, lm=17.3750, seg=1.3310, lr=5.00e-04]08/06/2025 11:20:20 - DEBUG - PIL.PngImagePlugin - STREAM b'IHDR' 16 13
+08/06/2025 11:20:20 - DEBUG - PIL.PngImagePlugin - STREAM b'tIME' 41 7
+08/06/2025 11:20:20 - DEBUG - PIL.PngImagePlugin - b'tIME' 41 7 (unknown)
+08/06/2025 11:20:20 - DEBUG - PIL.PngImagePlugin - STREAM b'IDAT' 60 2595
+08/06/2025 11:20:20 - DEBUG - PIL.PngImagePlugin - STREAM b'IHDR' 16 13
+08/06/2025 11:20:20 - DEBUG - PIL.PngImagePlugin - STREAM b'IDAT' 41 6528
+08/06/2025 11:20:20 - DEBUG - __main__ - Batch 4: img_tokens=768, txt_tokens=226, total=994
+08/06/2025 11:20:20 - DEBUG - __main__ - pixel_values shape: torch.Size([2, 768, 1176])
+08/06/2025 11:20:20 - DEBUG - __main__ - input_ids shape: torch.Size([2, 226])
+08/06/2025 11:20:20 - DEBUG - __main__ - image_grid_thw: tensor([[ 1, 24, 32],
+        [ 1, 24, 32]], device='cuda:0')
+08/06/2025 11:20:21 - DEBUG - __main__ - pred_mask shape: torch.Size([1, 768, 1176])
+08/06/2025 11:20:21 - DEBUG - __main__ - gt_mask shape: torch.Size([1, 1024, 1024])
+Epoch 1/1:  80%|████████  | 4/5 [00:06<00:01,  1.15s/it, loss=18.5080, lm=17.2500, seg=1.2580, lr=0.00e+00]08/06/2025 11:20:21 - DEBUG - urllib3.connectionpool - Resetting dropped connection: huggingface.co
+08/06/2025 11:20:21 - DEBUG - urllib3.connectionpool - https://huggingface.co:443 "HEAD /Qwen/Qwen2.5-VL-3B-Instruct/resolve/main/config.json HTTP/1.1" 307 0
+08/06/2025 11:20:21 - DEBUG - urllib3.connectionpool - https://huggingface.co:443 "HEAD /api/resolve-cache/models/Qwen/Qwen2.5-VL-3B-Instruct/66285546d2b821cf421d4f5eb2576359d3770cd3/config.json HTTP/1.1" 200 0
+08/06/2025 11:20:21 - DEBUG - urllib3.connectionpool - https://huggingface.co:443 "HEAD /Qwen/Qwen2.5-VL-3B-Instruct/resolve/main/config.json HTTP/1.1" 307 0
+08/06/2025 11:20:21 - DEBUG - urllib3.connectionpool - https://huggingface.co:443 "HEAD /api/resolve-cache/models/Qwen/Qwen2.5-VL-3B-Instruct/66285546d2b821cf421d4f5eb2576359d3770cd3/config.json HTTP/1.1" 200 0
+08/06/2025 11:20:22 - INFO - __main__ - チェックポイント保存: outputs/minimal_train_20250806_111244/checkpoints/step_5
+Epoch 1/1: 100%|██████████| 5/5 [00:07<00:00,  1.42s/it, loss=18.5080, lm=17.2500, seg=1.2580, lr=0.00e+00]
+08/06/2025 11:20:22 - INFO - __main__ - Epoch 1 - 平均損失: 18.7820, LM: 17.4500, Seg: 1.3320
+08/06/2025 11:20:22 - DEBUG - urllib3.connectionpool - https://huggingface.co:443 "HEAD /Qwen/Qwen2.5-VL-3B-Instruct/resolve/main/config.json HTTP/1.1" 307 0
+08/06/2025 11:20:22 - DEBUG - urllib3.connectionpool - https://huggingface.co:443 "HEAD /api/resolve-cache/models/Qwen/Qwen2.5-VL-3B-Instruct/66285546d2b821cf421d4f5eb2576359d3770cd3/config.json HTTP/1.1" 200 0
+08/06/2025 11:20:22 - DEBUG - urllib3.connectionpool - https://huggingface.co:443 "HEAD /Qwen/Qwen2.5-VL-3B-Instruct/resolve/main/config.json HTTP/1.1" 307 0
+08/06/2025 11:20:22 - DEBUG - urllib3.connectionpool - https://huggingface.co:443 "HEAD /api/resolve-cache/models/Qwen/Qwen2.5-VL-3B-Instruct/66285546d2b821cf421d4f5eb2576359d3770cd3/config.json HTTP/1.1" 200 0
+08/06/2025 11:20:22 - INFO - __main__ - チェックポイント保存: outputs/minimal_train_20250806_111244/checkpoints/best
+08/06/2025 11:20:22 - INFO - __main__ - ベストモデル更新: 損失 = 18.7820
+08/06/2025 11:20:23 - DEBUG - urllib3.connectionpool - https://huggingface.co:443 "HEAD /Qwen/Qwen2.5-VL-3B-Instruct/resolve/main/config.json HTTP/1.1" 307 0
+08/06/2025 11:20:23 - DEBUG - urllib3.connectionpool - https://huggingface.co:443 "HEAD /api/resolve-cache/models/Qwen/Qwen2.5-VL-3B-Instruct/66285546d2b821cf421d4f5eb2576359d3770cd3/config.json HTTP/1.1" 200 0
+08/06/2025 11:20:23 - DEBUG - urllib3.connectionpool - https://huggingface.co:443 "HEAD /Qwen/Qwen2.5-VL-3B-Instruct/resolve/main/config.json HTTP/1.1" 307 0
+08/06/2025 11:20:23 - DEBUG - urllib3.connectionpool - https://huggingface.co:443 "HEAD /api/resolve-cache/models/Qwen/Qwen2.5-VL-3B-Instruct/66285546d2b821cf421d4f5eb2576359d3770cd3/config.json HTTP/1.1" 200 0
+08/06/2025 11:20:23 - INFO - __main__ - チェックポイント保存: outputs/minimal_train_20250806_111244/checkpoints/epoch_1
+08/06/2025 11:20:23 - INFO - __main__ - 訓練完了
+08/06/2025 11:20:23 - INFO - __main__ - ベスト損失: 18.7820
+08/06/2025 11:20:23 - DEBUG - urllib3.connectionpool - https://huggingface.co:443 "HEAD /Qwen/Qwen2.5-VL-3B-Instruct/resolve/main/config.json HTTP/1.1" 307 0
+08/06/2025 11:20:23 - DEBUG - urllib3.connectionpool - https://huggingface.co:443 "HEAD /api/resolve-cache/models/Qwen/Qwen2.5-VL-3B-Instruct/66285546d2b821cf421d4f5eb2576359d3770cd3/config.json HTTP/1.1" 200 0
+08/06/2025 11:20:24 - DEBUG - urllib3.connectionpool - https://huggingface.co:443 "HEAD /Qwen/Qwen2.5-VL-3B-Instruct/resolve/main/config.json HTTP/1.1" 307 0
+08/06/2025 11:20:24 - DEBUG - urllib3.connectionpool - https://huggingface.co:443 "HEAD /api/resolve-cache/models/Qwen/Qwen2.5-VL-3B-Instruct/66285546d2b821cf421d4f5eb2576359d3770cd3/config.json HTTP/1.1" 200 0
+08/06/2025 11:20:24 - INFO - __main__ - チェックポイント保存: outputs/minimal_train_20250806_111244/checkpoints/final
+[Batch Collator] Unified grid: 32×32 = 1024 patches (256 tokens)
+  Original sample grids: ['(32,24=768)', '(28,32=896)']
+[Batch Collator] Unified grid: 32×32 = 1024 patches (256 tokens)
+  Original sample grids: ['(24,32=768)', '(32,32=1024)']
+[Batch Collator] Unified grid: 32×32 = 1024 patches (256 tokens)
+  Original sample grids: ['(32,32=1024)', '(32,22=704)']
+[Batch Collator] Unified grid: 32×32 = 1024 patches (256 tokens)
+  Original sample grids: ['(32,24=768)', '(24,32=768)']
+[Batch Collator] Unified grid: 24×32 = 768 patches (192 tokens)
+  Original sample grids: ['(24,32=768)', '(22,32=704)']
 (base) oda@DESKTOP-45J3R3T:~/SAM2_1_Qwen_2_5_Integration_2$

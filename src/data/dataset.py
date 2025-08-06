@@ -719,7 +719,7 @@ class HybridDataset(torch.utils.data.Dataset):
             'seg_token_mask': seg_token_mask,
             'image_path': image_path if 'image_path' in locals() else None,
             'text_prompt': text_prompt,  # 追加: collate_fn用
-            'image_grid_thw': image_grid_thw if 'image_grid_thw' in locals() else None,  # Qwen2.5-VL用
+            'image_grid_thw': image_grid_thw if image_grid_thw is not None else None,  # Qwen2.5-VL用
             # オリジナルLISAとの互換性のための追加フィールド
             'resize': resize if 'resize' in locals() else None,
             'questions': questions if 'questions' in locals() else None,

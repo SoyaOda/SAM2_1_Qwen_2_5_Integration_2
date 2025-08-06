@@ -214,7 +214,7 @@ class LISA_Model(nn.Module):
         self.text_prompt_proj = TextPromptProjector(
             in_dim=config.qwen_hidden_size,
             out_dim=config.text_prompt_out_dim,
-            use_mlp=False  # Start with linear projection
+            use_mlp=True  # O3推奨: 2層MLP + LayerNormでマッチング精度向上
         ).to(dtype=model_dtype)
         
         # Initialize high-resolution feature generator
