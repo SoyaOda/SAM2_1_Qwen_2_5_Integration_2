@@ -41,3 +41,7 @@ wandb/
 
 # トレーニングの一時ファイル
 train_debug.log
+
+# 環境変数ファイル
+.env
+.env.local

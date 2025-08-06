@@ -144,6 +144,27 @@ python minimal_train.py \
 - `--save_steps`: チェックポイント保存間隔（デフォルト: 100）
 - `--use_wandb`: WandB使用フラグ
 - `--wandb_project`: WandBプロジェクト名
+- `--debug`: デバッグモード有効化
+
+## WandB統合
+
+### 自動設定
+`--use_wandb`フラグを使用すると、自動的にWandBが有効になります：
+```bash
+python minimal_train.py --use_wandb --wandb_project my-project
+```
+
+APIキーは自動的に設定されます（環境変数で上書き可能）。
+
+### 手動設定（推奨）
+```bash
+# 環境変数で設定
+export WANDB_API_KEY=your_api_key_here
+
+# または .env ファイルを作成
+cp .env.example .env
+# .env ファイルを編集してAPIキーを設定
+```
 
 ## 出力構造
 

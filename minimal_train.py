@@ -622,6 +622,11 @@ def main():
     
     # WandBの初期化
     if args.use_wandb:
+        # 環境変数からAPIキーを設定（なければデフォルトを使用）
+        import os
+        if 'WANDB_API_KEY' not in os.environ:
+            os.environ['WANDB_API_KEY'] = 'a389f0d40902815f4eaf9f4dd9e298b722db36e9'
+        
         wandb.init(project=args.wandb_project, config=vars(args))
     
     # 訓練の実行
