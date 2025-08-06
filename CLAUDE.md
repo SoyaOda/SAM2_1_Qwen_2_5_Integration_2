@@ -44,13 +44,11 @@ Web searchの際は、必ずo3-query MCPを利用すること！
 - md_files/dataset_implementation_record_20250805.md
 
 ○走るのが確認されたScript（関連Scriptも適宜読んで理解すること）
-- tests/training_integration_test.py
-- tests/visualize_preprocessing.py
+- minimal_train.py
+
 
 ②本番タスク
-実際のデータを使ってMinimalにTrainingするscriptを作って
-
-※まずは一つの種類のデータ（SemSegなど）にフォーカスし、それでTrainはりし終えること確認できたら全ての種類のデータで
+md_files/current_implementation_analysis.mdが現状の動的解像度関連の実装のまとめであるので、理解して、md_files/current/o3_spec3.mdに沿って修正・実装を進めて 
 
 ※実装の際に注意すること
 ・自信のない部分は適宜正規（Qwen2.5-VL(3B), SAM2.1, Huggingface, Pytorchなど公式の実装）の実装をWebでしらべながら予想や自前の実装を少なくして実装すること
