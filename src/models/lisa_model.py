@@ -20,6 +20,7 @@ from transformers import (
 from sam2.sam2_image_predictor import SAM2ImagePredictor
 
 from .adapters import ImageFeatureAdapter, TextPromptProjector
+from .token_fpn import TokenFPN
 from ..config import LISAConfig
 
 
@@ -243,12 +244,29 @@ class LISA_Model(nn.Module):
             use_mlp=True  # O3推奨: 2層MLP + LayerNormでマッチング精度向上
         ).to(device=model_device, dtype=model_dtype)
         
-        # Initialize high-resolution feature generator
-        # Input is already transformed by image_adapter to sam_channels
-        self.high_res_generator = HighResFeatureGenerator(
-            in_channels=config.sam_image_embedding_dim,  # Already 256 after adapter
-            sam_channels=config.sam_image_embedding_dim
-        ).to(device=model_device, dtype=model_dtype)
+        # Initialize Token-FPN for multi-scale feature extraction
+        # Token-FPNを使用するかどうかの設定
+        self.use_token_fpn = getattr(config, 'use_token_fpn', True)
+        
+        if self.use_token_fpn:
+            # Token-FPNを初期化（Qwen中間層からのマルチスケール特徴抽出）
+            self.token_fpn = TokenFPN(
+                in_channels=1280,  # Qwen2.5-VL-3Bの中間層チャネル数
+                out_channels=config.sam_image_embedding_dim,  # 256
+                layer_indices=getattr(config, 'fpn_layer_indices', [8, 16, 24, 31]),
+                sam_image_size=config.sam_image_size
+            ).to(device=model_device, dtype=model_dtype)
+            
+            # Token-FPNのフックを登録
+            self.token_fpn.register_hooks(self.qwen)
+            logger.info("Token-FPN initialized with intermediate layer extraction")
+        else:
+            # 従来のHighResFeatureGeneratorを使用
+            self.high_res_generator = HighResFeatureGenerator(
+                in_channels=config.sam_image_embedding_dim,  # Already 256 after adapter
+                sam_channels=config.sam_image_embedding_dim
+            ).to(device=model_device, dtype=model_dtype)
+            logger.info("Using simple HighResFeatureGenerator")
         
         # Freeze models as specified
         if config.freeze_qwen:
@@ -584,9 +602,19 @@ class LISA_Model(nn.Module):
             # Transform to SAM format using adapter
             image_features_sam = self.image_adapter(vision_features, image_grid_thw)  # [B, 256, H, W]
             
-            # Generate high-res features from Qwen vision features
-            # This replaces the previous approach of extracting from SAM2.1
-            sam_high_res_features = self.high_res_generator(image_features_sam)
+            # Generate high-res features using Token-FPN or simple generator
+            if self.use_token_fpn:
+                # Token-FPNを使用してマルチスケール特徴を生成
+                image_features_sam_fpn, sam_high_res_features = self.token_fpn(
+                    image_features_sam,
+                    image_grid_thw=image_grid_thw,
+                    use_hooks=True  # フックから中間特徴を使用
+                )
+                # FPNから得た特徴をSAM用に使用
+                image_features_sam = image_features_sam_fpn
+            else:
+                # 従来のHighResFeatureGeneratorを使用
+                sam_high_res_features = self.high_res_generator(image_features_sam)
             
             # High-res features are now generated from Qwen vision features
             # using the HighResFeatureGenerator - no need for SAM2.1's native extraction
@@ -1034,8 +1062,14 @@ class LISA_Model(nn.Module):
                   os.path.join(save_directory, "image_adapter.pt"))
         torch.save(self.text_prompt_proj.state_dict(), 
                   os.path.join(save_directory, "text_prompt_proj.pt"))
-        torch.save(self.high_res_generator.state_dict(),
-                  os.path.join(save_directory, "high_res_generator.pt"))
+        
+        # Save high-res feature generator (Token-FPN or simple generator)
+        if self.use_token_fpn:
+            torch.save(self.token_fpn.state_dict(),
+                      os.path.join(save_directory, "token_fpn.pt"))
+        else:
+            torch.save(self.high_res_generator.state_dict(),
+                      os.path.join(save_directory, "high_res_generator.pt"))
         
         # Save Qwen if modified (e.g., with LoRA or new embeddings)
         if not self.config.freeze_qwen or self.config.train_seg_token:

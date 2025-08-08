@@ -89,6 +89,10 @@ class LISAConfig:
     vqa_data: str = "llava_instruct_150k"
     reason_seg_data: str = "ReasonSeg|train"
     
+    # Token-FPN configuration
+    use_token_fpn: bool = True  # Enable Token-FPN for multi-scale feature extraction
+    fpn_layer_indices: list = None  # Will be initialized in __post_init__
+    
     # Dataset sampling
     dataset_config: str = "sem_seg||refer_seg||vqa||reason_seg"
     sample_rates: list = None  # Will be initialized in __post_init__
@@ -116,6 +120,11 @@ class LISAConfig:
                 "cross_attn_image_to_token.k_proj",
                 "cross_attn_image_to_token.v_proj"
             ]
+        
+        if self.fpn_layer_indices is None:
+            # Default layer indices for Token-FPN (early, mid, late, final)
+            # For Qwen2.5-VL-3B with 32 blocks: 8, 16, 24, 31
+            self.fpn_layer_indices = [8, 16, 24, 31]
         
         if self.sample_rates is None:
             # Default sample rates for datasets [sem_seg, refer_seg, vqa, reason_seg]
