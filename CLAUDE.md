@@ -32,19 +32,8 @@ Web searchの際は、必ずo3-query MCPを利用すること！
 
 
 [命令]
-①事前タスク：以下のファイルをよく読んで現状を理解して
-1. モデル周辺の実装とTest関連Script実装
-- 実装の指針：md_files/past/o3_spec1.md
-2. Dataset関連Script実装
-- 実装の指針：md_files/past/o3_spec2.md
-- md_files/past/o3_img_processing.md
-- md_files/past/img_processing.md
+〇minimal_train.pyとその関連Scriptをすべてよく読んで（長い場合は分割しながら読んで）現状の実装を理解して
 
-○実装のまとめ
-- md_files/implementation_record_20250804.md
-- md_files/dataset_implementation_record_20250805.md
-
-○走るのが確認されたScript（関連Scriptも適宜読んで理解すること）
-- minimal_train.py
+〇minimal_train.pyを進めた場合のSEG LOSSがほぼ下がらない問題がある。現状、SEGトークンがo3_spec1-3のいずれかのMDファイルにあるように適切に定義され、モデルに組み込み、学習が進むようになっているかコードをよく読んで必要があればデバッグScriptやデバッグログも使用しつつ確かめてほしい。
 
 

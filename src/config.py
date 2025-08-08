@@ -77,6 +77,12 @@ class LISAConfig:
     vision_feature_dim: int = 2048  # Currently 2048 (LLM-projected); will be 2560 for PatchMerge
     token_selection_strategy: str = "none"  # Options: "top128", "none" - Use "none" for segmentation
     
+    # SAM2.1 MaskDecoder LoRA configuration
+    sam_lora_r: int = 4  # 0 to disable, 4-8 for enabling LoRA on MaskDecoder
+    sam_lora_alpha: int = 16  # LoRA alpha for MaskDecoder
+    sam_lora_dropout: float = 0.1  # LoRA dropout for MaskDecoder
+    sam_lora_target_modules: list = None  # Will be set in __post_init__
+    
     # Dataset paths
     sem_seg_data: str = "ade20k||cocostuff"
     refer_seg_data: str = "refcoco||refcoco+||refcocog"
@@ -95,6 +101,20 @@ class LISAConfig:
                 "cross_attention",
                 "encoder_attn",
                 "encoder_attention"
+            ]
+        
+        if self.sam_lora_target_modules is None:
+            # Default target modules for SAM2.1 MaskDecoder attention layers
+            self.sam_lora_target_modules = [
+                "self_attn.q_proj",
+                "self_attn.k_proj",
+                "self_attn.v_proj",
+                "cross_attn_token_to_image.q_proj",
+                "cross_attn_token_to_image.k_proj",
+                "cross_attn_token_to_image.v_proj",
+                "cross_attn_image_to_token.q_proj",
+                "cross_attn_image_to_token.k_proj",
+                "cross_attn_image_to_token.v_proj"
             ]
         
         if self.sample_rates is None:

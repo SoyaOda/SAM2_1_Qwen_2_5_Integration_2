@@ -285,8 +285,101 @@ class LISA_Model(nn.Module):
         
         # Enable SEG token embedding training
         if self.config.train_seg_token:
-            word_embeddings = self.qwen.get_input_embeddings()
-            word_embeddings.weight[self.seg_token_id].requires_grad = True
+            # Use requires_grad_ to ensure it's set properly
+            self.qwen.get_input_embeddings().weight[self.seg_token_id].requires_grad_(True)
+            logger.info(f"SEG token embedding training enabled for token ID {self.seg_token_id}")
+    
+    def add_sam_lora(self, lora_r: int = 4, lora_alpha: int = 16, lora_dropout: float = 0.1):
+        """
+        Add LoRA adapters to SAM2.1 MaskDecoder attention layers
+        
+        Args:
+            lora_r: LoRA rank (4-8 recommended)
+            lora_alpha: LoRA alpha scaling factor
+            lora_dropout: LoRA dropout rate
+        """
+        import torch.nn as nn
+        
+        if lora_r <= 0:
+            logger.info("SAM LoRA disabled (lora_r=0)")
+            return
+        
+        logger.info(f"Adding LoRA to SAM2.1 MaskDecoder (r={lora_r}, alpha={lora_alpha})")
+        
+        # Simple LoRA implementation for SAM MaskDecoder
+        class LoRALinear(nn.Module):
+            def __init__(self, original_layer, r=4, alpha=16, dropout=0.1):
+                super().__init__()
+                self.original_layer = original_layer
+                self.r = r
+                self.alpha = alpha
+                
+                # Freeze original weights
+                for param in self.original_layer.parameters():
+                    param.requires_grad = False
+                
+                # Add LoRA matrices
+                self.lora_A = nn.Parameter(torch.randn(r, original_layer.in_features) * 0.01)
+                self.lora_B = nn.Parameter(torch.zeros(original_layer.out_features, r))
+                self.dropout = nn.Dropout(dropout)
+                self.scaling = alpha / r
+                
+            def forward(self, x):
+                # Original forward
+                result = self.original_layer(x)
+                # Add LoRA path
+                lora_out = self.dropout(x) @ self.lora_A.T @ self.lora_B.T * self.scaling
+                return result + lora_out
+        
+        # Apply LoRA to MaskDecoder attention layers
+        lora_applied = []
+        
+        # Check for transformer blocks in MaskDecoder
+        if hasattr(self.sam_mask_decoder, 'transformer'):
+            transformer = self.sam_mask_decoder.transformer
+            
+            # Apply to each transformer layer
+            for i, layer in enumerate(transformer.layers):
+                # Self attention
+                if hasattr(layer, 'self_attn'):
+                    for proj_name in ['q_proj', 'k_proj', 'v_proj']:
+                        if hasattr(layer.self_attn, proj_name):
+                            original = getattr(layer.self_attn, proj_name)
+                            setattr(layer.self_attn, proj_name, LoRALinear(original, lora_r, lora_alpha, lora_dropout))
+                            lora_applied.append(f"transformer.layers.{i}.self_attn.{proj_name}")
+                
+                # Cross attention (token to image)
+                if hasattr(layer, 'cross_attn_token_to_image'):
+                    for proj_name in ['q_proj', 'k_proj', 'v_proj']:
+                        if hasattr(layer.cross_attn_token_to_image, proj_name):
+                            original = getattr(layer.cross_attn_token_to_image, proj_name)
+                            setattr(layer.cross_attn_token_to_image, proj_name, LoRALinear(original, lora_r, lora_alpha, lora_dropout))
+                            lora_applied.append(f"transformer.layers.{i}.cross_attn_token_to_image.{proj_name}")
+                
+                # Cross attention (image to token)
+                if hasattr(layer, 'cross_attn_image_to_token'):
+                    for proj_name in ['q_proj', 'k_proj', 'v_proj']:
+                        if hasattr(layer.cross_attn_image_to_token, proj_name):
+                            original = getattr(layer.cross_attn_image_to_token, proj_name)
+                            setattr(layer.cross_attn_image_to_token, proj_name, LoRALinear(original, lora_r, lora_alpha, lora_dropout))
+                            lora_applied.append(f"transformer.layers.{i}.cross_attn_image_to_token.{proj_name}")
+        
+        # Count LoRA parameters
+        lora_params = 0
+        for name, param in self.sam_mask_decoder.named_parameters():
+            if "lora" in name.lower() and param.requires_grad:
+                lora_params += param.numel()
+        
+        logger.info(f"Applied LoRA to {len(lora_applied)} modules in SAM MaskDecoder")
+        logger.info(f"Total SAM LoRA parameters: {lora_params:,}")
+        
+        # Store LoRA config for later reference
+        self.sam_lora_config = {
+            'r': lora_r,
+            'alpha': lora_alpha,
+            'dropout': lora_dropout,
+            'applied_to': lora_applied
+        }
     
     def extract_vision_features(self, pixel_values: torch.Tensor, image_grid_thw: Optional[torch.Tensor] = None) -> torch.Tensor:
         """

@@ -106,12 +106,21 @@ class MinimalTrainer:
             logger.info("固定解像度モード")
             self.processor = AutoProcessor.from_pretrained(self.lisa_config.qwen_model_name)
         
+        # 重要: ProcessorのトークナイザーにもSEGトークンを追加
+        if self.lisa_config.seg_token not in self.processor.tokenizer.get_vocab():
+            logger.info(f"ProcessorのトークナイザーにSEGトークンを追加")
+            self.processor.tokenizer.add_special_tokens({"additional_special_tokens": [self.lisa_config.seg_token]})
+            logger.info(f"Processor語彙サイズ: {len(self.processor.tokenizer)}")
+        
         # モデルの読み込み
         logger.info("LISA改モデルの読み込み")
         self.model = LISA_Model(self.lisa_config)
+        
+        # 重要: LoRA適用前にトークナイザーを設定してresize_token_embeddingsを実行
+        logger.info("トークナイザーを設定してSEGトークンの埋め込みをリサイズ")
         self.model.set_tokenizer(self.tokenizer)
         
-        # LoRAの設定
+        # LoRAの設定（resize_token_embeddings後に実行）
         logger.info("LoRAの設定")
         lora_config = LoraConfig(
             r=self.config.lora_r,
@@ -122,6 +131,15 @@ class MinimalTrainer:
             task_type=TaskType.CAUSAL_LM,
         )
         self.model.qwen = get_peft_model(self.model.qwen, lora_config)
+        
+        # SAM MaskDecoderへのLoRA適用（設定されている場合）
+        if hasattr(self.lisa_config, 'sam_lora_r') and self.lisa_config.sam_lora_r > 0:
+            logger.info(f"SAM MaskDecoderにLoRAを適用 (r={self.lisa_config.sam_lora_r})")
+            self.model.add_sam_lora(
+                lora_r=self.lisa_config.sam_lora_r,
+                lora_alpha=self.lisa_config.sam_lora_alpha,
+                lora_dropout=self.lisa_config.sam_lora_dropout
+            )
         
         # デバイスに移動
         self.model = self.model.to(self.device)
