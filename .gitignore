@@ -45,3 +45,4 @@ train_debug.log
 # 環境変数ファイル
 .env
 .env.local
+.cache/datasets/*.pkl

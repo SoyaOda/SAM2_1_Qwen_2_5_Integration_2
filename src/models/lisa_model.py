@@ -8,6 +8,9 @@ import torch.nn.functional as F
 from typing import Dict, List, Optional, Tuple, Union
 from dataclasses import dataclass
 import warnings
+import logging
+
+logger = logging.getLogger(__name__)
 
 from transformers import (
     Qwen2_5_VLForConditionalGeneration,
@@ -128,6 +131,29 @@ class LISA_Model(nn.Module):
                 attn_implementation="flash_attention_2" if config.use_flash_attention else "eager"
             )
         
+        # Disable top128 token selection for segmentation tasks (use all tokens)
+        # This is critical for dense prediction tasks like segmentation
+        # Reference: md_files/current/o3_query_answers.md line 1585
+        
+        # Set on multiple levels to ensure it takes effect
+        # 1. Visual module config
+        if hasattr(self.qwen.model, 'visual'):
+            if hasattr(self.qwen.model.visual, 'config'):
+                self.qwen.model.visual.config.image_feature_select_strategy = "none"
+                logger.info("Set visual.config.image_feature_select_strategy = 'none'")
+        
+        # 2. Model config (sometimes used by get_image_features)
+        if hasattr(self.qwen, 'config'):
+            self.qwen.config.image_feature_select_strategy = "none"
+            logger.info("Set model.config.image_feature_select_strategy = 'none'")
+        
+        # 3. Model.model config
+        if hasattr(self.qwen.model, 'config'):
+            self.qwen.model.config.image_feature_select_strategy = "none"
+            logger.info("Set model.model.config.image_feature_select_strategy = 'none'")
+        
+        logger.info("Disabled top128 token selection - using all visual tokens for segmentation")
+        
         # Load SAM2.1 components
         if sam_predictor is not None:
             self.sam_predictor = sam_predictor
@@ -196,33 +222,33 @@ class LISA_Model(nn.Module):
         if config.qwen_hidden_size is None:
             config.qwen_hidden_size = self.qwen.config.hidden_size
         if config.qwen_vision_hidden_size is None:
-            # Try to get vision encoder hidden size
-            if hasattr(self.qwen.config, 'vision_config'):
-                config.qwen_vision_hidden_size = self.qwen.config.vision_config.hidden_size
-            else:
-                # Default to actual Qwen2.5-VL-3B vision encoder size
-                config.qwen_vision_hidden_size = 1280  # Qwen2.5-VL-3B actual vision hidden size
+            # Currently using 2048-dim LLM-projected features
+            # Future: will be 2560-dim when PatchMerge features are available
+            config.qwen_vision_hidden_size = 2048  # Qwen2.5-VL-3B LLM-projected dimension
         
-        # Initialize adapters with the same dtype as Qwen model
+        # Initialize adapters with the same dtype and device as Qwen model
         model_dtype = next(self.qwen.parameters()).dtype
+        model_device = next(self.qwen.parameters()).device
         
+        # Image adapter: currently using 2048-dim input (LLM-projected features)
+        # Future: will use 2560-dim when PatchMerge features become available
         self.image_adapter = ImageFeatureAdapter(
-            in_dim=config.qwen_vision_hidden_size,
-            out_dim=config.sam_image_embedding_dim
-        ).to(dtype=model_dtype)
+            in_dim=config.vision_feature_dim if hasattr(config, 'vision_feature_dim') else 2048,  # Default to LLM-projected features
+            out_dim=config.sam_image_embedding_dim  # 256 for SAM2.1
+        ).to(device=model_device, dtype=model_dtype)
         
         self.text_prompt_proj = TextPromptProjector(
             in_dim=config.qwen_hidden_size,
             out_dim=config.text_prompt_out_dim,
             use_mlp=True  # O3推奨: 2層MLP + LayerNormでマッチング精度向上
-        ).to(dtype=model_dtype)
+        ).to(device=model_device, dtype=model_dtype)
         
         # Initialize high-resolution feature generator
         # Input is already transformed by image_adapter to sam_channels
         self.high_res_generator = HighResFeatureGenerator(
             in_channels=config.sam_image_embedding_dim,  # Already 256 after adapter
             sam_channels=config.sam_image_embedding_dim
-        ).to(dtype=model_dtype)
+        ).to(device=model_device, dtype=model_dtype)
         
         # Freeze models as specified
         if config.freeze_qwen:
@@ -265,65 +291,132 @@ class LISA_Model(nn.Module):
     def extract_vision_features(self, pixel_values: torch.Tensor, image_grid_thw: Optional[torch.Tensor] = None) -> torch.Tensor:
         """
         Extract vision features from Qwen's vision encoder
+        Currently returns 2048-dim LLM-projected features for stability.
+        
+        NOTE: Future implementation will support 2560-dim PatchMerge features
+        once transformers library implements return_dict=True properly.
+        (Expected in transformers v4.57+)
         
         Args:
-            pixel_values: Input images [B, C, H, W]
+            pixel_values: Input images [B, N_raw_patches, D_v] for tokenized format
             image_grid_thw: Grid dimensions for dynamic resolution [B, 3]
+                           Format: [T, H_raw, W_raw] where values are RAW patch counts (REQUIRED)
         
         Returns:
-            Vision features [B, N_patches, D_v]
+            Vision features [B, N_compressed_patches, 2048] after LLM projection
+            (Future: will return 2560-dim PatchMerge features)
         """
-        # Get vision encoder from Qwen model
-        # We need to extract features before the merger to get 1280D features
-        if hasattr(self.qwen.model, 'visual'):
-            visual_module = self.qwen.model.visual
+        # image_grid_thw is REQUIRED for tokenized format
+        if image_grid_thw is None:
+            raise ValueError("image_grid_thw is required for dynamic resolution support")
+        
+        # ========================================================================
+        # CURRENT IMPLEMENTATION (2048-dim):
+        # Using get_image_features for stable 2048-dim LLM-projected features
+        # This is the approach used by LISA-v2, InternVL-HD, and Otter-SAM
+        # ========================================================================
+        
+        # O3推奨: バッチ処理時のトークン選択を回避するため、各サンプルを個別に処理
+        B = pixel_values.shape[0] if pixel_values.dim() == 3 else 1
+        
+        if B == 1:
+            # Single sample - process directly
+            image_embeds = self.qwen.model.get_image_features(pixel_values, image_grid_thw)
             
-            # Use forward hooks to capture features before merger
-            features_dict = {}
+            # Handle tuple return
+            if isinstance(image_embeds, tuple):
+                image_embeds = image_embeds[0]
             
-            def capture_features(module, input, output):
-                # Store the input to merger (which is the output of vision blocks)
-                features_dict['before_merger'] = input[0] if isinstance(input, tuple) else input
+            # Ensure 3D shape [B, N_patches, D]
+            if image_embeds.dim() == 2:
+                image_embeds = image_embeds.unsqueeze(0)  # [N, D] -> [1, N, D]
             
-            # Register hook on merger module
-            if hasattr(visual_module, 'merger'):
-                hook = visual_module.merger.register_forward_hook(capture_features)
-            else:
-                raise AttributeError("Cannot find merger module in visual encoder")
+            vision_features = image_embeds
             
-            try:
-                # Run visual module
-                if image_grid_thw is not None:
-                    _ = visual_module(pixel_values, grid_thw=image_grid_thw)
-                else:
-                    # Default grid_thw if not provided
-                    B = pixel_values.shape[0]
-                    default_grid = torch.tensor([[1, 24, 24]], device=pixel_values.device).repeat(B, 1)
-                    _ = visual_module(pixel_values, grid_thw=default_grid)
-                
-                # Get captured features
-                if 'before_merger' in features_dict:
-                    vision_features = features_dict['before_merger']
-                    
-                    # Ensure proper shape [B, N_patches, D_v]
-                    if len(vision_features.shape) == 2:
-                        # Add batch dimension if missing
-                        vision_features = vision_features.unsqueeze(0)
-                    elif len(vision_features.shape) == 3:
-                        # Already in correct shape
-                        pass
-                    else:
-                        raise ValueError(f"Unexpected vision features shape: {vision_features.shape}")
-                    
-                    return vision_features
-                else:
-                    raise RuntimeError("Failed to capture vision features before merger")
-                    
-            finally:
-                # Remove hook
-                hook.remove()
         else:
-            raise AttributeError("Cannot find visual module in Qwen model")
+            # Batch processing - process each sample individually to avoid token selection
+            # O3の推奨に従って、各サンプルを個別に処理してから結合
+            all_features = []
+            
+            for i in range(B):
+                # Extract single sample
+                single_pixel_values = pixel_values[i:i+1]  # Keep batch dimension
+                single_grid = image_grid_thw[i:i+1]  # Keep batch dimension
+                
+                # Process single sample
+                single_embeds = self.qwen.model.get_image_features(single_pixel_values, single_grid)
+                
+                # Handle tuple return
+                if isinstance(single_embeds, tuple):
+                    single_embeds = single_embeds[0]
+                
+                # Ensure 3D shape [1, N_patches, D]
+                if single_embeds.dim() == 2:
+                    single_embeds = single_embeds.unsqueeze(0)
+                
+                all_features.append(single_embeds)
+            
+            # Check if all samples have the same number of tokens
+            token_counts = [f.shape[1] for f in all_features]
+            
+            if len(set(token_counts)) == 1:
+                # All samples have the same token count - can stack directly
+                vision_features = torch.cat(all_features, dim=0)  # [B, N_patches, D]
+                logger.debug(f"Batch processing successful: {B} samples, {token_counts[0]} tokens each")
+            else:
+                # Variable token counts - need to pad (shouldn't happen with proper collator)
+                logger.warning(f"Variable token counts in batch: {token_counts}")
+                max_tokens = max(token_counts)
+                
+                padded_features = []
+                for i, feat in enumerate(all_features):
+                    if feat.shape[1] < max_tokens:
+                        # Pad with zeros
+                        pad_len = max_tokens - feat.shape[1]
+                        padding = torch.zeros(1, pad_len, feat.shape[2], 
+                                            dtype=feat.dtype, device=feat.device)
+                        feat = torch.cat([feat, padding], dim=1)
+                    padded_features.append(feat)
+                
+                vision_features = torch.cat(padded_features, dim=0)
+        
+        # Debug output
+        logger.debug(f"extract_vision_features output: {vision_features.shape}")
+        
+        # ========================================================================
+        # FUTURE IMPLEMENTATION (2560-dim):
+        # Once transformers implements return_dict=True properly (v4.57+),
+        # uncomment the following code to use 2560-dim PatchMerge features:
+        # ========================================================================
+        """
+        # Enable hidden states output
+        if hasattr(self.qwen.model, 'vision_tower'):
+            vision_module = self.qwen.model.vision_tower
+        elif hasattr(self.qwen.model, 'visual'):
+            vision_module = self.qwen.model.visual
+        else:
+            raise ValueError("Cannot find vision module in model")
+        
+        vision_module.config.output_hidden_states = True
+        
+        # Get PatchMerge features (2560-dim for Qwen2.5-VL-3B)
+        vision_outputs = vision_module(
+            hidden_states=pixel_values,  # Note: first arg is 'hidden_states' not 'pixel_values'
+            grid_thw=image_grid_thw,
+            output_hidden_states=True,
+            return_dict=True  # Currently not working in transformers 4.56
+        )
+        
+        if hasattr(vision_outputs, 'hidden_states') and vision_outputs.hidden_states:
+            # hidden_states[-1] is PatchMerge output (2560-dim)
+            vision_features = vision_outputs.hidden_states[-1]
+        else:
+            # Fallback if hidden_states become available but wrong format
+            vision_features = image_embeds
+        """
+        # ========================================================================
+        
+        return vision_features
 
     
     def extract_sam_features(self, pixel_values: torch.Tensor) -> Tuple[torch.Tensor, List[torch.Tensor]]:
@@ -396,7 +489,7 @@ class LISA_Model(nn.Module):
                 vision_features = vision_features.unsqueeze(0)
             
             # Transform to SAM format using adapter
-            image_features_sam = self.image_adapter(vision_features)  # [B, 256, H, W]
+            image_features_sam = self.image_adapter(vision_features, image_grid_thw)  # [B, 256, H, W]
             
             # Generate high-res features from Qwen vision features
             # This replaces the previous approach of extracting from SAM2.1
@@ -463,7 +556,10 @@ class LISA_Model(nn.Module):
                         
                         # Create a center point as anchor for text-guided segmentation
                         # SAM2.1 expects points in the image coordinate system
-                        h_img, w_img = pixel_values.shape[-2:]
+                        # Use the actual image feature dimensions for dynamic resolution
+                        h_feat, w_feat = image_features_sam[i:i+1].shape[-2:]
+                        # Map to original image coordinates (feature stride is 16)
+                        h_img, w_img = h_feat * 16, w_feat * 16
                         center_x, center_y = w_img // 2, h_img // 2
                         
                         # Create point coordinates [N, 2] where N=1 for center point
@@ -535,17 +631,29 @@ class LISA_Model(nn.Module):
                         )
                         
                         # Upscale mask to original image size
-                        if pixel_values is not None:
+                        # For dynamic resolution, determine target size from grid_thw
+                        if image_grid_thw is not None and i < image_grid_thw.shape[0]:
+                            # Grid dimensions are in RAW patches (before PatchMerge)
+                            H_grid_raw = int(image_grid_thw[i, 1].item())
+                            W_grid_raw = int(image_grid_thw[i, 2].item())
+                            # Convert to pixel dimensions (14px per patch)
+                            orig_h = H_grid_raw * 14
+                            orig_w = W_grid_raw * 14
+                        elif pixel_values is not None and pixel_values.dim() == 4:
+                            # Fallback to pixel_values dimensions if available
                             orig_h, orig_w = pixel_values.shape[-2:]
-                            mask_logit = F.interpolate(
-                                low_res_masks,
-                                size=(orig_h, orig_w),
-                                mode='bilinear',
-                                align_corners=False
-                            )
-                            sample_masks.append(mask_logit.squeeze(0))  # Remove batch dim
                         else:
-                            sample_masks.append(low_res_masks.squeeze(0))
+                            # Use feature map size * stride as fallback
+                            orig_h = h_feat * 16
+                            orig_w = w_feat * 16
+                        
+                        mask_logit = F.interpolate(
+                            low_res_masks,
+                            size=(orig_h, orig_w),
+                            mode='bilinear',
+                            align_corners=False
+                        )
+                        sample_masks.append(mask_logit.squeeze(0))  # Remove batch dim
                             
                     except Exception as e:
                         print(f"Warning: SAM2.1 mask generation failed with error: {e}")
@@ -614,7 +722,7 @@ class LISA_Model(nn.Module):
         B = pixel_values.shape[0]
         image_grid_thw = kwargs.get('image_grid_thw', torch.tensor([[1, 24, 24]], device=pixel_values.device).repeat(B, 1))
         vision_features = self.extract_vision_features(pixel_values, image_grid_thw)
-        image_features_sam = self.image_adapter(vision_features)
+        image_features_sam = self.image_adapter(vision_features, image_grid_thw)
         
         # Generate high-res features from Qwen vision features
         sam_high_res_features = self.high_res_generator(image_features_sam)

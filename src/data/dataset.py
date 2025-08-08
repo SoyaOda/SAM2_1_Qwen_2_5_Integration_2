@@ -18,10 +18,17 @@ import torch.nn.functional as F
 from PIL import Image
 import torch.utils.data
 from pycocotools import mask
+
+# キャッシュ機能をインポート
+try:
+    from .dataset_cache import DatasetCache
+except ImportError:
+    from dataset_cache import DatasetCache
 from transformers import AutoProcessor
 from torchvision import transforms
 
 from src.utils.coordinate_transform import CoordinateTransform
+from src.utils.resolution_utils import ResolutionBucketManager, QualityScoreCalculator, calculate_image_pad_tokens
 
 from .conversation import get_default_conv_template
 from .data_processing import get_mask_from_json
@@ -137,64 +144,96 @@ def preprocess_sam_image(image: Image.Image, target_size: Optional[int] = None) 
 
 def preprocess_qwen_image(image: Image.Image, processor: AutoProcessor, target_size: Optional[int] = None) -> torch.Tensor:
     """
-    Qwen用画像前処理：アスペクト比を維持して448x448以下にリサイズし、14の倍数にパディング
+    Qwen用画像前処理：動的解像度対応版
     
-    Qwen2.5-VLのViTパッチサイズは14pxなので、14の倍数にすることで効率的な処理が可能
+    Args:
+        image: PIL画像
+        processor: Qwen2.5-VLのAutoProcessor（min_pixels/max_pixels設定済み）
+        target_size: 互換性のため残すが、動的解像度モードでは無視される
+    
+    Returns:
+        処理済み画像テンソル (C, H, W)
     """
-    if target_size is None:
-        target_size = getattr(config, 'QWEN_IMAGE_SIZE', 448)
+    # configの動的解像度設定を確認
+    use_dynamic = getattr(config, 'use_dynamic_resolution', True)
     
-    # PILをnumpy配列に変換
-    if isinstance(image, Image.Image):
-        image_np = np.array(image)
+    if not use_dynamic:
+        # 従来の固定サイズ処理（互換性維持）
+        if target_size is None:
+            target_size = getattr(config, 'qwen_image_size', 448)
+        
+        # PIL画像をnumpy配列に変換
+        if isinstance(image, Image.Image):
+            image_np = np.array(image)
+        else:
+            image_np = image
+        
+        h, w = image_np.shape[:2]
+        
+        # アスペクト比を維持してリサイズ
+        scale = target_size / max(h, w)
+        new_h = int(h * scale)
+        new_w = int(w * scale)
+        
+        # 縮小時はINTER_AREA、拡大時はINTER_CUBIC
+        interpolation = cv2.INTER_AREA if scale < 1 else cv2.INTER_CUBIC
+        resized = cv2.resize(image_np, (new_w, new_h), interpolation=interpolation)
+        
+        # 14の倍数になるようにパディング
+        pad_h = (-new_h) % 14
+        pad_w = (-new_w) % 14
+        
+        # 上下左右に均等にパディング
+        top = pad_h // 2
+        bottom = pad_h - top
+        left = pad_w // 2
+        right = pad_w - left
+        
+        # ゼロパディング（黒色）
+        padded = cv2.copyMakeBorder(resized, top, bottom, left, right, 
+                                    cv2.BORDER_CONSTANT, value=(0, 0, 0))
+        
+        # PIL画像に戻してprocessorに渡す
+        padded_pil = Image.fromarray(padded)
+        
+        # AutoProcessorを使用してQwen用前処理
+        try:
+            processed = processor(images=padded_pil, return_tensors="pt")
+            image_tensor = processed['pixel_values'].squeeze(0)  # (1, C, H, W) -> (C, H, W)
+            return image_tensor
+        except Exception as e:
+            print(f"Qwen画像前処理エラー: {e}")
+            # フォールバック: 手動前処理
+            transform = transforms.Compose([
+                transforms.ToTensor(),
+                transforms.Normalize(
+                    mean=[0.48145466, 0.4578275, 0.40821073],
+                    std=[0.26862954, 0.26130258, 0.27577711]
+                )
+            ])
+            return transform(padded_pil)
+    
     else:
-        image_np = image
-    
-    h, w = image_np.shape[:2]
-    
-    # アスペクト比を維持してリサイズ
-    scale = target_size / max(h, w)
-    new_h = int(h * scale)
-    new_w = int(w * scale)
-    
-    # 縮小時はINTER_AREA、拡大時はINTER_CUBIC
-    interpolation = cv2.INTER_AREA if scale < 1 else cv2.INTER_CUBIC
-    resized = cv2.resize(image_np, (new_w, new_h), interpolation=interpolation)
-    
-    # 14の倍数になるようにパディング
-    # (-new_h) % 14 は、new_hを14の倍数に切り上げるための追加分
-    pad_h = (-new_h) % 14
-    pad_w = (-new_w) % 14
-    
-    # 上下左右に均等にパディング
-    top = pad_h // 2
-    bottom = pad_h - top
-    left = pad_w // 2
-    right = pad_w - left
-    
-    # ゼロパディング（黒色）
-    padded = cv2.copyMakeBorder(resized, top, bottom, left, right, 
-                                cv2.BORDER_CONSTANT, value=(0, 0, 0))
-    
-    # PILイメージに戻してprocessorに渡す
-    padded_pil = Image.fromarray(padded)
-    
-    # AutoProcessorを使用してQwen用前処理（正規化も自動実行）
-    try:
-        processed = processor(images=padded_pil, return_tensors="pt")
-        image_tensor = processed['pixel_values'].squeeze(0)  # (1, C, H, W) -> (C, H, W)
-        return image_tensor
-    except Exception as e:
-        print(f"Qwen画像前処理エラー: {e}")
-        # フォールバック: 手動前処理（Qwen2.5-VLの正しい正規化パラメータを使用）
-        transform = transforms.Compose([
-            transforms.ToTensor(),
-            transforms.Normalize(
-                mean=[0.48145466, 0.4578275, 0.40821073],
-                std=[0.26862954, 0.26130258, 0.27577711]
-            )
-        ])
-        return transform(padded_pil)
+        # 動的解像度モード
+        # processorが自動的にmin_pixels/max_pixelsに基づいてリサイズ
+        # 内部でsmart_resizeが呼ばれ、アスペクト比維持・14の倍数調整が行われる
+        try:
+            # 単純にprocessorに画像を渡すだけで、動的解像度処理が適用される
+            processed = processor(images=image, return_tensors="pt")
+            image_tensor = processed['pixel_values'].squeeze(0)  # (1, C, H, W) -> (C, H, W)
+            
+            # 処理後のサイズを確認（デバッグ用）
+            _, h, w = image_tensor.shape
+            if hasattr(config, 'DEBUG') and config.DEBUG:
+                print(f"Dynamic resolution: original {image.size} -> processed {(h, w)} -> patches {(h//14, w//14)}")
+            
+            return image_tensor
+            
+        except Exception as e:
+            print(f"動的解像度処理エラー: {e}")
+            print("固定解像度モードにフォールバック")
+            # エラー時は固定解像度にフォールバック
+            return preprocess_qwen_image(image, processor, target_size=448)
 
 
 
@@ -307,6 +346,7 @@ class HybridDataset(torch.utils.data.Dataset):
     """
     仕様書第3章.2 HybridDatasetの実装
     デュアルストリーム処理：Qwen用とSAM用の2系統前処理を同時実行
+    動的解像度・品質スコア対応版
     """
 
     def __init__(
@@ -326,6 +366,8 @@ class HybridDataset(torch.utils.data.Dataset):
         vqa_data: Optional[str] = None,
         reason_seg_data: Optional[str] = None,
         explanatory: float = 0.1,
+        use_cache: bool = True,  # キャッシュ使用フラグ
+        cache_dir: str = ".cache/datasets",  # キャッシュディレクトリ
     ):
         # 設定ファイルからパラメータを取得（引数で指定されていない場合）
         self.base_image_dir = base_image_dir or getattr(config, 'DATASET_BASE_DIR', './dataset')
@@ -353,9 +395,22 @@ class HybridDataset(torch.utils.data.Dataset):
             self.seg_token = getattr(config, 'SEG_TOKEN', '[SEG]')
             self.seg_token_idx = setup_seg_token(self.qwen_processor.tokenizer, self.seg_token)
             self.max_length = getattr(config, 'MODEL_MAX_LENGTH', 2048)
+            
+            # 動的解像度とQwen2.5-VL最適化機能の初期化
+            from src.config import LISAConfig
+            lisa_config = LISAConfig()
+            self.bucket_manager = ResolutionBucketManager(lisa_config)
+            self.quality_calculator = QualityScoreCalculator(lisa_config)
+            self.use_quality_score = getattr(lisa_config, 'use_quality_score', True)
+            self.use_dynamic_resolution = getattr(lisa_config, 'use_dynamic_resolution', True)
+            
         else:
             raise ValueError("qwen_processor は必須です")
 
+        # キャッシュの初期化
+        self.use_cache = use_cache
+        self.cache = DatasetCache(cache_dir) if use_cache else None
+        
         # データセットの初期化
         self.datasets = dataset.split("||")
         self.all_datasets = []
@@ -370,19 +425,51 @@ class HybridDataset(torch.utils.data.Dataset):
         if "sem_seg" in self.datasets:
             print(f"  - Semantic Segmentation: {self.sem_seg_data}")
             try:
-                self.all_datasets.append(
-                    SemSegDataset(
-                        self.base_image_dir,
-                        self.qwen_processor.tokenizer,
-                        None,  # vision_tower は使用しない
-                        samples_per_epoch,
-                        precision,
-                        self.qwen_image_size,
-                        num_classes_per_sample,
-                        exclude_val,
-                        self.sem_seg_data,
+                # キャッシュから読み込みを試みる
+                if self.cache:
+                    cache_params = {
+                        'dataset_type': 'sem_seg',
+                        'data': self.sem_seg_data,
+                        'samples_per_epoch': samples_per_epoch,
+                        'image_size': self.qwen_image_size,
+                        'exclude_val': exclude_val
+                    }
+                    cached_dataset = self.cache.get('sem_seg', cache_params)
+                    if cached_dataset:
+                        self.all_datasets.append(cached_dataset)
+                        print(f"    ✅ キャッシュから高速読み込み完了")
+                    else:
+                        # キャッシュにない場合は通常読み込み
+                        dataset = SemSegDataset(
+                            self.base_image_dir,
+                            self.qwen_processor.tokenizer,
+                            None,  # vision_tower は使用しない
+                            samples_per_epoch,
+                            precision,
+                            self.qwen_image_size,
+                            num_classes_per_sample,
+                            exclude_val,
+                            self.sem_seg_data,
+                        )
+                        self.all_datasets.append(dataset)
+                        # キャッシュに保存
+                        if self.cache:
+                            self.cache.set('sem_seg', cache_params, dataset)
+                else:
+                    # キャッシュを使用しない場合
+                    self.all_datasets.append(
+                        SemSegDataset(
+                            self.base_image_dir,
+                            self.qwen_processor.tokenizer,
+                            None,  # vision_tower は使用しない
+                            samples_per_epoch,
+                            precision,
+                            self.qwen_image_size,
+                            num_classes_per_sample,
+                            exclude_val,
+                            self.sem_seg_data,
+                        )
                     )
-                )
             except Exception as e:
                 print(f"    警告: Semantic Segmentationデータセットの初期化に失敗: {e}")
         
@@ -390,19 +477,51 @@ class HybridDataset(torch.utils.data.Dataset):
         if "refer_seg" in self.datasets:
             print(f"  - Referring Segmentation: {self.refer_seg_data}")
             try:
-                self.all_datasets.append(
-                    ReferSegDataset(
-                        self.base_image_dir,
-                        self.qwen_processor.tokenizer,
-                        None,  # vision_tower は使用しない
-                        samples_per_epoch,
-                        precision,
-                        self.qwen_image_size,
-                        num_classes_per_sample,
-                        exclude_val,
-                        self.refer_seg_data,
+                # キャッシュから読み込みを試みる
+                if self.cache:
+                    cache_params = {
+                        'dataset_type': 'refer_seg',
+                        'data': self.refer_seg_data,
+                        'samples_per_epoch': samples_per_epoch,
+                        'image_size': self.qwen_image_size,
+                        'exclude_val': exclude_val
+                    }
+                    cached_dataset = self.cache.get('refer_seg', cache_params)
+                    if cached_dataset:
+                        self.all_datasets.append(cached_dataset)
+                        print(f"    ✅ キャッシュから高速読み込み完了")
+                    else:
+                        # キャッシュにない場合は通常読み込み
+                        dataset = ReferSegDataset(
+                            self.base_image_dir,
+                            self.qwen_processor.tokenizer,
+                            None,  # vision_tower は使用しない
+                            samples_per_epoch,
+                            precision,
+                            self.qwen_image_size,
+                            num_classes_per_sample,
+                            exclude_val,
+                            self.refer_seg_data,
+                        )
+                        self.all_datasets.append(dataset)
+                        # キャッシュに保存
+                        if self.cache:
+                            self.cache.set('refer_seg', cache_params, dataset)
+                else:
+                    # キャッシュを使用しない場合
+                    self.all_datasets.append(
+                        ReferSegDataset(
+                            self.base_image_dir,
+                            self.qwen_processor.tokenizer,
+                            None,  # vision_tower は使用しない
+                            samples_per_epoch,
+                            precision,
+                            self.qwen_image_size,
+                            num_classes_per_sample,
+                            exclude_val,
+                            self.refer_seg_data,
+                        )
                     )
-                )
             except Exception as e:
                 print(f"    警告: Referring Segmentationデータセットの初期化に失敗: {e}")
         
@@ -410,18 +529,49 @@ class HybridDataset(torch.utils.data.Dataset):
         if "vqa" in self.datasets:
             print(f"  - VQA: {self.vqa_data}")
             try:
-                self.all_datasets.append(
-                    VQADataset(
-                        self.base_image_dir,
-                        self.qwen_processor.tokenizer,
-                        None,  # vision_tower は使用しない
-                        samples_per_epoch,
-                        precision,
-                        self.qwen_image_size,
-                        exclude_val,
-                        self.vqa_data,
+                # キャッシュから読み込みを試みる
+                if self.cache:
+                    cache_params = {
+                        'dataset_type': 'vqa',
+                        'data': self.vqa_data,
+                        'samples_per_epoch': samples_per_epoch,
+                        'image_size': self.qwen_image_size,
+                        'exclude_val': exclude_val
+                    }
+                    cached_dataset = self.cache.get('vqa', cache_params)
+                    if cached_dataset:
+                        self.all_datasets.append(cached_dataset)
+                        print(f"    ✅ キャッシュから高速読み込み完了")
+                    else:
+                        # キャッシュにない場合は通常読み込み
+                        dataset = VQADataset(
+                            self.base_image_dir,
+                            self.qwen_processor.tokenizer,
+                            None,  # vision_tower は使用しない
+                            samples_per_epoch,
+                            precision,
+                            self.qwen_image_size,
+                            exclude_val,
+                            self.vqa_data,
+                        )
+                        self.all_datasets.append(dataset)
+                        # キャッシュに保存
+                        if self.cache:
+                            self.cache.set('vqa', cache_params, dataset)
+                else:
+                    # キャッシュを使用しない場合
+                    self.all_datasets.append(
+                        VQADataset(
+                            self.base_image_dir,
+                            self.qwen_processor.tokenizer,
+                            None,  # vision_tower は使用しない
+                            samples_per_epoch,
+                            precision,
+                            self.qwen_image_size,
+                            exclude_val,
+                            self.vqa_data,
+                        )
                     )
-                )
             except Exception as e:
                 print(f"    警告: VQAデータセットの初期化に失敗: {e}")
         
@@ -429,20 +579,54 @@ class HybridDataset(torch.utils.data.Dataset):
         if "reason_seg" in self.datasets:
             print(f"  - Reasoning Segmentation: {self.reason_seg_data}")
             try:
-                self.all_datasets.append(
-                    ReasonSegDataset(
-                        base_image_dir=self.base_image_dir,
-                        tokenizer=self.qwen_processor.tokenizer,
-                        vision_tower=None,  # vision_tower は使用しない
-                        samples_per_epoch=samples_per_epoch,
-                        precision=precision,
-                        image_size=self.qwen_image_size,
-                        num_classes_per_sample=num_classes_per_sample,
-                        exclude_val=exclude_val,
-                        reason_seg_data=self.reason_seg_data,
-                        explanatory=explanatory,
+                # キャッシュから読み込みを試みる
+                if self.cache:
+                    cache_params = {
+                        'dataset_type': 'reason_seg',
+                        'data': self.reason_seg_data,
+                        'samples_per_epoch': samples_per_epoch,
+                        'image_size': self.qwen_image_size,
+                        'exclude_val': exclude_val,
+                        'explanatory': explanatory
+                    }
+                    cached_dataset = self.cache.get('reason_seg', cache_params)
+                    if cached_dataset:
+                        self.all_datasets.append(cached_dataset)
+                        print(f"    ✅ キャッシュから高速読み込み完了")
+                    else:
+                        # キャッシュにない場合は通常読み込み
+                        dataset = ReasonSegDataset(
+                            base_image_dir=self.base_image_dir,
+                            tokenizer=self.qwen_processor.tokenizer,
+                            vision_tower=None,  # vision_tower は使用しない
+                            samples_per_epoch=samples_per_epoch,
+                            precision=precision,
+                            image_size=self.qwen_image_size,
+                            num_classes_per_sample=num_classes_per_sample,
+                            exclude_val=exclude_val,
+                            reason_seg_data=self.reason_seg_data,
+                            explanatory=explanatory,
+                        )
+                        self.all_datasets.append(dataset)
+                        # キャッシュに保存
+                        if self.cache:
+                            self.cache.set('reason_seg', cache_params, dataset)
+                else:
+                    # キャッシュを使用しない場合
+                    self.all_datasets.append(
+                        ReasonSegDataset(
+                            base_image_dir=self.base_image_dir,
+                            tokenizer=self.qwen_processor.tokenizer,
+                            vision_tower=None,  # vision_tower は使用しない
+                            samples_per_epoch=samples_per_epoch,
+                            precision=precision,
+                            image_size=self.qwen_image_size,
+                            num_classes_per_sample=num_classes_per_sample,
+                            exclude_val=exclude_val,
+                            reason_seg_data=self.reason_seg_data,
+                            explanatory=explanatory,
+                        )
                     )
-                )
             except Exception as e:
                 print(f"    警告: Reasoning Segmentationデータセットの初期化に失敗: {e}")
                 import traceback
@@ -644,6 +828,7 @@ class HybridDataset(torch.utils.data.Dataset):
         ]
         
         # apply_chat_templateで画像とテキストを処理
+        # tokenize=Trueで2D形式（N_patches, D_v）を取得
         qwen_processed = self.qwen_processor.apply_chat_template(
             messages,
             add_generation_prompt=True,
@@ -655,9 +840,38 @@ class HybridDataset(torch.utils.data.Dataset):
         input_ids = qwen_processed['input_ids'].squeeze(0)
         attention_mask = qwen_processed['attention_mask'].squeeze(0)
         pixel_values = qwen_processed['pixel_values'].squeeze(0)  # 処理済み画像
-        image_grid_thw = qwen_processed.get('image_grid_thw')
-        if image_grid_thw is not None:
-            image_grid_thw = image_grid_thw.squeeze(0)
+        
+        # 動的解像度モード: image_grid_thwを取得
+        if 'image_grid_thw' in qwen_processed and qwen_processed['image_grid_thw'] is not None:
+            # apply_chat_template(tokenize=True)で自動的に付与される
+            image_grid_thw = qwen_processed['image_grid_thw'].squeeze(0)
+        else:
+            # フォールバック: pixel_valuesの形状から計算
+            if pixel_values.dim() == 2:
+                # 2D形式 (N_patches, D_v)の場合
+                N_patches = pixel_values.shape[0]
+                # O3の回答: H_grid × W_grid × 4 = raw_patch数
+                # N_patches = (H_grid × W_grid) (圧縮後のパッチ数)
+                # したがって raw_patches = N_patches × 4
+                raw_patches = N_patches * 4
+                
+                # グリッドサイズを推定（正方形に近い形状を仮定）
+                import math
+                H_grid = W_grid = int(math.sqrt(N_patches))
+                # 正確でない場合は調整
+                if H_grid * W_grid < N_patches:
+                    W_grid = math.ceil(N_patches / H_grid)
+                
+                image_grid_thw = torch.tensor([1, H_grid, W_grid], dtype=torch.long)
+            elif pixel_values.dim() == 3:
+                # 3D形式 (C, H, W)の場合（tokenize=Falseの場合）
+                _, h, w = pixel_values.shape
+                H_grid = h // 14  # パッチサイズ14で割る
+                W_grid = w // 14
+                image_grid_thw = torch.tensor([1, H_grid, W_grid], dtype=torch.long)
+            else:
+                # デフォルト値
+                image_grid_thw = torch.tensor([1, 32, 32], dtype=torch.long)
         
         # 処理済みのpixel_valuesをimage_qwenとして使用
         image_qwen = pixel_values
@@ -706,6 +920,18 @@ class HybridDataset(torch.utils.data.Dataset):
         else:
             ground_truth_mask = torch.zeros(1, self.sam_image_size, self.sam_image_size)
 
+        # 品質スコアの計算（動的解像度モード時）
+        quality_score = 1.0  # デフォルト値
+        loss_weight = 1.0
+        
+        if self.use_quality_score and self.use_dynamic_resolution:
+            try:
+                quality_score = self.quality_calculator.calculate_quality_score(image_pil)
+                loss_weight = self.quality_calculator.get_loss_weight(quality_score)
+            except Exception as e:
+                # エラー時はデフォルト値を使用
+                logger.debug(f"品質スコア計算エラー: {e}")
+        
         # 返り値の構築（仕様書準拠、オリジナルLISAとの互換性を保持）
         # collate_fnが期待するキー名に統一
         return {
@@ -725,6 +951,9 @@ class HybridDataset(torch.utils.data.Dataset):
             'questions': questions if 'questions' in locals() else None,
             'sampled_classes': sampled_classes if 'sampled_classes' in locals() else None,
             'original_image': image_pil,  # 可視化用の元画像（PIL形式）
+            # 品質スコア関連
+            'quality_score': quality_score,
+            'loss_weight': loss_weight,
         }
 
 def collate_fn(batch: List[Dict]) -> Dict[str, Any]:
@@ -796,7 +1025,23 @@ def collate_fn(batch: List[Dict]) -> Dict[str, Any]:
         original_images.append(item.get("original_image"))
     
     # テンソルのスタック
-    pixel_values = torch.stack(pixel_values)  # (B, 3, 448, 448)
+    # pixel_valuesは2D形式 (N_patches, D_v) または3D形式 (C, H, W) の可能性がある
+    if pixel_values[0].dim() == 2:
+        # 2D形式の場合、パディングしてからスタック
+        max_patches = max(pv.shape[0] for pv in pixel_values)
+        padded_pixel_values = []
+        for pv in pixel_values:
+            if pv.shape[0] < max_patches:
+                padding = torch.zeros(max_patches - pv.shape[0], pv.shape[1], dtype=pv.dtype)
+                pv_padded = torch.cat([pv, padding], dim=0)
+            else:
+                pv_padded = pv
+            padded_pixel_values.append(pv_padded)
+        pixel_values = torch.stack(padded_pixel_values)  # (B, N_patches, D_v)
+    else:
+        # 3D形式の場合はそのままスタック
+        pixel_values = torch.stack(pixel_values)  # (B, 3, H, W)
+    
     sam_images = torch.stack(sam_images)      # (B, 3, 1024, 1024)
     
     # テキストシーケンスの長さ統一（パディング）

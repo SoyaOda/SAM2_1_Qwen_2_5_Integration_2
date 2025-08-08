@@ -94,7 +94,17 @@ class MinimalTrainer:
             model_name=self.lisa_config.qwen_model_name,
             seg_token=self.lisa_config.seg_token
         )
-        self.processor = AutoProcessor.from_pretrained(self.lisa_config.qwen_model_name)
+        # AutoProcessorに動的解像度の設定を追加
+        if self.lisa_config.use_dynamic_resolution:
+            logger.info(f"動的解像度モード有効: min_pixels={self.lisa_config.qwen_min_pixels}, max_pixels={self.lisa_config.qwen_max_pixels}")
+            self.processor = AutoProcessor.from_pretrained(
+                self.lisa_config.qwen_model_name,
+                min_pixels=self.lisa_config.qwen_min_pixels,
+                max_pixels=self.lisa_config.qwen_max_pixels
+            )
+        else:
+            logger.info("固定解像度モード")
+            self.processor = AutoProcessor.from_pretrained(self.lisa_config.qwen_model_name)
         
         # モデルの読み込み
         logger.info("LISA改モデルの読み込み")
@@ -155,7 +165,8 @@ class MinimalTrainer:
         # DataLoaderの作成
         self.collator = MultiModalDataCollator(
             tokenizer=self.tokenizer,
-            max_length=512
+            max_length=self.lisa_config.model_max_length,  # 動的解像度対応の最大長
+            config=self.lisa_config  # configを渡す
         )
         
         self.train_loader = DataLoader(
@@ -610,6 +621,10 @@ def main():
                        help='WandBプロジェクト名')
     parser.add_argument('--debug', action='store_true',
                        help='デバッグモードを有効化')
+    parser.add_argument('--fast_dev_run', action='store_true',
+                       help='高速開発モード（少量データで動作確認）')
+    parser.add_argument('--max_samples', type=int, default=None,
+                       help='各データセットから読み込む最大サンプル数（開発時用）')
     
     args = parser.parse_args()
     

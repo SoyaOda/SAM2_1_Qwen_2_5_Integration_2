@@ -17,54 +17,111 @@ class ImageFeatureAdapter(nn.Module):
     and transforms them to match SAM2.1's expected input format.
     """
     
-    def __init__(self, in_dim: int, out_dim: int = 256):
+    def __init__(self, in_dim: int = 2048, out_dim: int = 256):
         """
         Args:
             in_dim: Input dimension from Qwen vision encoder
+                   Default: 2048 for LLM-projected features (current implementation)
+                   Future: 2560 for PatchMerge features (1280 × 2) when available
             out_dim: Output dimension for SAM mask decoder (default: 256)
         """
         super().__init__()
         self.in_dim = in_dim
         self.out_dim = out_dim
         
-        # Linear projection to match SAM's expected dimension
-        self.proj = nn.Linear(in_dim, out_dim)
+        # Two-layer MLP with GELU activation (LISA-v2 / InternVL-HD style)
+        # This provides better feature transformation than single linear layer
+        # Adjusted hidden dim based on input dimension
+        if in_dim == 2560:
+            # For future PatchMerge features: larger hidden dim for richer representations
+            hidden_dim = 768
+        elif in_dim == 2048:
+            # For current LLM-projected features (default)
+            hidden_dim = 512
+        else:
+            # For other dimensions (backward compatibility)
+            hidden_dim = max(512, in_dim // 4)
+            
+        self.proj = nn.Sequential(
+            nn.Linear(in_dim, hidden_dim),
+            nn.GELU(),
+            nn.Linear(hidden_dim, out_dim)
+        )
         
         # Layer normalization for stability
         self.norm = nn.LayerNorm(out_dim)
         
-    def forward(self, vision_features: torch.Tensor) -> torch.Tensor:
+    def forward(self, vision_features: torch.Tensor, image_grid_thw: Optional[torch.Tensor] = None) -> torch.Tensor:
         """
         Transform vision features from Qwen to SAM format
         
         Args:
             vision_features: Tensor of shape [B, N_patches, D_v]
-                            where B is batch size, N_patches is number of patches,
+                            where B is batch size, N_patches is number of COMPRESSED patches,
                             D_v is Qwen vision hidden dimension
+            image_grid_thw: Optional grid dimensions [B, 3] for dynamic resolution
+                           Format: [T, H_grid, W_grid] where T=1 for images
+                           NOTE: H_grid, W_grid are RAW patch dimensions (before PatchMerge)
         
         Returns:
             Tensor of shape [B, out_dim, H, W] suitable for SAM mask decoder
         """
         B, N, D_v = vision_features.shape
+        print(f"[ImageFeatureAdapter] Input: vision_features {vision_features.shape}, grid_thw {image_grid_thw.shape if image_grid_thw is not None else None}")
         
         # Project features to target dimension
         features = self.proj(vision_features)  # [B, N, out_dim]
         features = self.norm(features)
         
-        # Calculate spatial dimensions assuming square patches
-        # N should be a perfect square for standard vision transformers
-        H = W = int(math.sqrt(N))
-        
-        if H * W != N:
-            # Handle non-square patch grids
-            # Find the closest factors
-            factors = []
-            for i in range(1, int(math.sqrt(N)) + 1):
-                if N % i == 0:
-                    factors.append((i, N // i))
+        # Determine spatial dimensions
+        if image_grid_thw is not None:
+            # Use provided grid dimensions for dynamic resolution
+            # image_grid_thw contains RAW grid dimensions (before PatchMerge)
+            # vision_features contains compressed patches (after PatchMerge)
+            H_raw = int(image_grid_thw[0, 1].item())  # Height in RAW patches
+            W_raw = int(image_grid_thw[0, 2].item())  # Width in RAW patches
+            # Calculate compressed dimensions
+            H = H_raw // 2  # After 2x2 PatchMerge
+            W = W_raw // 2
             
-            # Choose the most square-like factorization
-            H, W = min(factors, key=lambda x: abs(x[0] - x[1]))
+            print(f"[ImageFeatureAdapter] RAW grid: {H_raw}×{W_raw}, Compressed grid: {H}×{W}={H*W}, Actual patches: {N}")
+            
+            if H * W != N:
+                # Patches may be padded in batch - use actual count
+                print(f"[ImageFeatureAdapter] Note: Using actual patch count {N} instead of grid-based {H*W}")
+                # Find the best factorization for actual patch count
+                # Prefer factors close to the expected aspect ratio
+                aspect_ratio = W / H if H > 0 else 1.0
+                
+                # Find all factors
+                factors = []
+                for i in range(1, int(math.sqrt(N)) + 1):
+                    if N % i == 0:
+                        factors.append((i, N // i))
+                
+                # Choose the factorization closest to expected aspect ratio
+                if factors:
+                    best_factor = min(factors, key=lambda f: abs((f[1]/f[0]) - aspect_ratio))
+                    H, W = best_factor
+                    print(f"  Adjusted dimensions: {H}×{W} (maintaining aspect ratio ~{aspect_ratio:.2f})")
+                else:
+                    # Fallback to square
+                    H = W = int(math.sqrt(N))
+                    print(f"  Fallback to square: {H}×{W}")
+        else:
+            # Calculate spatial dimensions assuming square patches
+            H = W = int(math.sqrt(N))
+            
+            if H * W != N:
+                # Handle non-square patch grids
+                # Find the closest factors
+                factors = []
+                for i in range(1, int(math.sqrt(N)) + 1):
+                    if N % i == 0:
+                        factors.append((i, N // i))
+                
+                # Choose the most square-like factorization
+                H, W = min(factors, key=lambda x: abs(x[0] - x[1]))
         
         # Reshape to spatial format
         # [B, N, out_dim] -> [B, H, W, out_dim] -> [B, out_dim, H, W]

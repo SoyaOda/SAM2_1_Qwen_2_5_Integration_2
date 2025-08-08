@@ -49,9 +49,33 @@ class LISAConfig:
     
     # Dataset configuration
     dataset_base_dir: str = "/mnt/h/download/LISA-dataset/data/dataset"
-    model_max_length: int = 2048
-    qwen_image_size: int = 448
+    model_max_length: int = 16384  # Extended for dynamic resolution
+    
+    # Dynamic resolution configuration for Qwen2.5-VL (Following o3_spec3.md)
+    qwen_min_pixels: int = 336 * 336  # 112,896 - Minimum ~24×24 patches
+    qwen_max_pixels: int = 2688 * 2688  # 7,225,344 - Maximum ~192×192 patches
+    qwen_patch_size: int = 14  # ViT patch size
+    qwen_merge_size: int = 2  # 2x2 patch merging for compression
+    
+    # Resolution buckets for efficient batching
+    resolution_buckets: list = None  # Will be initialized in __post_init__
+    use_quality_score: bool = True  # Enable quality-based sample weighting
+    quality_score_threshold: float = 0.7  # Threshold for low-quality images
+    
+    # Legacy fixed size settings (kept for backward compatibility)
+    qwen_image_size: int = 448  # Used as fallback when dynamic resolution is disabled
     sam_image_size: int = 1024
+    
+    # Dynamic resolution control
+    use_dynamic_resolution: bool = True  # Enable/disable dynamic resolution
+    
+    # Token selection strategy
+    use_token_selection: bool = False  # Disabled for segmentation tasks (need all tokens)
+    
+    # Vision feature extraction settings
+    use_patchmerge_features: bool = False  # Currently False (2048-dim); will be True when PatchMerge features are available
+    vision_feature_dim: int = 2048  # Currently 2048 (LLM-projected); will be 2560 for PatchMerge
+    token_selection_strategy: str = "none"  # Options: "top128", "none" - Use "none" for segmentation
     
     # Dataset paths
     sem_seg_data: str = "ade20k||cocostuff"
@@ -76,3 +100,12 @@ class LISAConfig:
         if self.sample_rates is None:
             # Default sample rates for datasets [sem_seg, refer_seg, vqa, reason_seg]
             self.sample_rates = [9, 3, 3, 1]
+        
+        if self.resolution_buckets is None:
+            # Optimal resolution buckets for batching
+            # Format: (pixels, grid_size, token_count)
+            self.resolution_buckets = [
+                (448 * 448, (32, 32), 256),   # Small: 32×32 patches, 256 tokens
+                (672 * 672, (48, 48), 576),   # Medium: 48×48 patches, 576 tokens
+                (896 * 896, (64, 64), 1024),  # Large: 64×64 patches, 1024 tokens
+            ]

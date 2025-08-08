@@ -1,0 +1,50 @@
+# データセットのサブセット設定
+# 開発・テスト時に使用する小規模データセット
+
+development:
+  # 各データセットから読み込むサンプル数の上限
+  max_samples_per_dataset:
+    ade20k: 100        # 20210 -> 100
+    cocostuff: 100     # 118287 -> 100
+    refcoco: 50        # 16994 -> 50
+    refcoco+: 50       # 16992 -> 50
+    refcocog: 50       # 21899 -> 50
+    llava_instruct_150k: 100  # 157712 -> 100
+    ReasonSeg: 50      # 239 -> 50 (全部使っても少ない)
+  
+  # 高速読み込みモード
+  fast_load: true
+  
+  # キャッシュ使用
+  use_cache: true
+  cache_dir: ".cache/datasets"
+
+production:
+  # 本番では全データを使用
+  max_samples_per_dataset:
+    ade20k: -1         # 全部
+    cocostuff: -1      # 全部
+    refcoco: -1        # 全部
+    refcoco+: -1       # 全部
+    refcocog: -1       # 全部
+    llava_instruct_150k: -1  # 全部
+    ReasonSeg: -1      # 全部
+  
+  fast_load: false
+  use_cache: true
+  cache_dir: ".cache/datasets"
+
+test:
+  # テスト用の極小サブセット
+  max_samples_per_dataset:
+    ade20k: 10
+    cocostuff: 10
+    refcoco: 5
+    refcoco+: 5
+    refcocog: 5
+    llava_instruct_150k: 10
+    ReasonSeg: 5
+  
+  fast_load: true
+  use_cache: true
+  cache_dir: ".cache/datasets"

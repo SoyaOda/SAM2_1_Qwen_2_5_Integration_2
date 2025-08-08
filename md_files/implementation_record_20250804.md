@@ -79,7 +79,40 @@ def extract_sam_features(self, pixel_values):
         high_res_features = [feat_s0, feat_s1]
 ```
 
-### 4. データセット統合実装の詳細（2025年8月4日追加）
+### 4. Vision Feature次元の重要な変更（2025年8月8日追加）
+
+#### 2352次元から2048次元への移行
+**背景**: 当初O3の推奨に基づき2352次元のPatchMerge特徴を使用しようとしたが、実装上の制約により2048次元に変更
+
+**調査結果**:
+- **期待された次元**: 2352次元（O3の初期回答）
+- **実際のPatchMerge次元**: 2560次元（1280×2）for Qwen2.5-VL-3B
+- **現在使用している次元**: 2048次元（LLM投射後の安定した特徴）
+
+**技術的制約**:
+1. `vision_tower`属性が現在のtransformers (4.56.0.dev0)に存在しない
+2. `return_dict=True`が未実装でTensorのみ返される
+3. mergerモジュールが既にLLM投射を含む（2560→2048）
+
+**採用した解決策**:
+```python
+def extract_vision_features(self, pixel_values, image_grid_thw=None):
+    """
+    Extract vision features from Qwen model
+    Currently: 2048-dim LLM-projected features (stable)
+    Future: Will migrate to 2560-dim PatchMerge features when available
+    """
+    # Get 2048-dim LLM-projected features (stable and proven)
+    image_embeds = self.qwen.model.get_image_features(pixel_values, image_grid_thw)
+    return image_embeds
+```
+
+**この選択の妥当性**:
+- LISA-v2、InternVL-HD等の主要実装も2048次元を使用
+- 安定性と実績のある手法
+- 将来的に2560次元が利用可能になった際の移行パスを確保
+
+### 5. データセット統合実装の詳細（2025年8月4日追加）
 
 #### HybridDatasetアーキテクチャ
 **マルチタスク学習基盤**: 4つの異なるタスクを単一のデータセットクラスで統合
@@ -180,7 +213,7 @@ total_loss = lm_loss + seg_weight * seg_loss
 seg_loss = F.binary_cross_entropy_with_logits(pred_masks, gt_masks) + dice_loss
 ```
 
-## 現在の実装状態（2025年8月6日）
+## 現在の実装状態（2025年8月8日更新）
 
 ### 完了項目
 1. **モデルアーキテクチャ**: 完全実装 ✅
@@ -193,16 +226,20 @@ seg_loss = F.binary_cross_entropy_with_logits(pred_masks, gt_masks) + dice_loss
 4. **推論パイプライン**: ストリーミング生成、バッチ処理対応 ✅
 5. **テストスイート**: 統合テストで23.4%の損失減少を確認 ✅
 6. **データセット統合**: 全データセットタイプで動作確認完了 ✅
-7. **実データでのトレーニング実装**: ミニマルトレーニングスクリプト完成 ✅ **New!**
-8. **O3推奨の最適化実装**: 全項目完了 ✅ **New!**
+7. **実データでのトレーニング実装**: ミニマルトレーニングスクリプト完成 ✅
+8. **O3推奨の最適化実装**: 全項目完了 ✅
+9. **Vision Feature次元の標準化**: 2048次元への移行完了 ✅ **New!**
+   - LISA_Model, ImageFeatureAdapter, LISAConfigを2048次元に統一
+   - 将来の2560次元移行パスを明確化
 
 ### 技術的な成果
 - **パラメータ効率**: 全パラメータの5.60%（222M/3.98B）のみ学習
 - **メモリ効率**: float16使用で~20GBで動作
 - **学習の安定性**: 3エポックで安定した損失減少
-- **データ統合**: 352,155サンプルの大規模マルチタスクデータセット ✅ **New!**
-- **処理効率**: デュアルストリーム処理でQwen/SAM双方の最適解像度を実現 ✅ **New!**
-- **拡張性**: HybridDatasetによる柔軟なタスク組み合わせ ✅ **New!**
+- **データ統合**: 352,155サンプルの大規模マルチタスクデータセット ✅
+- **処理効率**: デュアルストリーム処理でQwen/SAM双方の最適解像度を実現 ✅
+- **拡張性**: HybridDatasetによる柔軟なタスク組み合わせ ✅
+- **特徴抽出の安定性**: 2048次元LLM投射特徴による安定した学習 ✅ **New!**
 
 ### 2025年8月6日の重要な実装改善
 
@@ -252,6 +289,7 @@ max_patches = ((max_patches_raw + 3) // 4) * 4
 4. **高解像度画像対応**
    - 現在: 448×448 (Qwen), 1024×1024 (SAM)でテスト
    - 目標: Qwen2.5-VLの動的解像度（最大16384トークン）活用
+   - 注意: 2048次元特徴でも動的解像度は有効（image_grid_thwで管理）
 
 5. **EdgeLoss実装** (低優先度)
    - エッジ認識精度の向上
@@ -259,7 +297,8 @@ max_patches = ((max_patches_raw + 3) // 4) * 4
 ## 重要な実装知見
 
 ### 1. Qwen2.5-VLとSAMの次元マッピング
-- Qwen視覚特徴: 1280次元（merger前）
+- Qwen視覚特徴（生）: 1280次元（merger前、現在未使用）
+- Qwen視覚特徴（使用中）: 2048次元（LLM投射後）
 - Qwen言語特徴: 2048次元
 - SAM画像埋め込み: 256次元
 - SAMプロンプト: 256次元
@@ -304,7 +343,9 @@ max_patches = ((max_patches_raw + 3) // 4) * 4
 
 LISA改の実装は、技術的な課題を克服しながら成功裏に完了しました。特にQwen2.5-VLの視覚特徴抽出とSAM2.1の統合において重要な知見が得られ、将来のFoodLMM改開発への道筋が明確になりました。
 
-2025年8月6日の更新により、実データでのトレーニングが可能となり、O3推奨の最適化も全て実装されました。現在の実装は研究・開発用として十分な品質を持ち、実用的なファインチューニングの基盤となります。
+2025年8月8日の更新により、視覚特徴次元を2048次元（LLM投射後）に標準化し、より安定した実装となりました。当初目指した2352次元のPatchMerge特徴は実際には2560次元であることが判明し、現在のtransformers実装の制約により取得できないため、実績のある2048次元を採用しました。この選択はLISA-v2やInternVL-HDなどの主要実装とも一致しており、実用的な判断です。
+
+現在の実装は研究・開発用として十分な品質を持ち、実用的なファインチューニングの基盤となります。将来transformersが`return_dict=True`をサポートした際には、2560次元への移行パスも明確に定義されています。
 
 ## 2025年8月6日 - 現在の訓練設定に関する包括的リサーチと妥当性評価
 

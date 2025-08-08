@@ -18,12 +18,14 @@ class MultiModalDataCollator:
         tokenizer,
         max_length: int = 512,
         padding: str = "longest",
-        return_tensors: str = "pt"
+        return_tensors: str = "pt",
+        config=None
     ):
         self.tokenizer = tokenizer
         self.max_length = max_length
         self.padding = padding
         self.return_tensors = return_tensors
+        self.config = config
     
     def __call__(self, features: List[Dict[str, any]]) -> Dict[str, torch.Tensor]:
         """
@@ -61,58 +63,80 @@ class MultiModalDataCollator:
                         all_image_grids.append(f['image_grid_thw'])
                 
                 # Find max grid dimensions
-                H_grid_max = W_grid_max = 0
+                # IMPORTANT (Corrected Spec):
+                # - image_grid_thw contains RAW patch dimensions (H_img/14, W_img/14) 
+                # - pixel_values contains RAW patches (NOT compressed): N_raw = H_grid * W_grid
+                # - PatchMerge happens INSIDE the model, not in preprocessing
+                # - image_pad tokens = RAW patches / 4 (after PatchMerge)
+                
+                # First find the maximum number of patches needed
+                max_raw_patches = 0
+                all_raw_patches = []
+                
                 for i, pv in enumerate(all_pixel_values):
-                    n_patches = pv.shape[0]
+                    # pixel_values contains RAW patches (before PatchMerge)
+                    n_raw_patches = pv.shape[0]
+                    all_raw_patches.append(n_raw_patches)
                     
-                    # Use provided grid if available
-                    if i < len(all_image_grids):
-                        grid = all_image_grids[i]
-                        H_grid = int(grid[1])
-                        W_grid = int(grid[2])
-                        if H_grid * W_grid != n_patches:
-                            print(f"Warning: Grid mismatch - grid says {H_grid}×{W_grid}={H_grid*W_grid}, but has {n_patches} patches")
-                    else:
-                        # Estimate grid from patch count
-                        # Find factors closest to square
-                        factors = []
-                        for h in range(1, int(n_patches**0.5) + 1):
-                            if n_patches % h == 0:
-                                w = n_patches // h
-                                factors.append((h, w))
-                        # Choose most square-like
-                        H_grid, W_grid = min(factors, key=lambda x: abs(x[0] - x[1]))
+                    # Grid info is required for dynamic resolution
+                    if i >= len(all_image_grids) or all_image_grids[i] is None:
+                        raise ValueError(f"Sample {i}: image_grid_thw is required for 2D pixel_values format")
                     
-                    H_grid_max = max(H_grid_max, H_grid)
-                    W_grid_max = max(W_grid_max, W_grid)
+                    grid = all_image_grids[i]
+                    # image_grid_thw contains RAW patch dimensions (before PatchMerge)
+                    H_grid_raw = int(grid[1])
+                    W_grid_raw = int(grid[2])
+                    
+                    # Verify RAW patches consistency
+                    expected_raw_patches = H_grid_raw * W_grid_raw
+                    
+                    if expected_raw_patches != n_raw_patches:
+                        raise ValueError(
+                            f"Sample {i}: Patch count mismatch! "
+                            f"Grid: {H_grid_raw}×{W_grid_raw} = {expected_raw_patches} RAW patches. "
+                            f"Actual: {n_raw_patches} patches in pixel_values. "
+                            f"This usually means the image preprocessing is incorrect."
+                        )
+                    
+                    max_raw_patches = max(max_raw_patches, n_raw_patches)
                 
-                # Calculate max patches (must be 4の倍数)
-                max_patches_raw = H_grid_max * W_grid_max
-                # Qwen2.5-VL requires patches to be multiple of 4 for compression
-                max_patches = ((max_patches_raw + 3) // 4) * 4
+                # Calculate proper grid dimensions using square policy (O3 recommendation)
+                # CRITICAL: H_max and W_max must be EVEN for PatchMerge compatibility
+                import math
                 
-                # Adjust grid if needed to match 4の倍数
-                if max_patches != max_patches_raw:
-                    # Need to expand grid slightly
-                    # Try expanding width first
-                    W_grid_max = (max_patches + H_grid_max - 1) // H_grid_max
-                    if H_grid_max * W_grid_max != max_patches:
-                        # Adjust height if needed
-                        H_grid_max = (max_patches + W_grid_max - 1) // W_grid_max
+                # Square policy: make it as square as possible
+                grid_size = math.ceil(math.sqrt(max_raw_patches))
+                # Round up to nearest even number (REQUIRED for 2x2 PatchMerge)
+                H_grid_max = W_grid_max = (grid_size + 1) // 2 * 2
+                
+                # Actual padded patch count (must be H*W exactly)
+                N_padded_raw = H_grid_max * W_grid_max
+                
+                # Image tokens after PatchMerge
+                max_img_tokens = N_padded_raw // 4
                 
                 # Debug output for batch processing
                 if len(all_image_grids) > 0:
-                    print(f"[Batch Collator] Unified grid: {H_grid_max}×{W_grid_max} = {max_patches} patches ({max_patches//4} tokens)")
+                    print(f"[Batch Collator] Max RAW patches: {max_raw_patches}")
+                    print(f"  Target grid (even): {H_grid_max}×{W_grid_max} = {N_padded_raw} patches")
+                    print(f"  Image tokens after PatchMerge: {max_img_tokens}")
                     individual_info = []
-                    for i, (pv, grid) in enumerate(zip(all_pixel_values, all_image_grids if all_image_grids else [])):
+                    for i, n_patches in enumerate(all_raw_patches):
                         if i < len(all_image_grids):
-                            individual_info.append(f"({int(grid[1])},{int(grid[2])}={int(grid[1])*int(grid[2])})")
+                            grid = all_image_grids[i]
+                            individual_info.append(f"Sample {i}: {n_patches} patches (grid: {int(grid[1])}×{int(grid[2])})")
                         else:
-                            individual_info.append("estimated")
-                    print(f"  Original sample grids: {individual_info}")
+                            individual_info.append(f"Sample {i}: {n_patches} patches")
+                    for info in individual_info:
+                        print(f"  {info}")
                 
                 # IMAGE_PAD_ID for Qwen2.5-VL
                 IMAGE_PAD_ID = 151655
+                VISION_START_ID = 151652  # <|vision_start|>
+                VISION_END_ID = 151653     # <|vision_end|>
+                
+                # IMPORTANT: image_pad tokens = RAW patches / 4 (after PatchMerge)
+                # Already calculated as max_img_tokens above
                 
                 # Process each sample
                 padded_pixel_values = []
@@ -120,95 +144,140 @@ class MultiModalDataCollator:
                 padded_attention_masks = []
                 new_image_grid_thw = []
                 
-                for f in features:
+                print(f"[DEBUG] Processing {len(features)} samples:")
+                print(f"  Max RAW patches: {max_raw_patches}")
+                print(f"  Max image tokens (after PatchMerge): {max_img_tokens}")
+                
+                for i, f in enumerate(features):
                     pv = f['pixel_values']
                     input_ids = f['input_ids']
                     attention_mask = f.get('attention_mask', torch.ones_like(input_ids))
                     
-                    # Calculate padding size
-                    pad_len = max_patches - pv.shape[0]
+                    # Verify original grid info
+                    orig_grid = f['image_grid_thw']
+                    orig_H_raw = int(orig_grid[1])
+                    orig_W_raw = int(orig_grid[2])
+                    expected_raw_patches = orig_H_raw * orig_W_raw
                     
-                    # Debug: Check original grid size
-                    if 'image_grid_thw' in f and f['image_grid_thw'] is not None:
-                        orig_grid = f['image_grid_thw']
-                        orig_patches = int(orig_grid[1]) * int(orig_grid[2])
-                        if orig_patches != pv.shape[0]:
-                            print(f"Warning: Original grid mismatch - grid says {orig_patches} patches ({orig_grid[1]}x{orig_grid[2]}), but pixel_values has {pv.shape[0]}")
+                    if pv.shape[0] != expected_raw_patches:
+                        raise ValueError(
+                            f"Sample {i}: Inconsistent data! "
+                            f"Grid: {orig_H_raw}×{orig_W_raw} = {expected_raw_patches} RAW patches. "
+                            f"Actual: {pv.shape[0]} patches in pixel_values."
+                        )
                     
-                    # 1. Pad pixel_values with zeros in the patch dimension
+                    # 1. Pad pixel_values to N_padded_raw (not just max_raw_patches)
+                    # CRITICAL: Must pad to H_grid_max * W_grid_max exactly
+                    current_patches = pv.shape[0]
+                    pad_len = N_padded_raw - current_patches
+                    
                     if pad_len > 0:
+                        # Zero padding for pixel values
                         padding = torch.zeros(pad_len, pv.shape[1], dtype=pv.dtype, device=pv.device)
                         pv_padded = torch.cat([pv, padding], dim=0)
                     else:
-                        pv_padded = pv
+                        pv_padded = pv[:N_padded_raw]  # Truncate if needed (shouldn't happen)
+                    
                     padded_pixel_values.append(pv_padded)
                     
-                    # 2. Add corresponding <|image_pad|> tokens to input_ids
-                    # Count existing image_pad tokens
-                    image_pad_mask = (input_ids == IMAGE_PAD_ID)
-                    existing_pads = image_pad_mask.sum().item()
+                    # 2. Handle input_ids padding - need to adjust image_pad tokens
+                    # Count existing image_pad tokens first
+                    existing_image_pads = (input_ids == IMAGE_PAD_ID).sum().item()
                     
-                    # Debug: Qwen2.5-VL uses 4:1 patch compression
-                    # So image_pad tokens = pixel patches / 4
-                    # Ensure patches are multiple of 4
-                    if pv.shape[0] % 4 != 0:
-                        print(f"Warning: Original patches {pv.shape[0]} not multiple of 4")
-                    expected_pads = pv.shape[0] // 4
-                    if existing_pads != expected_pads:
-                        print(f"Warning: Mismatch before padding - existing image_pad tokens: {existing_pads}, expected (patches/4): {expected_pads}, pixel patches: {pv.shape[0]}")
+                    # The correct number should match the image tokens after PatchMerge
+                    # CRITICAL: Use the actual padded raw patches divided by 4
+                    target_image_pads = N_padded_raw // 4  # This matches padded pixel_values
                     
-                    # For Qwen2.5-VL, we need to add pad_len/4 image_pad tokens
-                    # because of the 4:1 patch compression
-                    image_pad_to_add = pad_len // 4
+                    print(f"  Sample {i}: existing_pads={existing_image_pads}, target_pads={target_image_pads}, "
+                          f"orig_patches={current_patches}, padded_patches={N_padded_raw}")
                     
-                    if image_pad_to_add > 0:
+                    # Calculate how many to add or remove
+                    image_pad_diff = target_image_pads - existing_image_pads
+                    
+                    if image_pad_diff > 0:
+                        # Need to add more image_pad tokens
+                        image_pad_mask = (input_ids == IMAGE_PAD_ID)
+                        
                         if image_pad_mask.any():
-                            # Find the first occurrence of image_pad token
-                            first_img_pad_idx = image_pad_mask.nonzero(as_tuple=True)[0][0].item()
+                            # Get existing image_pad positions
+                            pad_indices = image_pad_mask.nonzero(as_tuple=True)[0]
+                            last_pad_idx = pad_indices[-1].item()
                             
-                            # Insert additional image_pad tokens
+                            # Insert additional image_pad tokens after the last existing one
                             ids_padded = torch.cat([
-                                input_ids[:first_img_pad_idx],  # Before image_pad block
-                                input_ids.new_full((existing_pads + image_pad_to_add,), IMAGE_PAD_ID),  # All image_pad tokens
-                                input_ids[first_img_pad_idx + existing_pads:]  # After image_pad block
+                                input_ids[:last_pad_idx + 1],  # Up to and including last image_pad
+                                input_ids.new_full((image_pad_diff,), IMAGE_PAD_ID),  # Additional image_pads
+                                input_ids[last_pad_idx + 1:]  # Rest of the sequence
                             ])
                         else:
-                            # No existing image_pad tokens, append at the end
-                            print(f"Warning: No existing image_pad tokens found in input_ids!")
-                            ids_padded = torch.cat([
-                                input_ids,
-                                input_ids.new_full((image_pad_to_add,), IMAGE_PAD_ID)
-                            ])
+                            # No existing image_pad tokens - shouldn't happen
+                            print(f"Warning: No existing image_pad tokens found in sample {i}")
+                            ids_padded = input_ids
+                    elif image_pad_diff < 0:
+                        # Need to remove excess image_pad tokens
+                        image_pad_mask = (input_ids == IMAGE_PAD_ID)
+                        if image_pad_mask.any():
+                            pad_indices = image_pad_mask.nonzero(as_tuple=True)[0]
+                            # Keep only the target number of image_pads
+                            keep_indices = []
+                            image_pad_count = 0
+                            for idx in range(len(input_ids)):
+                                if input_ids[idx] == IMAGE_PAD_ID:
+                                    if image_pad_count < target_image_pads:
+                                        keep_indices.append(idx)
+                                        image_pad_count += 1
+                                else:
+                                    keep_indices.append(idx)
+                            ids_padded = input_ids[keep_indices]
+                        else:
+                            ids_padded = input_ids
                     else:
+                        # Correct number already
                         ids_padded = input_ids
-                    
-                    # Verify after padding
-                    new_image_pad_count = (ids_padded == IMAGE_PAD_ID).sum().item()
-                    expected_final_pads = max_patches // 4
-                    if new_image_pad_count != expected_final_pads:
-                        print(f"Error: After padding - image_pad tokens: {new_image_pad_count}, expected (max_patches/4): {expected_final_pads}")
-                        print(f"  Sample {len(padded_input_ids)}: original patches={pv.shape[0]}, padded to {max_patches}")
-                        print(f"  Original image_pads={existing_pads}, added={image_pad_to_add}, total={new_image_pad_count}")
                     
                     padded_input_ids.append(ids_padded)
                     
-                    # 3. Update attention_mask
-                    if image_pad_to_add > 0:
-                        mask_padded = torch.cat([
-                            attention_mask,
-                            torch.ones(image_pad_to_add, dtype=attention_mask.dtype)
-                        ])
+                    # 3. Update attention_mask accordingly
+                    if len(ids_padded) != len(attention_mask):
+                        # Adjust mask to match new length
+                        if len(ids_padded) > len(attention_mask):
+                            # Added tokens - extend mask with 1s
+                            extra = len(ids_padded) - len(attention_mask)
+                            mask_padded = torch.cat([
+                                attention_mask[:len(attention_mask)//2],  # First half
+                                torch.ones(extra, dtype=attention_mask.dtype),  # New tokens
+                                attention_mask[len(attention_mask)//2:]  # Second half
+                            ])
+                        else:
+                            # Removed tokens - adjust mask
+                            mask_padded = torch.ones(len(ids_padded), dtype=attention_mask.dtype)
                     else:
                         mask_padded = attention_mask
+                    
                     padded_attention_masks.append(mask_padded)
                     
-                    # 4. Update image_grid_thw to match padded patches
-                    # All samples in batch must have the same grid size
-                    new_grid = torch.tensor([1, H_grid_max, W_grid_max], dtype=torch.long)
-                    new_image_grid_thw.append(new_grid)
+                    # 4. Update grid to unified dimensions for batch processing
+                    # CRITICAL: All samples must have the same grid size (H_grid_max, W_grid_max)
+                    # This ensures RoPE embeddings work correctly
+                    unified_grid = torch.tensor([1, H_grid_max, W_grid_max], dtype=torch.long)
+                    new_image_grid_thw.append(unified_grid)
                 
-                # Stack all tensors
-                batch['pixel_values'] = torch.stack(padded_pixel_values)  # (B, N_max, D_v)
+                # Stack all tensors - ensure all have same shape
+                # Check dimensions before stacking
+                shapes = [pv.shape for pv in padded_pixel_values]
+                if len(set(shapes)) > 1:
+                    print(f"Error: Inconsistent pixel_values shapes after padding: {shapes}")
+                    # Force all to have the same shape by additional padding
+                    max_patches_actual = max(pv.shape[0] for pv in padded_pixel_values)
+                    fixed_pixel_values = []
+                    for pv in padded_pixel_values:
+                        if pv.shape[0] < max_patches_actual:
+                            extra_pad = max_patches_actual - pv.shape[0]
+                            pv = torch.cat([pv, torch.zeros(extra_pad, pv.shape[1], dtype=pv.dtype, device=pv.device)], dim=0)
+                        fixed_pixel_values.append(pv)
+                    batch['pixel_values'] = torch.stack(fixed_pixel_values)  # (B, N_max, D_v)
+                else:
+                    batch['pixel_values'] = torch.stack(padded_pixel_values)  # (B, N_max, D_v)
                 batch['image_grid_thw'] = torch.stack(new_image_grid_thw)  # (B, 3)
                 
                 # Handle text features with variable length
@@ -241,12 +310,21 @@ class MultiModalDataCollator:
                 if final_labels:
                     batch['labels'] = torch.stack(final_labels)
                 
+                # Validate the batch
+                print(f"[DEBUG] Final batch validation:")
+                print(f"  pixel_values shape: {batch['pixel_values'].shape}")
+                print(f"  input_ids shape: {batch['input_ids'].shape}")
+                for b_idx in range(batch['input_ids'].shape[0]):
+                    n_image_pads = (batch['input_ids'][b_idx] == IMAGE_PAD_ID).sum().item()
+                    print(f"  Sample {b_idx}: {n_image_pads} image_pad tokens")
+                
                 # トークン数上限チェック（Qwen2.5-VLのRoPE制限）
                 total_tokens = batch['input_ids'].shape[1]
-                if total_tokens > 2048:
-                    print(f"Warning: Total tokens ({total_tokens}) exceeds 2048 limit!")
-                    print(f"  Image tokens: {max_patches // 4}")
-                    print(f"  Text tokens: {total_tokens - max_patches // 4}")
+                max_length = getattr(self.config, 'model_max_length', 16384)  # 動的解像度対応
+                if total_tokens > max_length:
+                    print(f"Warning: Total tokens ({total_tokens}) exceeds {max_length} limit!")
+                    print(f"  Image tokens: {max_img_tokens}")
+                    print(f"  Text tokens: {total_tokens - max_img_tokens}")
                     # 必要に応じてエラーにする
                     # raise ValueError(f"Token count {total_tokens} exceeds maximum 2048")
             else:
