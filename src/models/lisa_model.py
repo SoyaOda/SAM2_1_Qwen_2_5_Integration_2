@@ -544,6 +544,49 @@ class LISA_Model(nn.Module):
             "using the HighResFeatureGenerator class."
         )
     
+    def compute_mask_centroid(self, mask: torch.Tensor, orig_h: int, orig_w: int) -> torch.Tensor:
+        """
+        バイナリマスクから重心座標を計算
+        
+        Args:
+            mask: バイナリマスク [H, W] or [1, H, W]
+            orig_h: 元画像の高さ（ピクセル座標系）
+            orig_w: 元画像の幅（ピクセル座標系）
+        
+        Returns:
+            重心座標 [2] = (cx, cy) in pixels
+        """
+        if mask.dim() == 3:
+            mask = mask.squeeze(0)
+        
+        # Float型に変換
+        m = mask.to(torch.float32)
+        h, w = m.shape
+        
+        # 面積（非ゼロ画素数）
+        mass = m.sum()
+        if mass <= 0:
+            # マスクが空の場合は画像中心を返す
+            return torch.tensor([orig_w // 2, orig_h // 2], 
+                              dtype=torch.float32, device=mask.device)
+        
+        # 座標グリッド
+        ys = torch.arange(h, device=m.device, dtype=torch.float32).view(h, 1)
+        xs = torch.arange(w, device=m.device, dtype=torch.float32).view(1, w)
+        
+        # 重心計算（マスク座標系）
+        cy = (m * ys).sum() / mass
+        cx = (m * xs).sum() / mass
+        
+        # マスク座標系から元画像座標系へ変換
+        # マスクがリサイズされている場合のスケーリング
+        scale_x = orig_w / w
+        scale_y = orig_h / h
+        cx = cx * scale_x
+        cy = cy * scale_y
+        
+        return torch.stack([cx, cy])
+
     def forward(
         self,
         input_ids: torch.Tensor,
@@ -675,13 +718,35 @@ class LISA_Model(nn.Module):
                                 align_corners=False
                             )
                         
-                        # Create a center point as anchor for text-guided segmentation
-                        # SAM2.1 expects points in the image coordinate system
-                        # Use the actual image feature dimensions for dynamic resolution
+                        # 真値マスクから重心座標を計算（訓練時）、または画像中心を使用（推論時）
                         h_feat, w_feat = image_features_sam[i:i+1].shape[-2:]
                         # Map to original image coordinates (feature stride is 16)
                         h_img, w_img = h_feat * 16, w_feat * 16
-                        center_x, center_y = w_img // 2, h_img // 2
+                        
+                        if mask_labels is not None and i < len(mask_labels) and mask_labels[i] is not None:
+                            # 訓練時: GTマスクから重心を計算
+                            gt_mask = mask_labels[i]
+                            
+                            # GTマスクが複数SEGに対応している場合、最初のマスクを使用
+                            if isinstance(gt_mask, list):
+                                if len(gt_mask) > j:
+                                    gt_mask = gt_mask[j]
+                                else:
+                                    gt_mask = gt_mask[0] if len(gt_mask) > 0 else None
+                            
+                            if gt_mask is not None:
+                                # 重心を計算
+                                centroid = self.compute_mask_centroid(gt_mask, h_img, w_img)
+                                center_x, center_y = centroid[0].item(), centroid[1].item()
+                                logger.debug(f"[CENTROID] Batch {i}, SEG {j}: Computed centroid from GT mask - x={center_x:.1f}, y={center_y:.1f} (image center would be {w_img//2}, {h_img//2})")
+                            else:
+                                # GTマスクがない場合は画像中心を使用
+                                center_x, center_y = w_img // 2, h_img // 2
+                                logger.debug(f"[CENTROID] Batch {i}, SEG {j}: No GT mask - using image center ({center_x}, {center_y})")
+                        else:
+                            # 推論時: 画像中心を使用（フォールバック）
+                            center_x, center_y = w_img // 2, h_img // 2
+                            logger.debug(f"[CENTROID] Batch {i}, SEG {j}: Inference mode - using image center ({center_x}, {center_y})")
                         
                         # Create point coordinates [N, 2] where N=1 for center point
                         point_coords = torch.tensor([[center_x, center_y]], 
