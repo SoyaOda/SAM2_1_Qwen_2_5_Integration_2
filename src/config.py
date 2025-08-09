@@ -78,7 +78,7 @@ class LISAConfig:
     token_selection_strategy: str = "none"  # Options: "top128", "none" - Use "none" for segmentation
     
     # SAM2.1 MaskDecoder LoRA configuration
-    sam_lora_r: int = 4  # 0 to disable, 4-8 for enabling LoRA on MaskDecoder
+    sam_lora_r: int = 8  # 0 to disable, 4-8 for enabling LoRA on MaskDecoder
     sam_lora_alpha: int = 16  # LoRA alpha for MaskDecoder
     sam_lora_dropout: float = 0.1  # LoRA dropout for MaskDecoder
     sam_lora_target_modules: list = None  # Will be set in __post_init__
