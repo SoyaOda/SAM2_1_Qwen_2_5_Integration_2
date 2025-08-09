@@ -5,6 +5,11 @@
 
 ## 実装内容
 **問題1: テキスト指示の空間情報不足の修正**
+**問題2: マルチマスク出力の複雑さの修正**
+
+---
+
+# 問題1: テキスト指示の空間情報不足の修正
 
 ## 背景と問題点
 現在の実装では、SAMのプロンプトエンコーダに常に画像中心のポイント座標を与えていた。これにより：
@@ -111,6 +116,131 @@ else:
     logger.debug(f"[CENTROID] Batch {i}, SEG {j}: Inference mode - using image center ({center_x}, {center_y})")
 ```
 
+---
+
+# 問題2: マルチマスク出力の複雑さの修正
+
+## 背景と問題点
+現行設計では、1つの会話（QAペア）中に複数の`<SEG>`トークンを出力させることで複数マスクに対応しようとしていた。しかし：
+- LLMにとって出力制御が非常に難しい
+- データセット側でも明示的にマルチマスクの指示は用意されていない
+- seg_lossが下がらないケース（複数対象を1枚のマスクにまとめてしまい誤差が残る）が発生
+
+## 実装方針
+**1会話につき1マスク出力**に統一。マルチクラスの同時セグメンテーション要求は訓練データ上作らない方針。一枚の画像に複数対象がある場合でも、それぞれを別個のQAペア（または別ターン）として扱う。
+
+## 実装詳細
+
+### 1. データセット設定の変更
+**変更ファイル:**
+- `src/data/dataset.py`
+- `src/data/sem_seg_dataset.py`
+- `src/data/refer_seg_dataset.py`
+- `src/data/reason_seg_dataset.py`
+- `src/data/vqa_dataset.py`
+
+**変更内容:**
+```python
+# 全データセットで統一
+num_classes_per_sample: int = 1,  # 1会話1マスクに統一
+```
+
+### 2. セマンティックセグメンテーションデータセットの簡素化
+**ファイル**: `src/data/sem_seg_dataset.py`
+
+#### _get_vlpart_item メソッドの変更
+```python
+# 変更前: 複数クラスを選択
+if len(anns) >= self.num_classes_per_sample:
+    sampled_anns = np.random.choice(anns, size=self.num_classes_per_sample, replace=False).tolist()
+else:
+    sampled_anns = anns
+
+# 変更後: 1クラスのみを選択
+if len(anns) > 0:
+    sampled_anns = [np.random.choice(anns)]
+else:
+    sampled_anns = []
+```
+
+```python
+# マスクのテンソル変換も単一マスクに最適化
+# 変更前
+masks = np.stack(masks, axis=0)
+masks = torch.from_numpy(masks)
+
+# 変更後
+if len(masks) > 0:
+    masks = torch.from_numpy(masks[0]).unsqueeze(0)  # (1, H, W)形式
+else:
+    return self.__getitem__(0)
+```
+
+#### _get_semseg_item メソッドの変更
+```python
+# マスクの作成（1会話1マスクに統一）
+label_tensor = torch.from_numpy(label).long()
+
+# 最初のクラスのみを使用（num_classes_per_sample=1）
+if len(sampled_classes) > 0:
+    sampled_cls = sampled_classes[0]
+    try:
+        if isinstance(classes, np.ndarray):
+            class_id = np.where(classes == sampled_cls)[0]
+            if len(class_id) > 0:
+                class_id = class_id[0]
+            else:
+                return self.__getitem__(0)
+        else:
+            class_id = classes.index(sampled_cls)
+    except (ValueError, IndexError):
+        return self.__getitem__(0)
+    
+    # 単一のマスクを作成
+    mask = (label_tensor == class_id).float()
+    masks = mask.unsqueeze(0)  # (1, H, W)形式に
+else:
+    return self.__getitem__(0)
+```
+
+### 3. 参照・推論セグメンテーションの修正
+**ファイル**: `src/data/refer_seg_dataset.py`, `src/data/reason_seg_dataset.py`
+
+```python
+# 1つの参照表現/説明のみを選択
+if len(sents) > 0:
+    sampled_inds = [np.random.choice(len(sents))]
+else:
+    sampled_inds = []
+```
+
+### 4. 損失計算の最適化
+**ファイル**: `minimal_train.py`
+
+```python
+def compute_loss(self, outputs, labels, mask_labels):
+    """損失計算（1会話1マスクに最適化）"""
+    # ...
+    
+    if outputs.mask_logits is not None:
+        for batch_idx, batch_masks in enumerate(outputs.mask_logits):
+            if batch_masks is not None and len(batch_masks) > 0:
+                gt_mask = mask_labels[batch_idx]
+                
+                # 1会話1マスクなので、最初のマスクのみを使用
+                pred_mask = batch_masks[0] if isinstance(batch_masks, list) else batch_masks
+                
+                # サイズ調整時も1マスクを前提に処理
+                if (pred_h, pred_w) != (gt_h, gt_w):
+                    # 複数マスクの場合は最初のマスクのみを使用
+                    if gt_mask.dim() == 3 and gt_mask.shape[0] > 1:
+                        gt_mask = gt_mask[0]
+                    # 4次元テンソルの生成と検証
+                    if gt_mask_4d.dim() != 4:
+                        # 適切な次元調整
+                        ...
+```
+
 ## 動作確認
 
 ### テスト実行
@@ -119,38 +249,29 @@ python minimal_train.py --fast_dev_run --samples_per_epoch 4 --batch_size 2 --nu
 ```
 
 ### 実行結果
-エラーなく正常に動作し、以下のログが確認された：
 
+#### 1. マスク形状の統一を確認
 ```
-08/09/2025 15:58:43 - DEBUG - src.models.lisa_model - [CENTROID] Batch 0, SEG 0: Computed centroid from GT mask - x=881.5, y=112.9 (image center would be 512, 512)
-08/09/2025 15:58:45 - DEBUG - src.models.lisa_model - [CENTROID] Batch 0, SEG 0: Computed centroid from GT mask - x=509.2, y=572.9 (image center would be 512, 512)
+pred_mask shape: torch.Size([1, 448, 448])
+gt_mask shape: torch.Size([1, 1024, 1024])
+```
+→ 単一マスクのみが処理されている（以前は複数マスクの可能性があった）
+
+#### 2. 問題1の重心計算も正常動作
+```
+[CENTROID] Batch 0, SEG 0: Computed centroid from GT mask - x=503.0, y=731.6 (image center would be 512, 512)
+[CENTROID] Batch 0, SEG 0: Computed centroid from GT mask - x=575.0, y=591.1 (image center would be 512, 512)
 ```
 
-### 確認ポイント
-1. ✅ GTマスクから正しく重心座標を計算
-2. ✅ 画像中心（512, 512）とは異なる適切な座標を生成
-3. ✅ 訓練時と推論時で適切に処理を分岐
-4. ✅ エラーなく学習が進行
-
-## 技術的詳細
-
-### 重心計算アルゴリズム
-1. バイナリマスクの非ゼロ画素の座標を取得
-2. 一次モーメント（重み付き平均）で重心を計算
-3. マスク座標系から元画像座標系へスケーリング
-
-### 座標系の整合性
-- **入力**: GTマスク（任意のサイズ）
-- **出力**: SAM2.1が期待するピクセル座標（X, Y）
-- **変換**: feature stride = 16を考慮した座標変換
-
-### フォールバック処理
-- マスクが空の場合 → 画像中心を使用
-- 推論時 → 画像中心を使用
-- GTマスクがない場合 → 画像中心を使用
+#### 3. 学習の正常進行
+```
+Epoch 1 - 平均損失: 19.1614, LM: 17.8750, Seg: 1.2864
+```
+→ エラーなく完了、seg_lossも適切に計算（1.2864）
 
 ## 期待される効果
 
+### 問題1の修正による効果
 1. **セグメンテーション精度の向上**
    - 対象物の実際の位置に基づいたプロンプト生成
    - より正確なマスク予測
@@ -159,21 +280,30 @@ python minimal_train.py --fast_dev_run --samples_per_epoch 4 --batch_size 2 --nu
    - 中心から離れたオブジェクトも正確にセグメント可能
    - 多様な位置のオブジェクトに対する汎化性能向上
 
-3. **学習の安定化**
-   - seg_lossの高止まりを防ぐ
-   - より効率的な学習が可能
+### 問題2の修正による効果
+1. **学習の安定化**
+   - LLMの出力制御負荷が軽減
+   - 1質問1マスクの明確な対応関係
 
-## 今後の拡張可能性
+2. **実装の簡素化**
+   - データローダ、コレータ、損失計算のロジックが単純化
+   - 複数マスクのループ処理が不要に
+
+3. **seg_lossの改善**
+   - 複数対象を1マスクにまとめる誤差要因を排除
+   - より正確なマスク予測の学習が可能
+
+## 今後の拡張性
 
 ### 複数インスタンスへの対応
-現在は全体の重心を計算しているが、将来的には：
-- 連結成分ごとの重心計算
-- 複数ポイントプロンプトの同時入力
-- SAM2の`get_connected_components`を活用した実装
+将来的にマルチマスク出力が必要な場合は、推論時に以下の方法で対応可能：
+- 複数の質問を内部で生成し、複数回推論
+- 各マスクを個別に取得して統合
+- ただし、学習は1会話1マスクのシンプルな設計を維持
 
 ### 代替アプローチ
+- 連結成分ごとの重心計算と複数ポイントプロンプト
 - バウンディングボックスの中心を使用
-- 複数の代表点をサンプリング
 - 領域の分布を考慮した重み付き重心
 
 ## 参考資料

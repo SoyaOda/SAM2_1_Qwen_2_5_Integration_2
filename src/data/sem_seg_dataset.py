@@ -265,7 +265,7 @@ class SemSegDataset(torch.utils.data.Dataset):
         samples_per_epoch=500 * 8 * 2 * 10,
         precision: str = "fp32",
         image_size: int = 224,
-        num_classes_per_sample: int = 3,
+        num_classes_per_sample: int = 1,  # 1会話1マスクに統一
         exclude_val=False,
         sem_seg_data="ade20k||cocostuff||mapillary||pascal_part||paco_lvis",
     ):
@@ -461,10 +461,11 @@ class SemSegDataset(torch.utils.data.Dataset):
             return self.__getitem__(0)
 
         # クラスとマスクの選択
-        if len(anns) >= self.num_classes_per_sample:
-            sampled_anns = np.random.choice(anns, size=self.num_classes_per_sample, replace=False).tolist()
+        # 1会話1マスクに統一 - 1つのアノテーションのみを選択
+        if len(anns) > 0:
+            sampled_anns = [np.random.choice(anns)]
         else:
-            sampled_anns = anns
+            sampled_anns = []
 
         # マスクとクラス名の作成
         masks = []
@@ -514,9 +515,11 @@ class SemSegDataset(torch.utils.data.Dataset):
             ]
             conversations.append(messages)
 
-        # マスクをテンソルに変換
-        masks = np.stack(masks, axis=0)
-        masks = torch.from_numpy(masks)
+        # マスクをテンソルに変換（1会話1マスクなので単一のマスクのみ）
+        if len(masks) > 0:
+            masks = torch.from_numpy(masks[0]).unsqueeze(0)  # (1, H, W)形式
+        else:
+            return self.__getitem__(0)
         label = torch.ones(masks.shape[1], masks.shape[2]) * self.ignore_label
 
         # オリジナルLISA準拠の返り値形式（10要素 - coord_transform追加）
@@ -659,34 +662,29 @@ class SemSegDataset(torch.utils.data.Dataset):
             ]
             conversations.append(messages)
 
-        # マスクの作成
+        # マスクの作成（1会話1マスクに統一）
         label_tensor = torch.from_numpy(label).long()
-        masks = []
-        class_ids = []
         
-        # クラス名からIDを取得
-        for sampled_cls in sampled_classes:
+        # 最初のクラスのみを使用（num_classes_per_sample=1）
+        if len(sampled_classes) > 0:
+            sampled_cls = sampled_classes[0]
             try:
                 if isinstance(classes, np.ndarray):
                     class_id = np.where(classes == sampled_cls)[0]
                     if len(class_id) > 0:
-                        class_ids.append(class_id[0])
+                        class_id = class_id[0]
+                    else:
+                        return self.__getitem__(0)
                 else:
                     class_id = classes.index(sampled_cls)
-                    class_ids.append(class_id)
             except (ValueError, IndexError):
-                # クラスが見つからない場合はスキップ
-                continue
-        
-        # マスクを作成
-        for class_id in class_ids:
-            mask = (label_tensor == class_id).float()
-            masks.append(mask)
-        
-        if len(masks) == 0:
-            return self.__getitem__(0)
+                return self.__getitem__(0)
             
-        masks = torch.stack(masks, dim=0)
+            # 単一のマスクを作成
+            mask = (label_tensor == class_id).float()
+            masks = mask.unsqueeze(0)  # (1, H, W)形式に
+        else:
+            return self.__getitem__(0)
 
         # オリジナルLISA準拠の返り値形式（10要素 - coord_transform追加）
         return (

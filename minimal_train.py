@@ -245,7 +245,7 @@ class MinimalTrainer:
         logger.info(f"ウォームアップステップ数: {num_warmup_steps}")
     
     def compute_loss(self, outputs, labels, mask_labels):
-        """損失計算"""
+        """損失計算（1会話1マスクに最適化）"""
         # 言語モデリング損失
         vocab_size = outputs.logits.size(-1)
         lm_loss = nn.functional.cross_entropy(
@@ -254,7 +254,7 @@ class MinimalTrainer:
             ignore_index=-100
         )
         
-        # セグメンテーション損失
+        # セグメンテーション損失（1会話1マスクに統一）
         seg_loss = 0.0
         seg_count = 0
         
@@ -263,63 +263,82 @@ class MinimalTrainer:
                 if batch_masks is not None and len(batch_masks) > 0:
                     gt_mask = mask_labels[batch_idx]
                     
-                    for pred_mask in batch_masks:
-                        # デバッグ情報
-                        logger.debug(f"pred_mask shape: {pred_mask.shape}")
-                        logger.debug(f"gt_mask shape: {gt_mask.shape}")
+                    # 1会話1マスクなので、最初のマスクのみを使用
+                    pred_mask = batch_masks[0] if isinstance(batch_masks, list) else batch_masks
+                    
+                    # デバッグ情報
+                    logger.debug(f"pred_mask shape: {pred_mask.shape}")
+                    logger.debug(f"gt_mask shape: {gt_mask.shape}")
+                    
+                    # マスクの次元を確認して適切に処理
+                    # pred_maskとgt_maskの形状を合わせる
+                    if pred_mask.dim() == 2:
+                        pred_h, pred_w = pred_mask.shape
+                    else:
+                        pred_h, pred_w = pred_mask.shape[-2:]
                         
-                        # マスクの次元を確認して適切に処理
-                        # pred_maskとgt_maskの形状を合わせる
-                        if pred_mask.dim() == 2:
-                            pred_h, pred_w = pred_mask.shape
-                        else:
-                            pred_h, pred_w = pred_mask.shape[-2:]
-                            
+                    if gt_mask.dim() == 2:
+                        gt_h, gt_w = gt_mask.shape
+                    else:
+                        gt_h, gt_w = gt_mask.shape[-2:]
+                    
+                    # サイズが異なる場合はリサイズ
+                    if (pred_h, pred_w) != (gt_h, gt_w):
+                        # gt_maskを(B, C, H, W)形式に変換
                         if gt_mask.dim() == 2:
-                            gt_h, gt_w = gt_mask.shape
-                        else:
-                            gt_h, gt_w = gt_mask.shape[-2:]
-                        
-                        # サイズが異なる場合はリサイズ
-                        if (pred_h, pred_w) != (gt_h, gt_w):
-                            # gt_maskを(B, C, H, W)形式に変換
-                            if gt_mask.dim() == 2:
+                            gt_mask_4d = gt_mask.unsqueeze(0).unsqueeze(0)  # (H, W) -> (1, 1, H, W)
+                        elif gt_mask.dim() == 3:
+                            # 最初のマスクのみを使用（1会話1マスク）
+                            if gt_mask.shape[0] > 1:
+                                gt_mask = gt_mask[0]  # 複数マスクの場合は最初のみ
                                 gt_mask_4d = gt_mask.unsqueeze(0).unsqueeze(0)  # (H, W) -> (1, 1, H, W)
-                            elif gt_mask.dim() == 3:
-                                gt_mask_4d = gt_mask.unsqueeze(1)  # (B, H, W) -> (B, 1, H, W)
                             else:
-                                gt_mask_4d = gt_mask
-                            
-                            # float型に変換してinterpolate
-                            gt_mask_4d = gt_mask_4d.float()
-                            gt_mask_resized = nn.functional.interpolate(
-                                gt_mask_4d,
-                                size=(pred_h, pred_w),
-                                mode='nearest'
-                            )
-                            
-                            # 元の次元に戻す
-                            if gt_mask.dim() == 2:
-                                gt_mask_resized = gt_mask_resized.squeeze(0).squeeze(0)
-                            elif gt_mask.dim() == 3:
-                                gt_mask_resized = gt_mask_resized.squeeze(1)
+                                gt_mask_4d = gt_mask.unsqueeze(1)  # (1, H, W) -> (1, 1, H, W)
                         else:
-                            gt_mask_resized = gt_mask
+                            gt_mask_4d = gt_mask
                         
-                        # BCE損失
-                        bce_loss = nn.functional.binary_cross_entropy_with_logits(
-                            pred_mask.squeeze(0),
-                            gt_mask_resized.squeeze(0)
+                        # 4次元であることを確認
+                        if gt_mask_4d.dim() != 4:
+                            logger.debug(f"gt_mask_4d shape before fix: {gt_mask_4d.shape}")
+                            if gt_mask_4d.dim() == 3:
+                                gt_mask_4d = gt_mask_4d.unsqueeze(0)
+                            elif gt_mask_4d.dim() == 2:
+                                gt_mask_4d = gt_mask_4d.unsqueeze(0).unsqueeze(0)
+                        
+                        # float型に変換してinterpolate
+                        gt_mask_4d = gt_mask_4d.float()
+                        gt_mask_resized = nn.functional.interpolate(
+                            gt_mask_4d,
+                            size=(pred_h, pred_w),
+                            mode='nearest'
                         )
                         
-                        # Dice損失
-                        pred_sigmoid = torch.sigmoid(pred_mask.squeeze(0))
-                        intersection = (pred_sigmoid * gt_mask_resized.squeeze(0)).sum()
-                        dice = 2 * intersection / (pred_sigmoid.sum() + gt_mask_resized.squeeze(0).sum() + 1e-8)
-                        dice_loss = 1 - dice
-                        
-                        seg_loss += bce_loss + dice_loss
-                        seg_count += 1
+                        # 元の次元に戻す（(1, 1, H, W) -> (H, W)）
+                        gt_mask_resized = gt_mask_resized.squeeze(0).squeeze(0)
+                    else:
+                        gt_mask_resized = gt_mask
+                        # 複数マスクの場合は最初のマスクのみを使用
+                        if gt_mask_resized.dim() == 3 and gt_mask_resized.shape[0] > 1:
+                            gt_mask_resized = gt_mask_resized[0]
+                    
+                    # pred_maskも適切な形状に
+                    if pred_mask.dim() > 2:
+                        pred_mask = pred_mask.squeeze(0)
+                    
+                    # BCE損失
+                    bce_loss = nn.functional.binary_cross_entropy_with_logits(
+                        pred_mask,
+                        gt_mask_resized.float()
+                    )
+                    
+                    # Dice損失
+                    pred_sigmoid = torch.sigmoid(pred_mask)
+                    intersection = (pred_sigmoid * gt_mask_resized).sum()
+                    dice = 2 * intersection / (pred_sigmoid.sum() + gt_mask_resized.sum() + 1e-8)
+                    dice_loss = 1 - dice
+                    
+                    seg_loss += bce_loss + dice_loss
+                    seg_count += 1
         
         # 平均セグメンテーション損失
         if seg_count > 0:

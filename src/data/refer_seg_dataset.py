@@ -36,7 +36,7 @@ class ReferSegDataset(torch.utils.data.Dataset):
         samples_per_epoch=500 * 8 * 2 * 10,
         precision: str = "fp32",
         image_size: int = 224,
-        num_classes_per_sample: int = 3,
+        num_classes_per_sample: int = 1,  # 1会話1マスクに統一
         exclude_val=False,
         refer_seg_data="refclef||refcoco||refcoco+||refcocog",
     ):
@@ -181,10 +181,11 @@ class ReferSegDataset(torch.utils.data.Dataset):
                 sents.append(text)
                 ann_ids.append(ref["ann_id"])
 
-        if len(sents) >= self.num_classes_per_sample:
-            sampled_inds = np.random.choice(list(range(len(sents))), size=self.num_classes_per_sample, replace=False)
+        # 1会話1マスクに統一 - 1つの参照表現のみを選択
+        if len(sents) > 0:
+            sampled_inds = [np.random.choice(len(sents))]
         else:
-            sampled_inds = list(range(len(sents)))
+            sampled_inds = []
 
         sampled_sents = np.vectorize(sents.__getitem__)(sampled_inds).tolist()
         sampled_ann_ids = [ann_ids[ind] for ind in sampled_inds]

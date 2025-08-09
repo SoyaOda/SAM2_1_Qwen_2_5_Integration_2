@@ -357,7 +357,7 @@ class HybridDataset(torch.utils.data.Dataset):
         precision: str = "bf16",
         qwen_image_size: Optional[int] = None,
         sam_image_size: Optional[int] = None,
-        num_classes_per_sample: int = 3,
+        num_classes_per_sample: int = 1,  # 1会話1マスクに統一
         exclude_val: bool = False,
         dataset: str = "sem_seg||refer_seg||vqa||reason_seg",
         sample_rate: List[float] = [9, 3, 3, 1],

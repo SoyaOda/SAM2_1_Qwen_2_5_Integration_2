@@ -72,7 +72,7 @@ class VQADataset(torch.utils.data.Dataset):
         samples_per_epoch=500 * 8 * 2 * 10,
         precision: str = "bf16",
         image_size: int = SAM_IMAGE_SIZE,
-        num_classes_per_sample: int = 3,
+        num_classes_per_sample: int = 1,  # 1会話1マスクに統一（VQAはマスクなしだが一貫性のため）
         exclude_val=False,
         vqa_data="llava_instruct_150k",
     ):
