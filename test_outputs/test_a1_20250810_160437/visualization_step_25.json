@@ -1,0 +1,42 @@
+{
+  "step": 25,
+  "metrics": {
+    "dice_score": 0.0,
+    "iou": 0.0
+  },
+  "gt_centroid": {
+    "x": 224.0,
+    "y": 224.0
+  },
+  "shapes": {
+    "gt_mask": [
+      448,
+      448
+    ],
+    "pred_mask": [
+      448,
+      448
+    ],
+    "image": [
+      448,
+      448,
+      3
+    ]
+  },
+  "text_info": {
+    "user_input": "<|vision_start|>[256 image patches]<|vision_end|><image>\nWhat do you think is going on in this snapshot?",
+    "assistant_response": "The image depicts a large collection of old, broken, and discarded refrigerators sitting outside, next to a building. There are various sizes of small refrigerators and freezers stacked and clustered together against a brick wall in the background. In total, there are eleven refrigerators in the scene, creating a striking visual of discarded appliances.",
+    "full_text_length": 3887,
+    "tokenized_length": 359,
+    "label_masking": {
+      "masked_tokens": 292,
+      "unmasked_tokens": 67,
+      "total_tokens": 359
+    }
+  },
+  "training_info": {
+    "loss": 0.0,
+    "bce_loss": 0.0,
+    "dice_loss": 0.0
+  }
+}

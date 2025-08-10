@@ -1,0 +1,42 @@
+{
+  "step": 0,
+  "metrics": {
+    "dice_score": 0.020668990910053253,
+    "iou": 0.010442412458360195
+  },
+  "gt_centroid": {
+    "x": 118.69857788085938,
+    "y": 182.6892852783203
+  },
+  "shapes": {
+    "gt_mask": [
+      392,
+      392
+    ],
+    "pred_mask": [
+      392,
+      392
+    ],
+    "image": [
+      336,
+      448,
+      3
+    ]
+  },
+  "text_info": {
+    "user_input": "<|vision_start|>[196 image patches]<|vision_end|><image>\nWhere is the orange? Please segment it.",
+    "assistant_response": "<SEG>.",
+    "full_text_length": 2772,
+    "tokenized_length": 236,
+    "label_masking": {
+      "masked_tokens": 233,
+      "unmasked_tokens": 3,
+      "total_tokens": 236
+    }
+  },
+  "training_info": {
+    "loss": 1.193804383277893,
+    "bce_loss": 0.3603149652481079,
+    "dice_loss": 0.8334894180297852
+  }
+}

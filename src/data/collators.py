@@ -457,6 +457,10 @@ class MultiModalDataCollator:
                         
             batch['mask_labels'] = torch.stack(mask_labels)
         
+        # Preserve original images for visualization
+        if any('original_image' in f for f in features):
+            batch['original_images'] = [f.get('original_image') for f in features]
+        
         return batch
 
 
@@ -581,6 +585,18 @@ class LISAEvalDataCollator(LISADataCollator):
         # Add original data for evaluation
         if any('original_image' in f for f in features):
             batch['original_images'] = [f.get('original_image') for f in features]
+            # Debug logging
+            import logging
+            logger = logging.getLogger(__name__)
+            if batch['original_images'] and batch['original_images'][0] is not None:
+                from PIL import Image
+                if isinstance(batch['original_images'][0], Image.Image):
+                    logger.debug(f"Added PIL original_images to batch: {batch['original_images'][0].size}")
+                else:
+                    logger.debug(f"Added original_images to batch: type={type(batch['original_images'][0])}")
+        else:
+            # Always add empty list if no original_images
+            batch['original_images'] = []
         
         if any('metadata' in f for f in features):
             batch['metadata'] = [f.get('metadata', {}) for f in features]

@@ -1,0 +1,42 @@
+{
+  "step": 10,
+  "metrics": {
+    "dice_score": 0.9451515078544617,
+    "iou": 0.8960068821907043
+  },
+  "gt_centroid": {
+    "x": 371.8866271972656,
+    "y": 266.2467041015625
+  },
+  "shapes": {
+    "gt_mask": [
+      392,
+      392
+    ],
+    "pred_mask": [
+      392,
+      392
+    ],
+    "image": [
+      308,
+      448,
+      3
+    ]
+  },
+  "text_info": {
+    "user_input": "<|vision_start|>[196 image patches]<|vision_end|><image>\nPlease segment the hand beside barbecue rack with short thumb nail.",
+    "assistant_response": "It is <SEG>.",
+    "full_text_length": 2784,
+    "tokenized_length": 239,
+    "label_masking": {
+      "masked_tokens": 235,
+      "unmasked_tokens": 4,
+      "total_tokens": 239
+    }
+  },
+  "training_info": {
+    "loss": 0.08230537176132202,
+    "bce_loss": 0.02347474917769432,
+    "dice_loss": 0.0588306188583374
+  }
+}

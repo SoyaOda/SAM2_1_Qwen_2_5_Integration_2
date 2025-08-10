@@ -1,0 +1,42 @@
+{
+  "step": 0,
+  "metrics": {
+    "dice_score": 0.058198247104883194,
+    "iou": 0.029971260577440262
+  },
+  "gt_centroid": {
+    "x": 224.15965270996094,
+    "y": 230.69561767578125
+  },
+  "shapes": {
+    "gt_mask": [
+      448,
+      448
+    ],
+    "pred_mask": [
+      448,
+      448
+    ],
+    "image": [
+      448,
+      448,
+      3
+    ]
+  },
+  "text_info": {
+    "user_input": "<|vision_start|>[256 image patches]<|vision_end|><image>\nIf we are in a confined space and desire to let in natural light, what architectural element in the photo can assist us in doing so? Can you provide reasoning for this segmentation?",
+    "assistant_response": "<SEG>. In the image, the large, open, steel-and-glass dome serves as an architectural feature that can help bring natural light into a closed space. The dome allows sunlight to pass through, acting as a skylight, and illuminate the room below. By incorporating this feature into the structure, the space benefits from an increased sense of openness and natural light, which can enhance the overall ambiance and comfort of the room.",
+    "full_text_length": 4119,
+    "tokenized_length": 407,
+    "label_masking": {
+      "masked_tokens": 403,
+      "unmasked_tokens": 4,
+      "total_tokens": 407
+    }
+  },
+  "training_info": {
+    "loss": 1.2449421882629395,
+    "bce_loss": 0.49278372526168823,
+    "dice_loss": 0.7521584033966064
+  }
+}

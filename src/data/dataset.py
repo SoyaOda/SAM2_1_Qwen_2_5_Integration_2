@@ -26,6 +26,7 @@ except ImportError:
     from dataset_cache import DatasetCache
 from transformers import AutoProcessor
 from torchvision import transforms
+from qwen_vl_utils import process_vision_info
 
 from src.utils.coordinate_transform import CoordinateTransform
 from src.utils.resolution_utils import ResolutionBucketManager, QualityScoreCalculator, calculate_image_pad_tokens
@@ -237,27 +238,32 @@ def preprocess_qwen_image(image: Image.Image, processor: AutoProcessor, target_s
 
 
 
-def build_correct_labels_for_qwen(input_ids: torch.Tensor, tokenizer) -> torch.Tensor:
+def build_correct_labels_for_qwen(input_ids: torch.Tensor, tokenizer, is_seg_sample: bool = False) -> torch.Tensor:
     """
     Qwen2.5-VLチャットテンプレートに準拠した正確なラベルマスキング
     
     Args:
         input_ids: トークンID列 [seq_len]
         tokenizer: Qwen2.5-VL用トークナイザー
+        is_seg_sample: セグメンテーションサンプルかどうか
     
     Returns:
         正確にマスクされたラベル [seq_len]
     """
-    labels = input_ids.clone()
+    # label_utils.pyのbuild_labels_for_qwen_chatを使用
+    from .label_utils import build_labels_for_qwen_chat
     
-    # Qwen2.5-VLでは、アシスタントの応答部分のみを予測対象とする
-    # プロンプト部分（ユーザー入力）は-100でマスク
+    seg_token = getattr(config, 'SEG_TOKEN', '<SEG>')
+    # セグメンテーションサンプルの場合、<SEG>トークン周辺のみ学習
+    seg_only_mode = is_seg_sample
     
-    # シンプルな実装: 全体を-100で初期化し、応答部分のみを有効にする
-    # 実際のQwen2.5-VLのチャットテンプレートに応じて調整が必要
-    
-    # デフォルトでは入力全体を予測対象とする（後で調整可能）
-    # labels = input_ids.clone()
+    labels = build_labels_for_qwen_chat(
+        input_ids=input_ids,
+        tokenizer=tokenizer,
+        seg_token=seg_token,
+        is_seg_sample=is_seg_sample,
+        seg_only_mode=seg_only_mode
+    )
     
     return labels
 
@@ -653,15 +659,16 @@ class HybridDataset(torch.utils.data.Dataset):
     def __getitem__(self, idx) -> Dict[str, Any]:
         """
         統合データセットからサンプルを取得
-        仕様書第3章.2準拠のデュアルストリーム・データパイプライン
+        オリジナルLISA方式：idxを無視してランダムサンプリング
         """
         # データセットをサンプリング比率に従って選択
         dataset_idx = np.random.choice(len(self.all_datasets), p=self.sample_rate)
         selected_dataset = self.all_datasets[dataset_idx]
         
-        # 選択されたデータセットからサンプルを取得
+        # 選択されたデータセットからランダムにサンプルを取得（idxを無視）
+        # これによりDataLoaderのインデックスに関係なく常に新しいサンプルが返される
         try:
-            sample = selected_dataset[idx % len(selected_dataset)]
+            sample = selected_dataset[0]  # データセット自体がランダムサンプリングを行う
         except Exception as e:
             print(f"データセット取得エラー: {e}")
             # フォールバック: 最初のデータセットから取得
@@ -672,23 +679,36 @@ class HybridDataset(torch.utils.data.Dataset):
             # 新しい10要素形式（座標変換オブジェクト付き）
             image_path, image_sam, image_qwen_tensor, conversations, masks, label, resize, questions, sampled_classes, coord_transform = sample
             
-            # conversationsからテキストプロンプトを抽出
+            # conversationsからメッセージを構築
             if isinstance(conversations, list) and len(conversations) > 0:
                 # messages形式の場合
                 if isinstance(conversations[0], list) and len(conversations[0]) >= 2:
                     # messages形式: [[{"role": "user", "content": ...}, {"role": "assistant", "content": ...}]]
-                    user_msg = conversations[0][0]
-                    assistant_msg = conversations[0][1]
-                    user_content = user_msg.get("content", "")
-                    assistant_content = assistant_msg.get("content", "")
-                    text_prompt = f"{user_content} {assistant_content}"
+                    conversation_messages = conversations[0]  # 最初の会話を使用
+                    is_seg_sample = True  # セグメンテーションサンプル
                 elif isinstance(conversations[0], str):
-                    # 文字列形式（後方互換性）
+                    # 文字列形式（後方互換性）- VQAなどの古い形式
                     text_prompt = conversations[0]
+                    conversation_messages = None
+                    is_seg_sample = False
                 else:
-                    text_prompt = "Segment the object in this image. <SEG>"
+                    # デフォルト
+                    user_content = "Segment the object in this image."
+                    assistant_content = "<SEG>"
+                    conversation_messages = [
+                        {"role": "user", "content": user_content},
+                        {"role": "assistant", "content": assistant_content}
+                    ]
+                    is_seg_sample = True
             else:
-                text_prompt = "Segment the object in this image. <SEG>"
+                # デフォルト
+                user_content = "Segment the object in this image."
+                assistant_content = "<SEG>"
+                conversation_messages = [
+                    {"role": "user", "content": user_content},
+                    {"role": "assistant", "content": assistant_content}
+                ]
+                is_seg_sample = True
             
             # resize と questions, sampled_classes を保持（オリジナルLISAとの互換性）
             resize = resize if 'resize' in locals() else None
@@ -702,23 +722,36 @@ class HybridDataset(torch.utils.data.Dataset):
             # 古い9要素形式（SemSegDataset, ReferSegDataset）座標変換オブジェクトなし
             image_path, image_sam, image_qwen_tensor, conversations, masks, label, resize, questions, sampled_classes = sample
             
-            # conversationsからテキストプロンプトを抽出
+            # conversationsからメッセージを構築
             if isinstance(conversations, list) and len(conversations) > 0:
                 # messages形式の場合
                 if isinstance(conversations[0], list) and len(conversations[0]) >= 2:
                     # messages形式: [[{"role": "user", "content": ...}, {"role": "assistant", "content": ...}]]
-                    user_msg = conversations[0][0]
-                    assistant_msg = conversations[0][1]
-                    user_content = user_msg.get("content", "")
-                    assistant_content = assistant_msg.get("content", "")
-                    text_prompt = f"{user_content} {assistant_content}"
+                    conversation_messages = conversations[0]  # 最初の会話を使用
+                    is_seg_sample = True  # セグメンテーションサンプル
                 elif isinstance(conversations[0], str):
-                    # 文字列形式（後方互換性）
+                    # 文字列形式（後方互換性）- VQAなどの古い形式
                     text_prompt = conversations[0]
+                    conversation_messages = None
+                    is_seg_sample = False
                 else:
-                    text_prompt = "Segment the object in this image. <SEG>"
+                    # デフォルト
+                    user_content = "Segment the object in this image."
+                    assistant_content = "<SEG>"
+                    conversation_messages = [
+                        {"role": "user", "content": user_content},
+                        {"role": "assistant", "content": assistant_content}
+                    ]
+                    is_seg_sample = True
             else:
-                text_prompt = "Segment the object in this image. <SEG>"
+                # デフォルト
+                user_content = "Segment the object in this image."
+                assistant_content = "<SEG>"
+                conversation_messages = [
+                    {"role": "user", "content": user_content},
+                    {"role": "assistant", "content": assistant_content}
+                ]
+                is_seg_sample = True
             
             # resize と questions, sampled_classes を保持（オリジナルLISAとの互換性）
             resize = resize if 'resize' in locals() else None
@@ -796,9 +829,18 @@ class HybridDataset(torch.utils.data.Dataset):
         
 
 
-        # <SEG>トークンが含まれていることを確認
-        if self.seg_token not in text_prompt:
-            text_prompt += f" {self.seg_token}"
+                # conversation_messagesの処理
+        if conversation_messages:
+            # メッセージ形式から処理する（セグメンテーションタスク）
+            # conversation_messagesは既にuser/assistantのroleを持つ
+            pass  # 後でmessagesとして使用
+        else:
+            # text_promptが定義されている場合（VQAなど）
+            if 'text_prompt' not in locals():
+                text_prompt = "Segment the object in this image. <SEG>"
+            # <SEG>トークンが含まれていることを確認
+            if self.seg_token not in text_prompt:
+                text_prompt += f" {self.seg_token}"
 
         # PIL画像に変換（apply_chat_templateに必要）
         if isinstance(image_qwen, torch.Tensor):
@@ -816,24 +858,58 @@ class HybridDataset(torch.utils.data.Dataset):
             # 既にPIL画像の場合
             image_pil = image_qwen
 
-        # Qwen2.5-VLのapply_chat_templateで画像とテキストを一緒に処理
-        messages = [
-            {
-                "role": "user",
-                "content": [
-                    {"type": "image", "image": image_pil},
-                    {"type": "text", "text": text_prompt}
-                ]
-            }
-        ]
+        # Qwen2.5-VLの正しい処理フロー
+        if conversation_messages:
+            # メッセージ形式がある場合（セグメンテーションタスク）
+            messages = []
+            for msg in conversation_messages:
+                if msg["role"] == "user":
+                    # ユーザーメッセージに画像を追加
+                    user_message = {
+                        "role": "user",
+                        "content": [
+                            {"type": "image", "image": image_pil},
+                            {"type": "text", "text": msg["content"]}
+                        ]
+                    }
+                    messages.append(user_message)
+                else:
+                    # アシスタントメッセージ
+                    assistant_message = {
+                        "role": "assistant",
+                        "content": [
+                            {"type": "text", "text": msg["content"]}
+                        ]
+                    }
+                    messages.append(assistant_message)
+        else:
+            # text_promptのみの場合（VQAなど）
+            messages = [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "image", "image": image_pil},
+                        {"type": "text", "text": text_prompt}
+                    ]
+                }
+            ]
         
-        # apply_chat_templateで画像とテキストを処理
-        # tokenize=Trueで2D形式（N_patches, D_v）を取得
-        qwen_processed = self.qwen_processor.apply_chat_template(
+        # 画像情報を抽出
+        image_inputs, video_inputs = process_vision_info(messages)
+        
+        # テキストテンプレートを生成（学習時はadd_generation_prompt=False）
+        text = self.qwen_processor.apply_chat_template(
             messages,
-            add_generation_prompt=True,
-            tokenize=True,
-            return_dict=True,
+            tokenize=False,  # まずテキストのみ生成
+            add_generation_prompt=False  # 学習時はFalse
+        )
+        
+        # processorで画像とテキストを処理
+        qwen_processed = self.qwen_processor(
+            text=[text],
+            images=image_inputs,
+            videos=video_inputs,
+            padding=True,
             return_tensors="pt"
         )
         
@@ -888,7 +964,7 @@ class HybridDataset(torch.utils.data.Dataset):
 
         # ラベルの処理（言語生成用）
         # Qwen2.5-VLチャットテンプレートに準拠した正確なラベルマスキング
-        labels = build_correct_labels_for_qwen(input_ids, self.qwen_processor.tokenizer)
+        labels = build_correct_labels_for_qwen(input_ids, self.qwen_processor.tokenizer, is_seg_sample)
 
         # マスクの処理
         has_mask = masks is not None
@@ -944,7 +1020,7 @@ class HybridDataset(torch.utils.data.Dataset):
             'has_mask': has_mask,
             'seg_token_mask': seg_token_mask,
             'image_path': image_path if 'image_path' in locals() else None,
-            'text_prompt': text_prompt,  # 追加: collate_fn用
+            'text_prompt': text_prompt if 'text_prompt' in locals() else None,  # 追加: collate_fn用
             'image_grid_thw': image_grid_thw if image_grid_thw is not None else None,  # Qwen2.5-VL用
             # オリジナルLISAとの互換性のための追加フィールド
             'resize': resize if 'resize' in locals() else None,
@@ -1223,12 +1299,22 @@ class LisaQwen3ValDataset(torch.utils.data.Dataset):
             }
         ]
         
+        # 画像情報を抽出
+        image_inputs, video_inputs = process_vision_info(messages)
+        
+        # テキストテンプレートを生成（評価時はadd_generation_prompt=True）
+        text = self.qwen_processor.apply_chat_template(
+            messages,
+            tokenize=False,
+            add_generation_prompt=True  # 評価時はTrue
+        )
+        
         try:
-            qwen_processed = self.qwen_processor.apply_chat_template(
-                messages,
-                add_generation_prompt=True,
-                tokenize=True,
-                return_dict=True,
+            qwen_processed = self.qwen_processor(
+                text=[text],
+                images=image_inputs,
+                videos=video_inputs,
+                padding=True,
                 return_tensors="pt"
             )
         except Exception as e:
