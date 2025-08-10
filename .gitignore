@@ -1,8 +1,9 @@
 checkpoints/*.pt
 
 # 出力ディレクトリ
-outputs/
+# outputs/
 visualization_results/
+test_outputs/
 
 # ログファイル
 logs/
@@ -46,3 +47,5 @@ train_debug.log
 .env
 .env.local
 .cache/datasets/*.pkl
+
+

@@ -1,0 +1,29 @@
+{
+  "step": 2500,
+  "metrics": {
+    "dice_score": 0.0007296607363969088,
+    "iou": 0.0003649634891189635,
+    "lm_loss": 0.0
+  },
+  "text": {
+    "user": "<|vision_start|>[196 image patches]<|vision_end|>Where is the handbag? Please segment it.",
+    "assistant": "It is <SEG>.",
+    "masked_tokens": 233,
+    "unmasked_tokens": 4
+  },
+  "shapes": {
+    "gt_mask": [
+      1024,
+      1024
+    ],
+    "pred_mask": [
+      392,
+      392
+    ],
+    "image": [
+      336,
+      448,
+      3
+    ]
+  }
+}
