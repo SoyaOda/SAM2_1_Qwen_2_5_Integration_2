@@ -29,15 +29,17 @@ class MultiModalDataCollator:
     
     def __call__(self, features: List[Dict[str, any]]) -> Dict[str, torch.Tensor]:
         """
-        Collate batch of multimodal samples
+        Collate batch of multimodal samples - test_a1準拠版
         
         Args:
             features: List of sample dictionaries containing:
-                - pixel_values: Image tensors
+                - pixel_values: Image tensors (2D or 3D format)
                 - input_ids: Token IDs
                 - labels: Target token IDs
                 - attention_mask: Attention masks
-                - mask_labels (optional): Segmentation masks
+                - ground_truth_mask/mask_labels (optional): Segmentation masks
+                - image_grid_thw: Grid dimensions for dynamic resolution
+                - original_image: PIL images for visualization
         
         Returns:
             Batch dictionary with properly shaped tensors
@@ -51,25 +53,20 @@ class MultiModalDataCollator:
             
             if first_pix.dim() == 2:
                 # 2D patch format from apply_chat_template with tokenize=True
-                # This is the official behavior when tokenize=True
                 # Format: (N_patch, D_v) where N_patch = H_grid × W_grid
                 
-                # Collect all pixel_values to analyze
+                # Collect all pixel_values and grid info
                 all_pixel_values = []
                 all_image_grids = []
                 for f in features:
                     all_pixel_values.append(f['pixel_values'])
                     if 'image_grid_thw' in f and f['image_grid_thw'] is not None:
                         all_image_grids.append(f['image_grid_thw'])
+                    else:
+                        # 必須: image_grid_thwが必要
+                        raise ValueError("image_grid_thw is required for 2D pixel_values format")
                 
                 # Find max grid dimensions
-                # IMPORTANT (Corrected Spec):
-                # - image_grid_thw contains RAW patch dimensions (H_img/14, W_img/14) 
-                # - pixel_values contains RAW patches (NOT compressed): N_raw = H_grid * W_grid
-                # - PatchMerge happens INSIDE the model, not in preprocessing
-                # - image_pad tokens = RAW patches / 4 (after PatchMerge)
-                
-                # First find the maximum number of patches needed
                 max_raw_patches = 0
                 all_raw_patches = []
                 
@@ -78,12 +75,7 @@ class MultiModalDataCollator:
                     n_raw_patches = pv.shape[0]
                     all_raw_patches.append(n_raw_patches)
                     
-                    # Grid info is required for dynamic resolution
-                    if i >= len(all_image_grids) or all_image_grids[i] is None:
-                        raise ValueError(f"Sample {i}: image_grid_thw is required for 2D pixel_values format")
-                    
                     grid = all_image_grids[i]
-                    # image_grid_thw contains RAW patch dimensions (before PatchMerge)
                     H_grid_raw = int(grid[1])
                     W_grid_raw = int(grid[2])
                     
@@ -94,14 +86,12 @@ class MultiModalDataCollator:
                         raise ValueError(
                             f"Sample {i}: Patch count mismatch! "
                             f"Grid: {H_grid_raw}×{W_grid_raw} = {expected_raw_patches} RAW patches. "
-                            f"Actual: {n_raw_patches} patches in pixel_values. "
-                            f"This usually means the image preprocessing is incorrect."
+                            f"Actual: {n_raw_patches} patches in pixel_values."
                         )
                     
                     max_raw_patches = max(max_raw_patches, n_raw_patches)
                 
-                # Calculate proper grid dimensions using square policy (O3 recommendation)
-                # CRITICAL: H_max and W_max must be EVEN for PatchMerge compatibility
+                # Calculate proper grid dimensions using square policy
                 import math
                 
                 # Square policy: make it as square as possible
@@ -115,43 +105,32 @@ class MultiModalDataCollator:
                 # Image tokens after PatchMerge
                 max_img_tokens = N_padded_raw // 4
                 
-                # Debug output for batch processing
-                if len(all_image_grids) > 0:
-                    print(f"[Batch Collator] Max RAW patches: {max_raw_patches}")
-                    print(f"  Target grid (even): {H_grid_max}×{W_grid_max} = {N_padded_raw} patches")
-                    print(f"  Image tokens after PatchMerge: {max_img_tokens}")
-                    individual_info = []
-                    for i, n_patches in enumerate(all_raw_patches):
-                        if i < len(all_image_grids):
-                            grid = all_image_grids[i]
-                            individual_info.append(f"Sample {i}: {n_patches} patches (grid: {int(grid[1])}×{int(grid[2])})")
-                        else:
-                            individual_info.append(f"Sample {i}: {n_patches} patches")
-                    for info in individual_info:
-                        print(f"  {info}")
+                # Debug output for batch processing (disabled for performance)
+                # if len(all_image_grids) > 0:
+                #     print(f"[Batch Collator] Max RAW patches: {max_raw_patches}")
+                #     print(f"  Target grid (even): {H_grid_max}×{W_grid_max} = {N_padded_raw} patches")
+                #     print(f"  Image tokens after PatchMerge: {max_img_tokens}")
+                #     for i, n_patches in enumerate(all_raw_patches):
+                #         grid = all_image_grids[i]
+                #         print(f"  Sample {i}: {n_patches} patches (grid: {int(grid[1])}×{int(grid[2])})")
                 
                 # IMAGE_PAD_ID for Qwen2.5-VL
                 IMAGE_PAD_ID = 151655
-                VISION_START_ID = 151652  # <|vision_start|>
-                VISION_END_ID = 151653     # <|vision_end|>
-                
-                # IMPORTANT: image_pad tokens = RAW patches / 4 (after PatchMerge)
-                # Already calculated as max_img_tokens above
                 
                 # Process each sample
                 padded_pixel_values = []
                 padded_input_ids = []
                 padded_attention_masks = []
+                padded_labels = []
                 new_image_grid_thw = []
                 
-                print(f"[DEBUG] Processing {len(features)} samples:")
-                print(f"  Max RAW patches: {max_raw_patches}")
-                print(f"  Max image tokens (after PatchMerge): {max_img_tokens}")
+                # Debug output removed for performance
                 
                 for i, f in enumerate(features):
                     pv = f['pixel_values']
                     input_ids = f['input_ids']
                     attention_mask = f.get('attention_mask', torch.ones_like(input_ids))
+                    labels = f.get('labels', torch.full_like(input_ids, -100))
                     
                     # Verify original grid info
                     orig_grid = f['image_grid_thw']
@@ -166,8 +145,7 @@ class MultiModalDataCollator:
                             f"Actual: {pv.shape[0]} patches in pixel_values."
                         )
                     
-                    # 1. Pad pixel_values to N_padded_raw (not just max_raw_patches)
-                    # CRITICAL: Must pad to H_grid_max * W_grid_max exactly
+                    # 1. Pad pixel_values to N_padded_raw
                     current_patches = pv.shape[0]
                     pad_len = N_padded_raw - current_patches
                     
@@ -176,7 +154,7 @@ class MultiModalDataCollator:
                         padding = torch.zeros(pad_len, pv.shape[1], dtype=pv.dtype, device=pv.device)
                         pv_padded = torch.cat([pv, padding], dim=0)
                     else:
-                        pv_padded = pv[:N_padded_raw]  # Truncate if needed (shouldn't happen)
+                        pv_padded = pv[:N_padded_raw]  # Truncate if needed
                     
                     padded_pixel_values.append(pv_padded)
                     
@@ -185,11 +163,9 @@ class MultiModalDataCollator:
                     existing_image_pads = (input_ids == IMAGE_PAD_ID).sum().item()
                     
                     # The correct number should match the image tokens after PatchMerge
-                    # CRITICAL: Use the actual padded raw patches divided by 4
                     target_image_pads = N_padded_raw // 4  # This matches padded pixel_values
                     
-                    print(f"  Sample {i}: existing_pads={existing_image_pads}, target_pads={target_image_pads}, "
-                          f"orig_patches={current_patches}, padded_patches={N_padded_raw}")
+                    # Debug: Sample padding info
                     
                     # Calculate how many to add or remove
                     image_pad_diff = target_image_pads - existing_image_pads
@@ -209,10 +185,25 @@ class MultiModalDataCollator:
                                 input_ids.new_full((image_pad_diff,), IMAGE_PAD_ID),  # Additional image_pads
                                 input_ids[last_pad_idx + 1:]  # Rest of the sequence
                             ])
+                            
+                            # 同様にlabelsとattention_maskも調整
+                            labels_padded = torch.cat([
+                                labels[:last_pad_idx + 1],
+                                labels.new_full((image_pad_diff,), -100),  # 追加分は-100
+                                labels[last_pad_idx + 1:]
+                            ])
+                            
+                            mask_padded = torch.cat([
+                                attention_mask[:last_pad_idx + 1],
+                                attention_mask.new_ones((image_pad_diff,)),
+                                attention_mask[last_pad_idx + 1:]
+                            ])
                         else:
                             # No existing image_pad tokens - shouldn't happen
                             print(f"Warning: No existing image_pad tokens found in sample {i}")
                             ids_padded = input_ids
+                            labels_padded = labels
+                            mask_padded = attention_mask
                     elif image_pad_diff < 0:
                         # Need to remove excess image_pad tokens
                         image_pad_mask = (input_ids == IMAGE_PAD_ID)
@@ -229,106 +220,57 @@ class MultiModalDataCollator:
                                 else:
                                     keep_indices.append(idx)
                             ids_padded = input_ids[keep_indices]
+                            labels_padded = labels[keep_indices]
+                            mask_padded = attention_mask[keep_indices]
                         else:
                             ids_padded = input_ids
+                            labels_padded = labels
+                            mask_padded = attention_mask
                     else:
                         # Correct number already
                         ids_padded = input_ids
-                    
-                    padded_input_ids.append(ids_padded)
-                    
-                    # 3. Update attention_mask accordingly
-                    if len(ids_padded) != len(attention_mask):
-                        # Adjust mask to match new length
-                        if len(ids_padded) > len(attention_mask):
-                            # Added tokens - extend mask with 1s
-                            extra = len(ids_padded) - len(attention_mask)
-                            mask_padded = torch.cat([
-                                attention_mask[:len(attention_mask)//2],  # First half
-                                torch.ones(extra, dtype=attention_mask.dtype),  # New tokens
-                                attention_mask[len(attention_mask)//2:]  # Second half
-                            ])
-                        else:
-                            # Removed tokens - adjust mask
-                            mask_padded = torch.ones(len(ids_padded), dtype=attention_mask.dtype)
-                    else:
+                        labels_padded = labels
                         mask_padded = attention_mask
                     
+                    padded_input_ids.append(ids_padded)
+                    padded_labels.append(labels_padded)
                     padded_attention_masks.append(mask_padded)
                     
-                    # 4. Update grid to unified dimensions for batch processing
-                    # CRITICAL: All samples must have the same grid size (H_grid_max, W_grid_max)
-                    # This ensures RoPE embeddings work correctly
+                    # 3. Update grid to unified dimensions for batch processing
                     unified_grid = torch.tensor([1, H_grid_max, W_grid_max], dtype=torch.long)
                     new_image_grid_thw.append(unified_grid)
                 
                 # Stack all tensors - ensure all have same shape
-                # Check dimensions before stacking
-                shapes = [pv.shape for pv in padded_pixel_values]
-                if len(set(shapes)) > 1:
-                    print(f"Error: Inconsistent pixel_values shapes after padding: {shapes}")
-                    # Force all to have the same shape by additional padding
-                    max_patches_actual = max(pv.shape[0] for pv in padded_pixel_values)
-                    fixed_pixel_values = []
-                    for pv in padded_pixel_values:
-                        if pv.shape[0] < max_patches_actual:
-                            extra_pad = max_patches_actual - pv.shape[0]
-                            pv = torch.cat([pv, torch.zeros(extra_pad, pv.shape[1], dtype=pv.dtype, device=pv.device)], dim=0)
-                        fixed_pixel_values.append(pv)
-                    batch['pixel_values'] = torch.stack(fixed_pixel_values)  # (B, N_max, D_v)
-                else:
-                    batch['pixel_values'] = torch.stack(padded_pixel_values)  # (B, N_max, D_v)
+                batch['pixel_values'] = torch.stack(padded_pixel_values)  # (B, N_max, D_v)
                 batch['image_grid_thw'] = torch.stack(new_image_grid_thw)  # (B, 3)
                 
                 # Handle text features with variable length
-                # Pad input_ids and attention_mask to the same length
+                # Pad input_ids, attention_mask, and labels to the same length
                 max_len = max(ids.shape[0] for ids in padded_input_ids)
                 
                 final_input_ids = []
                 final_attention_masks = []
                 final_labels = []
                 
-                for i, (ids, mask) in enumerate(zip(padded_input_ids, padded_attention_masks)):
+                for ids, mask, labs in zip(padded_input_ids, padded_attention_masks, padded_labels):
                     if ids.shape[0] < max_len:
                         padding_len = max_len - ids.shape[0]
                         ids = torch.cat([ids, torch.full((padding_len,), self.tokenizer.pad_token_id, dtype=ids.dtype)])
                         mask = torch.cat([mask, torch.zeros(padding_len, dtype=mask.dtype)])
+                        labs = torch.cat([labs, torch.full((padding_len,), -100, dtype=labs.dtype)])
                     final_input_ids.append(ids)
                     final_attention_masks.append(mask)
-                    
-                    # Handle labels if present
-                    if 'labels' in features[i]:
-                        labels = features[i]['labels']
-                        # Ensure labels match the padded length
-                        if len(labels) < max_len:
-                            padding_len = max_len - len(labels)
-                            labels = torch.cat([labels, torch.full((padding_len,), -100, dtype=labels.dtype)])
-                        final_labels.append(labels)
+                    final_labels.append(labs)
                 
                 batch['input_ids'] = torch.stack(final_input_ids)
                 batch['attention_mask'] = torch.stack(final_attention_masks)
-                if final_labels:
-                    batch['labels'] = torch.stack(final_labels)
+                batch['labels'] = torch.stack(final_labels)
                 
                 # Validate the batch
-                print(f"[DEBUG] Final batch validation:")
-                print(f"  pixel_values shape: {batch['pixel_values'].shape}")
-                print(f"  input_ids shape: {batch['input_ids'].shape}")
-                for b_idx in range(batch['input_ids'].shape[0]):
-                    n_image_pads = (batch['input_ids'][b_idx] == IMAGE_PAD_ID).sum().item()
-                    print(f"  Sample {b_idx}: {n_image_pads} image_pad tokens")
+                # Debug: Final batch validation (disabled for performance)
                 
-                # トークン数上限チェック（Qwen2.5-VLのRoPE制限）
-                total_tokens = batch['input_ids'].shape[1]
-                max_length = getattr(self.config, 'model_max_length', 16384)  # 動的解像度対応
-                if total_tokens > max_length:
-                    print(f"Warning: Total tokens ({total_tokens}) exceeds {max_length} limit!")
-                    print(f"  Image tokens: {max_img_tokens}")
-                    print(f"  Text tokens: {total_tokens - max_img_tokens}")
-                    # 必要に応じてエラーにする
-                    # raise ValueError(f"Token count {total_tokens} exceeds maximum 2048")
             else:
-                # 3D format (C, H, W) - need to handle dynamic resolution
+                # 3D format (C, H, W) - handle dynamic resolution
                 pix_list = []
                 grid_list = []
                 H_grid_max = W_grid_max = 0
@@ -352,6 +294,10 @@ class MultiModalDataCollator:
                         grid_list.append(grid)
                         H_grid_max = max(H_grid_max, H_grid)
                         W_grid_max = max(W_grid_max, W_grid)
+                
+                # Round up to nearest even number for PatchMerge
+                H_grid_max = (H_grid_max + 1) // 2 * 2
+                W_grid_max = (W_grid_max + 1) // 2 * 2
                 
                 # Calculate new size (multiple of 14)
                 New_H = H_grid_max * 14
@@ -384,77 +330,60 @@ class MultiModalDataCollator:
                         'input_ids': f['input_ids'],
                         'attention_mask': f.get('attention_mask', torch.ones_like(f['input_ids']))
                     }
+                    if 'labels' in f:
+                        text_feat['labels'] = f['labels']
                     text_features.append(text_feat)
                 
-                # Pad text features
-                padded_text = self.tokenizer.pad(
-                    text_features,
-                    padding=self.padding,
-                    max_length=self.max_length,
-                    return_tensors=self.return_tensors
-                )
+                # Pad text features to the same length manually
+                max_len = max(f['input_ids'].shape[0] for f in text_features)
                 
-                batch['input_ids'] = padded_text['input_ids']
-                batch['attention_mask'] = padded_text['attention_mask']
+                padded_input_ids = []
+                padded_attention_masks = []
+                padded_labels = []
                 
-                # Handle labels
-                if 'labels' in features[0]:
-                    labels = []
-                    for f in features:
-                        label = f['labels']
-                        # Pad labels to match input_ids length
-                        if len(label) < batch['input_ids'].size(1):
-                            # Pad with -100 (ignore index)
-                            padding_length = batch['input_ids'].size(1) - len(label)
-                            label = torch.cat([
-                                label,
-                                torch.full((padding_length,), -100, dtype=label.dtype)
-                            ])
-                        labels.append(label)
-                    batch['labels'] = torch.stack(labels)
-        
-        # Handle mask labels (optional) - support both 'mask_labels' and 'ground_truth_mask'
-        mask_key = 'mask_labels' if 'mask_labels' in features[0] else 'ground_truth_mask'
-        if mask_key in features[0] and features[0][mask_key] is not None:
-            mask_labels = []
-            
-            # Determine padded size based on pixel_values format
-            if 'pixel_values' in batch:
-                if batch['pixel_values'].dim() == 3:
-                    # Flattened format - masks are kept at original size
-                    # Just stack them as is
-                    for f in features:
-                        if f.get(mask_key) is not None:
-                            mask_labels.append(f[mask_key])
-                        else:
-                            # Create dummy mask with default size
-                            mask_labels.append(torch.zeros(1, 1024, 1024))
-                else:
-                    # 3D format - use padded size
-                    _, _, padded_h, padded_w = batch['pixel_values'].shape
+                for text_feat in text_features:
+                    ids = text_feat['input_ids']
+                    mask = text_feat['attention_mask']
                     
-                    for f in features:
-                        if f.get(mask_key) is not None:
-                            mask = f[mask_key]
-                            # Pad mask to match padded image size
-                            if mask.dim() == 2:
-                                mask = mask.unsqueeze(0)  # Add channel dimension
-                            _, orig_h, orig_w = mask.shape
-                            pad_h = padded_h - orig_h
-                            pad_w = padded_w - orig_w
-                            mask_padded = torch.nn.functional.pad(mask, (0, pad_w, 0, pad_h), value=0)
-                            mask_labels.append(mask_padded)
-                        else:
-                            # Create dummy mask if missing
-                            mask_labels.append(torch.zeros(1, padded_h, padded_w))
-            else:
-                # No pixel_values - use default size
-                for f in features:
-                    if f.get(mask_key) is not None:
-                        mask_labels.append(f[mask_key])
-                    else:
-                        mask_labels.append(torch.zeros(1, 1024, 1024))
-                        
+                    if ids.shape[0] < max_len:
+                        padding_len = max_len - ids.shape[0]
+                        ids = torch.cat([ids, torch.full((padding_len,), self.tokenizer.pad_token_id, dtype=ids.dtype)])
+                        mask = torch.cat([mask, torch.zeros(padding_len, dtype=mask.dtype)])
+                    
+                    padded_input_ids.append(ids)
+                    padded_attention_masks.append(mask)
+                    
+                    if 'labels' in text_feat:
+                        labels = text_feat['labels']
+                        if labels.shape[0] < max_len:
+                            padding_len = max_len - labels.shape[0]
+                            labels = torch.cat([labels, torch.full((padding_len,), -100, dtype=labels.dtype)])
+                        padded_labels.append(labels)
+                
+                batch['input_ids'] = torch.stack(padded_input_ids)
+                batch['attention_mask'] = torch.stack(padded_attention_masks)
+                if padded_labels:
+                    batch['labels'] = torch.stack(padded_labels)
+        
+        # Handle mask labels - test_a1準拠のキー名変換
+        # HybridDatasetは'ground_truth_mask'を返すが、モデルは'mask_labels'を期待
+        if 'ground_truth_mask' in features[0] and features[0]['ground_truth_mask'] is not None:
+            mask_labels = []
+            for f in features:
+                if f.get('ground_truth_mask') is not None:
+                    mask_labels.append(f['ground_truth_mask'])
+                else:
+                    # Create dummy mask with default size
+                    mask_labels.append(torch.zeros(1, 1024, 1024))
+            batch['mask_labels'] = torch.stack(mask_labels)
+        elif 'mask_labels' in features[0] and features[0]['mask_labels'] is not None:
+            # 既に'mask_labels'として存在する場合
+            mask_labels = []
+            for f in features:
+                if f.get('mask_labels') is not None:
+                    mask_labels.append(f['mask_labels'])
+                else:
+                    mask_labels.append(torch.zeros(1, 1024, 1024))
             batch['mask_labels'] = torch.stack(mask_labels)
         
         # Preserve original images for visualization

@@ -67,7 +67,7 @@ class ImageFeatureAdapter(nn.Module):
             Tensor of shape [B, out_dim, H, W] suitable for SAM mask decoder
         """
         B, N, D_v = vision_features.shape
-        print(f"[ImageFeatureAdapter] Input: vision_features {vision_features.shape}, grid_thw {image_grid_thw.shape if image_grid_thw is not None else None}")
+        # Debug output removed for performance
         
         # Project features to target dimension
         features = self.proj(vision_features)  # [B, N, out_dim]
@@ -84,7 +84,7 @@ class ImageFeatureAdapter(nn.Module):
             H = H_raw // 2  # After 2x2 PatchMerge
             W = W_raw // 2
             
-            print(f"[ImageFeatureAdapter] RAW grid: {H_raw}×{W_raw}, Compressed grid: {H}×{W}={H*W}, Actual patches: {N}")
+            # Debug: RAW grid and compressed grid info
             
             if H * W != N:
                 # Patches may be padded in batch - use actual count

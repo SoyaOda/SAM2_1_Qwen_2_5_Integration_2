@@ -50,6 +50,10 @@ class MinimalTrainer:
         self.best_loss = float('inf')
         self.global_step = 0
         
+        # 可視化設定
+        self.visualize = getattr(config, 'visualize', False)
+        self.visualize_steps = getattr(config, 'visualize_steps', 5)
+        
         # Loss履歴を記録
         self.loss_history = {
             'steps': [],
@@ -67,6 +71,12 @@ class MinimalTrainer:
         # チェックポイントディレクトリ
         self.checkpoint_dir = self.output_dir / "checkpoints"
         self.checkpoint_dir.mkdir(exist_ok=True)
+        
+        # 可視化ディレクトリ（可視化が有効な場合のみ）
+        if self.visualize:
+            self.vis_dir = self.output_dir / 'visualizations'
+            self.vis_dir.mkdir(exist_ok=True)
+            logger.info(f"可視化を有効化: {self.visualize_steps}ステップごとに保存")
         
         # 設定を保存
         with open(self.output_dir / "config.json", 'w') as f:
@@ -470,6 +480,10 @@ class MinimalTrainer:
             
             self.global_step += 1
             
+            # 定期的な可視化を保存
+            if 'mask_labels' in batch and batch['mask_labels'] is not None:
+                self.save_visualization(batch, outputs, self.global_step)
+            
             # 定期的なチェックポイント保存
             if self.global_step % self.config.save_steps == 0:
                 self.save_checkpoint(f"step_{self.global_step}")
@@ -485,6 +499,248 @@ class MinimalTrainer:
         self.plot_loss_history()
         
         return avg_loss
+    
+    def save_visualization(self, batch, outputs, step):
+        """訓練中の予測を可視化（バッチの最初のサンプルのみ）"""
+        # 可視化が無効の場合はスキップ
+        if not self.visualize:
+            return
+            
+        # 指定されたステップ間隔で可視化
+        if step % self.visualize_steps != 0:
+            return
+        
+        # マスクがない場合はスキップ
+        if outputs.mask_logits is None or len(outputs.mask_logits) == 0:
+            return
+            
+        if outputs.mask_logits[0] is None:
+            return
+        
+        try:
+            import cv2
+            from PIL import Image
+            import numpy as np
+            import json
+            
+            # original_imagesがcollatorから渡されている場合はそれを使用
+            if 'original_images' in batch and batch['original_images'] is not None and len(batch['original_images']) > 0:
+                original_img = batch['original_images'][0]
+                if isinstance(original_img, Image.Image):
+                    image_np = np.array(original_img)
+                elif isinstance(original_img, torch.Tensor):
+                    img_tensor = original_img
+                    if img_tensor.dim() == 4:
+                        img_tensor = img_tensor[0]
+                    if img_tensor.shape[0] == 3:
+                        image_np = img_tensor.permute(1, 2, 0).cpu().numpy()
+                    else:
+                        image_np = img_tensor.cpu().numpy()
+                    if image_np.max() <= 1.0:
+                        image_np = (image_np * 255).astype(np.uint8)
+                else:
+                    logger.debug(f"Skipping visualization at step {step} (unsupported image format)")
+                    return
+            else:
+                # pixel_valuesから復元を試みる
+                pixel_values = batch['pixel_values'][0].cpu()
+                
+                # パッチ形式の場合はスキップ
+                if pixel_values.dim() == 2:
+                    logger.debug(f"Skipping visualization at step {step} (patch format, no original_images)")
+                    return
+                
+                # 3D形式の場合
+                if pixel_values.dim() == 3:
+                    mean = torch.tensor([0.48145466, 0.4578275, 0.40821073]).view(3, 1, 1)
+                    std = torch.tensor([0.26862954, 0.26130258, 0.27577711]).view(3, 1, 1)
+                    image = pixel_values * std + mean
+                    image = torch.clamp(image, 0, 1)
+                    image_np = image.permute(1, 2, 0).numpy()
+                else:
+                    logger.debug(f"Skipping visualization at step {step} (unsupported pixel format)")
+                    return
+            
+            # マスクを取得（バッチの最初のサンプル）
+            pred_mask = outputs.mask_logits[0]
+            if isinstance(pred_mask, list):
+                pred_mask = pred_mask[0]
+            
+            # 予測マスクをシグモイドで確率に変換
+            pred_mask_np = torch.sigmoid(pred_mask).detach().cpu().numpy()
+            if pred_mask_np.ndim > 2:
+                pred_mask_np = pred_mask_np.squeeze()
+            
+            # GTマスクを取得
+            gt_mask = batch['mask_labels'][0]
+            gt_mask_np = gt_mask.detach().cpu().numpy()
+            if gt_mask_np.ndim > 2:
+                gt_mask_np = gt_mask_np[0] if gt_mask_np.shape[0] > 0 else gt_mask_np.squeeze()
+            
+            # テキスト情報を取得
+            input_ids = batch['input_ids'][0]
+            labels = batch.get('labels', torch.full_like(input_ids, -100))[0]
+            
+            # テキストをデコード
+            try:
+                full_text = self.tokenizer.decode(input_ids, skip_special_tokens=False)
+                
+                # ユーザー入力とアシスタント応答を分離
+                user_start_marker = "<|im_start|>user"
+                assistant_start_marker = "<|im_start|>assistant"
+                assistant_end_marker = "<|im_end|>"
+                
+                user_text = ""
+                assistant_text = ""
+                
+                if user_start_marker in full_text:
+                    user_start = full_text.index(user_start_marker) + len(user_start_marker)
+                    if assistant_start_marker in full_text:
+                        user_end = full_text.index(assistant_start_marker)
+                        user_text = full_text[user_start:user_end].strip()
+                
+                if assistant_start_marker in full_text:
+                    assistant_start = full_text.index(assistant_start_marker) + len(assistant_start_marker)
+                    remaining_text = full_text[assistant_start:]
+                    if assistant_end_marker in remaining_text:
+                        assistant_end = remaining_text.index(assistant_end_marker)
+                        assistant_text = remaining_text[:assistant_end].strip()
+                    else:
+                        assistant_text = remaining_text.strip()
+                
+                # <|im_end|>を削除
+                user_text = user_text.replace("<|im_end|>", "").strip()
+                
+                # vision部分を簡潔に表示
+                if "<|vision_start|>" in user_text and "<|vision_end|>" in user_text:
+                    vision_start = user_text.index("<|vision_start|>")
+                    vision_end = user_text.index("<|vision_end|>") + len("<|vision_end|>")
+                    vision_content = user_text[vision_start:vision_end]
+                    image_pad_count = vision_content.count("<|image_pad|>")
+                    simplified_vision = f"<|vision_start|>[{image_pad_count} image patches]<|vision_end|>"
+                    user_text = user_text[:vision_start] + simplified_vision + user_text[vision_end:]
+                
+                # ラベルマスキング情報
+                masked_count = (labels == -100).sum().item()
+                unmasked_count = (labels != -100).sum().item()
+                
+            except Exception as e:
+                user_text = f"[Decoding Error: {e}]"
+                assistant_text = ""
+                masked_count = 0
+                unmasked_count = 0
+            
+            # 可視化
+            fig = plt.figure(figsize=(20, 10))
+            
+            # 上段: 画像、GTマスク、予測マスク
+            ax1 = plt.subplot(2, 3, 1)
+            ax1.imshow(image_np)
+            ax1.set_title(f'Input Image (Step {step})', fontsize=12, fontweight='bold')
+            ax1.axis('off')
+            
+            ax2 = plt.subplot(2, 3, 2)
+            ax2.imshow(gt_mask_np, cmap='gray')
+            ax2.set_title('GT Mask', fontsize=12, fontweight='bold')
+            ax2.axis('off')
+            
+            ax3 = plt.subplot(2, 3, 3)
+            ax3.imshow(pred_mask_np, cmap='gray', vmin=0, vmax=1)
+            ax3.set_title('Predicted Mask', fontsize=12, fontweight='bold')
+            ax3.axis('off')
+            
+            # 下段: オーバーレイ比較
+            ax4 = plt.subplot(2, 3, 4)
+            ax4.imshow(image_np)
+            gt_mask_resized = cv2.resize(gt_mask_np, (image_np.shape[1], image_np.shape[0]), interpolation=cv2.INTER_NEAREST)
+            mask_overlay = np.zeros_like(image_np)
+            mask_overlay[:, :, 0] = gt_mask_resized * 255
+            ax4.imshow(mask_overlay, alpha=0.3)
+            ax4.set_title('Image + GT Mask', fontsize=12, fontweight='bold')
+            ax4.axis('off')
+            
+            ax5 = plt.subplot(2, 3, 5)
+            ax5.imshow(image_np)
+            pred_mask_resized = cv2.resize(pred_mask_np, (image_np.shape[1], image_np.shape[0]), interpolation=cv2.INTER_LINEAR)
+            pred_overlay = np.zeros_like(image_np)
+            pred_overlay[:, :, 1] = pred_mask_resized * 255
+            ax5.imshow(pred_overlay, alpha=0.3)
+            ax5.set_title('Image + Pred Mask', fontsize=12, fontweight='bold')
+            ax5.axis('off')
+            
+            # メトリクス表示
+            ax6 = plt.subplot(2, 3, 6)
+            ax6.axis('off')
+            
+            # Dice scoreとIoUを計算
+            pred_binary = (pred_mask_resized > 0.5).astype(np.float32)
+            gt_binary = (gt_mask_resized > 0.5).astype(np.float32)
+            intersection = (pred_binary * gt_binary).sum()
+            union = pred_binary.sum() + gt_binary.sum() - intersection
+            iou = intersection / (union + 1e-6)
+            dice = 2 * intersection / (pred_binary.sum() + gt_binary.sum() + 1e-6)
+            
+            # 損失情報も追加
+            lm_loss = outputs.loss.item() if hasattr(outputs, 'loss') else 0.0
+            
+            info_text = f"Step: {step}\n"
+            info_text += f"Dice Score: {dice:.4f}\n"
+            info_text += f"IoU: {iou:.4f}\n"
+            info_text += f"LM Loss: {lm_loss:.4f}\n"
+            info_text += f"Mask Size: {gt_mask_np.shape}\n"
+            info_text += f"Image Size: {image_np.shape[:2]}\n"
+            info_text += f"Label Masking: {masked_count} masked, {unmasked_count} unmasked\n\n"
+            if len(user_text) > 200:
+                info_text += f"User: {user_text[:200]}...\n\n"
+            else:
+                info_text += f"User: {user_text}\n\n"
+            if len(assistant_text) > 100:
+                info_text += f"Assistant: {assistant_text[:100]}..."
+            else:
+                info_text += f"Assistant: {assistant_text}"
+            ax6.text(0.05, 0.95, info_text, transform=ax6.transAxes, 
+                    fontsize=9, verticalalignment='top', 
+                    bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5),
+                    wrap=True, family='monospace')
+            ax6.set_title('Metrics & Text', fontsize=12, fontweight='bold')
+            
+            plt.suptitle(f'Training Visualization - Step {step}', fontsize=14, fontweight='bold')
+            plt.tight_layout()
+            
+            # 可視化ディレクトリを使用（既に作成済み）
+            save_path = self.vis_dir / f'step_{step:06d}.png'
+            plt.savefig(save_path, dpi=100, bbox_inches='tight')
+            plt.close()
+            
+            # JSON形式でも情報を保存
+            vis_info = {
+                'step': int(step),
+                'metrics': {
+                    'dice_score': float(dice),
+                    'iou': float(iou),
+                    'lm_loss': float(lm_loss),
+                },
+                'text': {
+                    'user': user_text,
+                    'assistant': assistant_text,
+                    'masked_tokens': int(masked_count),
+                    'unmasked_tokens': int(unmasked_count),
+                },
+                'shapes': {
+                    'gt_mask': list(gt_mask_np.shape),
+                    'pred_mask': list(pred_mask_np.shape),
+                    'image': list(image_np.shape),
+                }
+            }
+            
+            json_path = self.vis_dir / f'step_{step:06d}.json'
+            with open(json_path, 'w') as f:
+                json.dump(vis_info, f, indent=2, ensure_ascii=False)
+            
+            logger.info(f"💾 Saved visualization to {save_path} (Dice: {dice:.4f}, IoU: {iou:.4f})")
+            
+        except Exception as e:
+            logger.warning(f"Failed to save visualization at step {step}: {e}")
     
     def save_checkpoint(self, name="best"):
         """チェックポイントの保存"""
@@ -612,7 +868,7 @@ def main():
     # データ設定
     parser.add_argument('--data_dir', type=str, default=None,
                        help='データセットのベースディレクトリ（Noneの場合はLISAConfigのデフォルトを使用）')
-    parser.add_argument('--samples_per_epoch', type=int, default=1000,
+    parser.add_argument('--samples_per_epoch', type=int, default=10,
                        help='1エポックあたりのサンプル数')
     parser.add_argument('--dataset_types', type=str, default='sem_seg||refer_seg||vqa||reason_seg',
                        help='データセットタイプ（||で区切る）: sem_seg||refer_seg||vqa||reason_seg')
@@ -662,6 +918,12 @@ def main():
                        help='高速開発モード（少量データで動作確認）')
     parser.add_argument('--max_samples', type=int, default=None,
                        help='各データセットから読み込む最大サンプル数（開発時用）')
+    
+    # 可視化設定
+    parser.add_argument('--visualize', action='store_true',
+                       help='訓練中の可視化を有効化')
+    parser.add_argument('--visualize_steps', type=int, default=5,
+                       help='可視化の間隔（ステップ数）')
     
     args = parser.parse_args()
     
