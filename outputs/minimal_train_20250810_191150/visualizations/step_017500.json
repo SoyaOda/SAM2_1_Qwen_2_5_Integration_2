@@ -1,0 +1,29 @@
+{
+  "step": 17500,
+  "metrics": {
+    "dice_score": 0.0,
+    "iou": 0.0,
+    "lm_loss": 0.0
+  },
+  "text": {
+    "user": "<|vision_start|>[256 image patches]<|vision_end|>Please provide a segmentation mask for the metal.",
+    "assistant": "<SEG>.",
+    "masked_tokens": 289,
+    "unmasked_tokens": 3
+  },
+  "shapes": {
+    "gt_mask": [
+      1024,
+      1024
+    ],
+    "pred_mask": [
+      448,
+      448
+    ],
+    "image": [
+      448,
+      336,
+      3
+    ]
+  }
+}
