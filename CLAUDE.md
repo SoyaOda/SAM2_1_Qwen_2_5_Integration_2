@@ -22,42 +22,26 @@ Web searchの際は、必ずo3-query MCPを利用すること！
 - 具体的なライブラリやモデルの使用方法を調べたい時
 
 [Introduction]
-将来的な目標：LISA→FoodLMMの成功を受けて、最新のVLMと最新のSAMを統合して、LISAのような深い次元で画像と言語を理解した基盤モデル（LISA改）を作り、それをFoodLMMの学習方法を参考にファインチューニングし、FoodLMM改を作り、写真内の料理や食材の量の推定を精度高く行わせる予定。VLMとSAMのようなモデルの統合モデルについて、最新の知見も導入しながらポテンシャルの高いモデル実装を目指している。
+将来的な目標：LISA→FoodLMMの成功を受けて、最新のVLMと最新のSAMを統合して、LISAのような深い次元で画像と言語を理解した基盤モデル（LISA改）を作り（学習データセットのみLISAと同様、モデル設計や学習方法は最新の知見をもとに調整する）、それをFoodLLMの学習方法を参考に（データセットはFoodLLMと完全に同一）ファインチューニングし、FoodLMM改を作り、写真内の料理や食材の量の推定を精度高く行わせる予定。
+事前学習基盤モデルとしてのLISA改に期待するのは言語空間と2D画像の空間を両方を深いレベルで理解したモデルであり、これを基盤としてドメイン特化の学習をさせLISA改→FoodLMM改→最終目標モデルを作る予定である。つまり、LISA改の真の目的は以下の最終目標のモデルの基盤を築くこと。
 
-今までの過去の実装方針・実際の実装ログ（実装指針に関しては一部未実装もあるかも、実装更新もありうる、いずれにせよ現在の実際のコードScript内容が一番信頼性が高い）はmd_filesにまとまってあるので、おおまかな実装の把握に役立てること。詳細部分は実際にコード（minimal_train.pyやその関連Script）で把握すること。
+最終目標モデル：料理・食材データベース（2000項目程度）があるので、写真内の全ての料理と食材に対して料理・食材データベースの中から的確に選び、それぞれの料理や食材に対して正確な重さ（g）を推定することが最終目標（FoodLMM改を料理・食材データベースで正規化されたデータでファインチューニングしたり、モデルのHeadを特定タスク特化することで作成する予定）。
+
+FoodLMM改や最終目標モデルは将来的な目標なので、一旦は事前学習汎用モデルであるLISA改にフォーカスすること！
+・用いるデータセットはLISAと全く同様である。
+
+現状：
+・Qwen2.5-VL（実装段階では3B, 最終的に72Bに変更）とSAM2.1の統合モデルをLISA改とする方針
+・おおまかな方針として、Qwen2.5-VLは高度なViTを持っているらしいので、既存のQwenの能力を活用すべく、Qwen2.5-VLベースに、SAM2.1のマスクデコーダー, プロンプトエンコーダーを必要部分にアダプターなどを用いて統合する方針（LISAを参考にこの実装方針を採用）
+・githubに最新のコードが反映されている
 
 [命令]
 上記の方針で実装を進めてきた。
 
-事前タスク：詳細はgithub のminimal_train.py, test_a1_oracle_sam_fixed.py, test_a2_unfreeze_sam.pyとその関連ファイルを全て読んで統合モデルの詳細を把握して。
+事前タスク：詳細はgithub のminimal_train.py, test_a4_addition_embedding.pyとその関連ファイルを全て読んで統合モデルの詳細を把握して。
 
 本番タスク：
-SAM2_1_Qwen_2_5_Integration_2のgithub において、minimal_train.pyを以下のコマンドを実行しているが、seg lossが全く下がらずマスク生成も全く向上しない（参照：outputs/minimal_train_20250810_191150）。
-
-原因究明のため、テスト用にtest_a1_oracle_sam_fixed.pyを作って実行するときちんとseg lossの現象と精度の高いMask生成が確認できている（参照：test_outputs/test_a1_20250811_102514）。
-
-しかし、test_a2_unfreeze_sam.pyでテストしたところ、minimal_train.py同様seg lossが全く下がらずマスク生成も全く向上しなかった。
-
-
-
-minimal_train.pyの実行コマンド：python minimal_train.py --dataset_types "sem_seg" --samples_per_epoch 10000 --batch_size 2 --gradient_accumulation_steps 16 --num_epochs 4 --seg_loss_weight 1.0 --adapter_lr 5e-3 --seg_token_lr 1e-3 --lora_lr 1.5e-4 --save_steps 2500 --use_wandb --wandb_project minimal_train_full-semseg
-
-test_a1_oracle_sam_fixed.pyの実行コマンド：python test_a1_oracle_sam_fixed.py
-
-test_a2_unfreeze_sam.pyの実行コマンド：python test_a2_unfreeze_sam.py
-
-下記のようなレビューが返ってきたが、現状のコードでPromptEncoderは適切に使われ、学習されている？
-下記のレビューの内容は本当に正しい？徹底的にレビューして答えて。
-ーーー
-LLM埋め込みとSAMプロンプトのミスマッチ: 現行実装では、SAMのPromptEncoderが生成するポイント埋め込みをLLM由来のベクトルで強制的に置換しています
-GitHub
-。しかし学習初期の段階では、LLM（Qwen2.5-VL）が<SEG>トークンに対して出力する隠れ状態は、セグメンテーションの文脈で有用な情報を持っていません。言い換えれば、LLMから射影された256次元ベクトルは当初ほぼランダムなものであり、SAM側から見ると全く未知の分布を持つ特徴になっていると考えられます
-GitHub
-。一方、SAMのMaskDecoderは本来、PromptEncoderが吐き出す**「位置情報をエンコードした埋め込みベクトル」**を前提にマスク計算を行うよう設計されています。ところがその前提が崩れ、全く予期しない埋め込みベクトルが入力されるため、初期のマスク予測精度は極めて低くなります
-GitHub
-。実際、GTのポイント自体は与えているにもかかわらず、対応する埋め込みが不適切なため、MaskDecoderは画像全体を塗り潰したようなマスクや全くマスクを出さないといった極端な出力しかできなくなりがちです。その結果、seg lossは初期から非常に高い値のままスタートし、モデルはほとんどゼロからマスク生成の方法を学習し直さねばならない状態に置かれます。
-ーーー
-
+minimal_train.pyを進めた場合のSEG LOSSがほぼ下がらない問題がある。そこでGTP-5proにより修正方針をmd_files/current/residual_addition_pre_alignment20250811.mdに作成したので、順に修正をすること。できる限り、各段階でTestで動作確認をすること。
 
 ※作業の途中でminimal_train.pyでseg lossが下がらない理由の可能性のあるバグを発見したら報告すること。
 
