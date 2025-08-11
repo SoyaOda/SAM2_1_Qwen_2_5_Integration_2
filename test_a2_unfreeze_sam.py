@@ -28,6 +28,13 @@ import cv2
 # プロジェクトルートをパスに追加
 sys.path.append(str(Path(__file__).parent))
 
+# 共通設定をインポート
+from test_common_config import (
+    SEED, NUM_STEPS, BATCH_SIZE, LEARNING_RATE, NUM_FIXED_SAMPLES,
+    DATASET_TYPE, SAMPLE_RATE, VIS_INTERVAL, LOG_INTERVAL, EVAL_THRESHOLD,
+    set_random_seed, FixedSampleDataset, save_test_config, create_standard_output_structure
+)
+
 from src.config import LISAConfig
 from src.models import LISA_Model
 from src.utils import prepare_tokenizer_for_lisa
@@ -39,15 +46,16 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 logger = logging.getLogger(__name__)
 
 # ハイパーパラメータ設定
-num_steps = 500       # 検証するステップ数（必要に応じて調整）
-batch_size = 2
-learning_rate = 5e-4  # 全パラメータ共通のシンプルな学習率
-dataset_type = "sem_seg"
-samples_per_epoch = 10  # データセットから使用するサンプル数（キャッシュ利用のため少なめに設定）
+# パラメータは共通設定から使用
+num_steps = NUM_STEPS
+batch_size = BATCH_SIZE
+learning_rate = LEARNING_RATE
+dataset_type = DATASET_TYPE
+samples_per_epoch = NUM_FIXED_SAMPLES
 
 def save_visualization(output_dir, step, batch, pred_masks, gt_masks, losses, tokenizer):
     """可視化の保存（test_a1と同様の詳細な可視化）"""
-    if step % 50 != 0:  # 50ステップごとに保存
+    if step % VIS_INTERVAL != 0:  # 共通設定の間隔を使用
         return
     
     # バッチから最初のサンプルを取得
@@ -175,22 +183,29 @@ def save_visualization(output_dir, step, batch, pred_masks, gt_masks, losses, to
     plt.suptitle(f'A-2 Test Visualization - Step {step} (SAM Unfrozen)', fontsize=14, fontweight='bold')
     plt.tight_layout()
     
-    save_path = output_dir / f'visualization_step_{step}.png'
+    save_path = output_dir / 'visualizations' / f'step_{step:05d}.png'
     plt.savefig(save_path, dpi=100, bbox_inches='tight')
     plt.close()
     
     logger.info(f"Saved visualization to {save_path} (Dice: {dice:.4f}, IoU: {iou:.4f})")
 
 def main():
+    # シード固定
+    set_random_seed(SEED)
+    
     # デバイス設定
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     logger.info(f"Using device: {device}")
     
-    # 出力ディレクトリ作成
+    # 出力ディレクトリ作成（共通構造）
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    output_dir = Path(f"test_outputs/test_a2_{timestamp}")
-    output_dir.mkdir(parents=True, exist_ok=True)
+    output_dir = create_standard_output_structure(f"test_outputs/test_a2_{timestamp}")
     logger.info(f"Output directory: {output_dir}")
+    
+    # テスト設定を保存
+    save_test_config(output_dir, 'test_a2_unfreeze_sam', {
+        'test_description': 'SAM unfrozen with LLM embedding replacement'
+    })
     
     # 1. モデルとトークナイザの準備
     config = LISAConfig(
@@ -253,19 +268,22 @@ def main():
     sam_trainable = [n for n in trainable_params if 'sam' in n.lower()]
     logger.info(f"SAM trainable parameters: {len(sam_trainable)} tensors")
     
-    # 2. データセット準備
+    # 2. データセット準備（固定サンプル版）
     base_dir = config.dataset_base_dir
     
-    # minimal_train.pyとtest_a1と同じ形式でデータセット作成
-    dataset = HybridDataset(
+    # ベースのHybridDatasetを作成
+    base_dataset = HybridDataset(
         base_image_dir=base_dir,
         qwen_processor=processor,
-        samples_per_epoch=samples_per_epoch,
-        dataset=dataset_type,  # 文字列形式で渡す（"sem_seg"）
-        sample_rate=[1.0],  # リスト形式で渡す
+        samples_per_epoch=NUM_FIXED_SAMPLES,  # 共通設定から
+        dataset=DATASET_TYPE,  # 共通設定から
+        sample_rate=SAMPLE_RATE,  # 共通設定から
         qwen_image_size=config.qwen_image_size,
         sam_image_size=config.sam_image_size,
     )
+    
+    # 固定サンプル版に変換（共通クラスとシード使用）
+    dataset = FixedSampleDataset(base_dataset, num_samples=NUM_FIXED_SAMPLES, seed=SEED)
     collator = MultiModalDataCollator(
         tokenizer=tokenizer,
         max_length=config.model_max_length,
@@ -274,7 +292,7 @@ def main():
     dataloader = DataLoader(
         dataset, 
         batch_size=batch_size, 
-        shuffle=True, 
+        shuffle=False,  # 固定サンプルなのでシャッフル不要 
         collate_fn=collator, 
         num_workers=0,
         pin_memory=True
@@ -446,7 +464,7 @@ def main():
             step += 1
             pbar.update(1)
             
-            if step % 50 == 0:
+            if step % LOG_INTERVAL == 0:
                 logger.info(f"Step {step}: total_loss={total_loss.item():.4f}, lm_loss={lm_loss.item():.4f}, seg_loss={seg_loss.item():.4f}")
     
     logger.info("Training finished.")
@@ -520,7 +538,7 @@ def main():
     initial_seg_loss = loss_history[0]['seg_loss']
     final_seg_loss = loss_history[-1]['seg_loss']
     
-    if final_seg_loss < initial_seg_loss * 0.5:  # 50%以上の改善
+    if final_seg_loss < initial_seg_loss * EVAL_THRESHOLD:  # 指定閾値以上の改善
         logger.info("✅ TEST PASSED: Segmentation loss decreased significantly")
         logger.info(f"   Initial seg_loss: {initial_seg_loss:.4f}")
         logger.info(f"   Final seg_loss: {final_seg_loss:.4f}")

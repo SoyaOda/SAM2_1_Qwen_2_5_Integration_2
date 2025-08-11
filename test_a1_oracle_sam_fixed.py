@@ -30,6 +30,13 @@ matplotlib.use('Agg')
 # プロジェクトルートをパスに追加
 sys.path.append(str(Path(__file__).parent))
 
+# 共通設定をインポート
+from test_common_config import (
+    SEED, NUM_STEPS, BATCH_SIZE, LEARNING_RATE, NUM_FIXED_SAMPLES,
+    DATASET_TYPE, SAMPLE_RATE, VIS_INTERVAL, LOG_INTERVAL, EVAL_THRESHOLD,
+    set_random_seed, FixedSampleDataset, save_test_config, create_standard_output_structure
+)
+
 from src.config import LISAConfig
 from src.models import LISA_Model
 from src.utils import prepare_tokenizer_for_lisa
@@ -54,10 +61,9 @@ class OracleSAMTester:
         self.config = config
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         
-        # 出力ディレクトリ
+        # 出力ディレクトリ（共通構造）
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        self.output_dir = Path(f"test_outputs/test_a1_{timestamp}")
-        self.output_dir.mkdir(parents=True, exist_ok=True)
+        self.output_dir = create_standard_output_structure(f"test_outputs/test_a1_{timestamp}")
         
         # メトリクス
         self.dice_metric = BinaryF1Score(threshold=0.5).to(self.device)
@@ -78,6 +84,11 @@ class OracleSAMTester:
         self.fixed_batch = None
         
         logger.info(f"Output directory: {self.output_dir}")
+        
+        # テスト設定を保存
+        save_test_config(self.output_dir, 'test_a1_oracle_sam', {
+            'test_description': 'Oracle SAM prompt test with GT centroids'
+        })
     
     def setup_model(self):
         """LISA_Modelのセットアップ（minimal_train.pyと同じ設定）"""
@@ -155,16 +166,19 @@ class OracleSAMTester:
         logger.info(f"Dataset types: {dataset_types}")
         logger.info(f"Sample rates: {sample_rates}")
         
-        # HybridDatasetを作成（すべてのデータセットタイプに対応）
-        self.dataset = HybridDataset(
+        # ベースのHybridDatasetを作成
+        base_dataset = HybridDataset(
             base_image_dir=data_dir,
             qwen_processor=self.processor,
-            samples_per_epoch=self.config.num_samples,  # 過学習テスト用に少数
-            dataset=dataset_types,  # すべてのデータセットタイプ
-            sample_rate=sample_rates,  # 各データセットのサンプリング率
+            samples_per_epoch=NUM_FIXED_SAMPLES,  # 共通設定から
+            dataset=DATASET_TYPE,  # 共通設定から
+            sample_rate=SAMPLE_RATE,  # 共通設定から
             qwen_image_size=self.lisa_config.qwen_image_size,
             sam_image_size=self.lisa_config.sam_image_size,
         )
+        
+        # 固定サンプル版に変換（共通クラスを使用）
+        self.dataset = FixedSampleDataset(base_dataset, num_samples=NUM_FIXED_SAMPLES, seed=SEED)
         
         # DataCollator（minimal_train.pyと同じ）
         self.collator = MultiModalDataCollator(
@@ -400,7 +414,7 @@ class OracleSAMTester:
     
     def save_visualization(self, batch, pred_masks, gt_masks, step):
         """可視化の保存（テキスト情報も含む）"""
-        if step % 5 != 0:
+        if step % VIS_INTERVAL != 0:  # 共通設定の間隔を使用
             return
         
         # original_imagesがcollatorから渡されている場合はそれを使用
@@ -606,7 +620,7 @@ class OracleSAMTester:
         plt.suptitle(f'Oracle SAM Test Visualization - Step {step}', fontsize=14, fontweight='bold')
         plt.tight_layout()
         
-        save_path = self.output_dir / f'visualization_step_{step}.png'
+        save_path = self.output_dir / 'visualizations' / f'step_{step:05d}.png'
         plt.savefig(save_path, dpi=100, bbox_inches='tight')
         plt.close()
         
@@ -705,7 +719,7 @@ class OracleSAMTester:
                 self.loss_history['iou_score'].append(iou_metric_score.item())
                 
                 # ログ出力
-                if global_step % 10 == 0:
+                if global_step % LOG_INTERVAL == 0:
                     logger.info(
                         f"Step {global_step}: "
                         f"Loss={total_loss:.4f}, "
@@ -768,11 +782,11 @@ class OracleSAMTester:
         axes[1, 1].set_ylim([0, 1])
         
         plt.tight_layout()
-        plt.savefig(self.output_dir / 'training_curves.png', dpi=150, bbox_inches='tight')
+        plt.savefig(self.output_dir / 'logs' / 'training_curves.png', dpi=150, bbox_inches='tight')
         plt.close()
         
         # 履歴をJSONで保存
-        with open(self.output_dir / 'training_history.json', 'w') as f:
+        with open(self.output_dir / 'logs' / 'training_history.json', 'w') as f:
             json.dump(self.loss_history, f, indent=2)
         
         # 最終結果のサマリー
@@ -796,12 +810,15 @@ def main():
     """メイン関数"""
     import argparse
     
+    # シード固定
+    set_random_seed(SEED)
+    
     parser = argparse.ArgumentParser(description='A-1 Oracle SAM Test - Enhanced Version with All Datasets')
-    parser.add_argument('--num_samples', type=int, default=10,
+    parser.add_argument('--num_samples', type=int, default=NUM_FIXED_SAMPLES,
                        help='Number of samples in dataset (for random sampling)')
-    parser.add_argument('--max_steps', type=int, default=1000,
+    parser.add_argument('--max_steps', type=int, default=NUM_STEPS,
                        help='Maximum training steps')
-    parser.add_argument('--learning_rate', type=float, default=1e-4,
+    parser.add_argument('--learning_rate', type=float, default=LEARNING_RATE,
                        help='Learning rate')
     parser.add_argument('--weight_decay', type=float, default=0.01,
                        help='Weight decay')

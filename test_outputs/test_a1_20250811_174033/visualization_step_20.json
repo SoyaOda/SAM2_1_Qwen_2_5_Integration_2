@@ -1,0 +1,42 @@
+{
+  "step": 20,
+  "metrics": {
+    "dice_score": 0.88230299949646,
+    "iou": 0.7893937230110168
+  },
+  "gt_centroid": {
+    "x": 207.30201721191406,
+    "y": 171.29054260253906
+  },
+  "shapes": {
+    "gt_mask": [
+      392,
+      392
+    ],
+    "pred_mask": [
+      392,
+      392
+    ],
+    "image": [
+      308,
+      448,
+      3
+    ]
+  },
+  "text_info": {
+    "user_input": "<|vision_start|>[196 image patches]<|vision_end|>Where is the wall? Please segment it.",
+    "assistant_response": "Sure, <SEG>.",
+    "full_text_length": 2746,
+    "tokenized_length": 233,
+    "label_masking": {
+      "masked_tokens": 229,
+      "unmasked_tokens": 4,
+      "total_tokens": 233
+    }
+  },
+  "training_info": {
+    "loss": 0.30167078971862793,
+    "bce_loss": 0.15425510704517365,
+    "dice_loss": 0.14741569757461548
+  }
+}
