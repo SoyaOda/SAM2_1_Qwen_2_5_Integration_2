@@ -5,7 +5,7 @@
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Project Overview
-serena MCPが日本語で対応すること！
+必ずserena MCPが日本語で対応すること！
 日本語で応答すること！
 Web searchの際は、必ずo3-query MCPを利用すること！
 
