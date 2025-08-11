@@ -1,0 +1,42 @@
+{
+  "step": 5,
+  "metrics": {
+    "dice_score": 0.8598926067352295,
+    "iou": 0.7542206645011902
+  },
+  "gt_centroid": {
+    "x": 135.13760375976562,
+    "y": 320.0322265625
+  },
+  "shapes": {
+    "gt_mask": [
+      392,
+      392
+    ],
+    "pred_mask": [
+      392,
+      392
+    ],
+    "image": [
+      308,
+      448,
+      3
+    ]
+  },
+  "text_info": {
+    "user_input": "<|vision_start|>[196 image patches]<|vision_end|>Can you identify and segment the sofa?",
+    "assistant_response": "<SEG>.",
+    "full_text_length": 2741,
+    "tokenized_length": 229,
+    "label_masking": {
+      "masked_tokens": 226,
+      "unmasked_tokens": 3,
+      "total_tokens": 229
+    }
+  },
+  "training_info": {
+    "loss": 0.23903656005859375,
+    "bce_loss": 0.06049669533967972,
+    "dice_loss": 0.17853987216949463
+  }
+}

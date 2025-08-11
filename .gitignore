@@ -3,7 +3,6 @@ checkpoints/*.pt
 # 出力ディレクトリ
 # outputs/
 visualization_results/
-test_outputs/
 
 # ログファイル
 logs/
