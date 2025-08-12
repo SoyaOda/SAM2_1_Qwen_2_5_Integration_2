@@ -140,15 +140,15 @@ def configure_lisa_for_training(
     }
     
     # 1. Freeze base models as specified
-    if config.freeze_qwen:
+    if config.freeze_qwen_base:
         freeze_base_model(lisa_model.qwen)
     
-    if config.freeze_sam:
+    if config.freeze_sam_mask_decoder_base and config.freeze_sam_prompt_encoder:
         freeze_base_model(lisa_model.sam_mask_decoder)
         freeze_base_model(lisa_model.sam_prompt_encoder)
     
     # 2. Apply LoRA to Qwen if not frozen
-    if not config.freeze_qwen and config.lora_r > 0:
+    if not config.freeze_qwen_base and config.lora_r > 0:
         lisa_model.qwen = apply_lora_to_model(
             lisa_model.qwen,
             lora_r=config.lora_r,
@@ -163,7 +163,7 @@ def configure_lisa_for_training(
                 training_info["lora_params"] += param.numel()
     
     # 3. Enable SEG token embedding training
-    if config.train_seg_token and hasattr(lisa_model, 'seg_token_id'):
+    if not config.freeze_seg_token and hasattr(lisa_model, 'seg_token_id'):
         word_embeddings = lisa_model.qwen.get_input_embeddings()
         # Only make SEG token embedding trainable
         word_embeddings.weight.requires_grad = False
@@ -171,7 +171,7 @@ def configure_lisa_for_training(
         training_info["trainable_params"] += word_embeddings.weight.shape[1]  # Embedding dimension
     
     # 4. Ensure adapters are trainable
-    if config.train_adapters:
+    if not config.freeze_image_adapter and not config.freeze_text_prompt_projector:
         for param in lisa_model.image_adapter.parameters():
             param.requires_grad = True
         for param in lisa_model.text_prompt_proj.parameters():

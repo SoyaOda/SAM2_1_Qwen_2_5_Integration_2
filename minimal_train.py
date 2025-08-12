@@ -238,7 +238,7 @@ class MinimalTrainer:
         self.model.set_tokenizer(self.tokenizer)
         
         # Qwen LoRAの設定（config.pyの設定に従う）
-        if self.lisa_config.train_qwen_lora:
+        if not self.lisa_config.freeze_qwen_lora:
             logger.info(f"Qwen LoRAを設定 (r={self.config.lora_r}, alpha={self.config.lora_alpha})")
             lora_config = LoraConfig(
                 r=self.config.lora_r,
@@ -399,6 +399,96 @@ class MinimalTrainer:
                 'timestamp': checkpoint['timestamp'],
                 'config': checkpoint['config']
             }, f, indent=2)
+
+    def _apply_alignment_freeze_settings(self):
+        """アライメントステージ専用の凍結設定を適用"""
+        logger.info("アライメントステージ用の凍結設定を適用中...")
+        
+        frozen_count = 0
+        unfrozen_count = 0
+        
+        for name, param in self.model.named_parameters():
+            should_train = False
+            
+            # アライメントステージで学習対象となるパラメータを判定
+            # 1. QwenのLoRAパラメータ（Configに従う）
+            if "qwen" in name and "lora" in name and not self.lisa_config.freeze_qwen_lora:
+                should_train = True
+            # 2. SEGトークンEmbedding（Configに従う）
+            # 注: SEGトークンは個別管理されているため、embed_tokensの特定インデックスのみ学習可能
+            elif "embed_tokens" in name and not self.lisa_config.freeze_seg_token:
+                # embed_tokensは全体として1つのパラメータなので、SEGトークンを含む場合は学習可能にする
+                should_train = True
+            # 3. TextPromptProjector（Configに従う）
+            elif "text_prompt_proj" in name and not self.lisa_config.freeze_text_prompt_projector:
+                should_train = True
+            # 4. 融合β（Configに従う）
+            elif "prompt_beta" in name and not self.lisa_config.freeze_prompt_beta:
+                should_train = True
+            # それ以外は全て凍結（Configに関係なく）
+            else:
+                should_train = False
+            
+            # パラメータの学習可能フラグを設定
+            param.requires_grad = should_train
+            
+            if should_train:
+                unfrozen_count += 1
+                logger.debug(f"[Align] Unfrozen: {name}")
+            else:
+                frozen_count += 1
+                logger.debug(f"[Align] Frozen: {name}")
+        
+        logger.info(f"アライメントステージ設定完了: 学習可能={unfrozen_count:,}, 凍結={frozen_count:,}")
+        
+        # 主要コンポーネントの状態をログ出力
+        logger.info("アライメントステージの主要コンポーネント状態:")
+        logger.info(f"  - Qwen LoRA: {'学習可能' if not self.lisa_config.freeze_qwen_lora else '凍結'}")
+        logger.info(f"  - SEG Token: {'学習可能' if not self.lisa_config.freeze_seg_token else '凍結'}")
+        logger.info(f"  - Text Prompt Projector: {'学習可能' if not self.lisa_config.freeze_text_prompt_projector else '凍結'}")
+        logger.info(f"  - Prompt Beta: {'学習可能' if not self.lisa_config.freeze_prompt_beta else '凍結'}")
+        logger.info("  - SAM PromptEncoder: 凍結（強制）")
+        logger.info("  - SAM MaskDecoder: 凍結（強制）")
+        logger.info("  - SAM ImageEncoder: 凍結（強制）")
+        logger.info("  - Image Adapter: 凍結（強制）")
+        logger.info("  - Token-FPN: 凍結（強制）")
+    
+    def _restore_training_freeze_settings(self):
+        """アライメント後に通常の学習用凍結設定に戻す"""
+        logger.info("通常学習用の凍結設定に復元中...")
+        
+        # 通常の凍結設定を再適用（lisa_model.pyの_setup_freeze_settingsと同等）
+        for name, param in self.model.named_parameters():
+            should_train = False
+            
+            # 通常の学習設定に従って判定
+            if "qwen" in name and "lora" in name and not self.lisa_config.freeze_qwen_lora:
+                should_train = True
+            elif "word_embeddings" in name and not self.lisa_config.freeze_seg_token:
+                should_train = True
+            elif "sam" in name and "lora" in name and not self.lisa_config.freeze_sam_lora:
+                should_train = True
+            elif "image_adapter" in name and not self.lisa_config.freeze_image_adapter:
+                should_train = True
+            elif "text_prompt_proj" in name and not self.lisa_config.freeze_text_prompt_projector:
+                should_train = True
+            elif "token_fpn" in name and not self.lisa_config.freeze_token_fpn:
+                should_train = True
+            elif "prompt_beta" in name and not self.lisa_config.freeze_prompt_beta:
+                should_train = True
+            # 明示的な凍結設定
+            elif "sam" in name and "image_encoder" in name and self.lisa_config.freeze_sam_image_encoder:
+                should_train = False
+            elif "sam" in name and "memory" in name and self.lisa_config.freeze_sam_memory_attention:
+                should_train = False
+            elif "sam" in name and "mask_decoder" in name and self.lisa_config.freeze_sam_mask_decoder_base:
+                should_train = False
+            elif "sam" in name and "prompt_encoder" in name and self.lisa_config.freeze_sam_prompt_encoder:
+                should_train = False
+            
+            param.requires_grad = should_train
+        
+        logger.info("通常学習用設定の復元が完了しました")
     
     def load_alignment_checkpoint(self, checkpoint_path):
         """保存済みアライメントチェックポイントを読み込み"""
@@ -451,6 +541,9 @@ class MinimalTrainer:
         
         logger.info(f"ステージ0: 埋め込みアライメントを{self.config.align_steps}ステップ実行します")
         
+        # アライメントステージ専用の凍結設定を適用
+        self._apply_alignment_freeze_settings()
+        
         self.model.train()
         
         # アライメント用のオプティマイザを構築
@@ -459,15 +552,27 @@ class MinimalTrainer:
             if not param.requires_grad:
                 continue
             
-            # QwenのLoRAパラメータ
-            if "qwen" in name and "lora" in name:
+            # アライメントステージで学習対象となるパラメータのみを追加
+            # 1. QwenのLoRAパラメータ（Configに従う）
+            if "qwen" in name and "lora" in name and not self.lisa_config.freeze_qwen_lora:
                 align_params.append({"params": param, "lr": self.config.lora_lr})
-            # SEGトークンEmbedding
-            elif "word_embeddings" in name:
+                logger.debug(f"[Align] Added Qwen LoRA param: {name}")
+            # 2. SEGトークンEmbedding（Configに従う）
+            # 注: SEGトークンは個別管理されているため、embed_tokensの特定インデックスのみ学習可能
+            elif "embed_tokens" in name and not self.lisa_config.freeze_seg_token:
                 align_params.append({"params": param, "lr": self.config.seg_token_lr})
-            # テキスト関連アダプタ（TextPromptProjectorとprompt_beta）
-            elif "prompt_proj" in name or "prompt_beta" in name:
+                logger.debug(f"[Align] Added SEG token param: {name}")
+            # 3. TextPromptProjector（Configに従う）
+            elif "text_prompt_proj" in name and not self.lisa_config.freeze_text_prompt_projector:
                 align_params.append({"params": param, "lr": self.config.adapter_lr})
+                logger.debug(f"[Align] Added TextPromptProjector param: {name}")
+            # 4. 融合β（Configに従う）
+            elif "prompt_beta" in name and not self.lisa_config.freeze_prompt_beta:
+                align_params.append({"params": param, "lr": self.config.adapter_lr})
+                logger.debug(f"[Align] Added prompt_beta param: {name}")
+            else:
+                # アライメントステージでは学習対象外
+                logger.debug(f"[Align] Skipped param: {name} (requires_grad={param.requires_grad})")
         
         if not align_params:
             logger.warning("アライメント対象のパラメータがありません")
@@ -579,6 +684,9 @@ class MinimalTrainer:
         
         # アライメントチェックポイントを保存
         self.save_alignment_checkpoint()
+        
+        # 通常の学習用凍結設定に復元
+        self._restore_training_freeze_settings()
     
     def compute_loss(self, outputs, labels, mask_labels):
         """損失計算（1会話1マスクに最適化）"""
@@ -1164,6 +1272,11 @@ class MinimalTrainer:
     def train(self):
         """訓練のメインループ"""
         logger.info("訓練開始")
+        
+        # アライメントステージはmain()で既に実行済みなのでここでは実行しない
+        # self.run_alignment_stage()  # コメントアウト: main()で実行済み
+        
+        logger.info("メイン学習ステージ開始")
         
         for epoch in range(self.config.num_epochs):
             avg_loss = self.train_epoch(epoch)

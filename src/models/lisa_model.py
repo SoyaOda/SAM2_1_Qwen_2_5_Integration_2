@@ -273,7 +273,7 @@ class LISA_Model(nn.Module):
         # ========================================================================
         
         # ---- Qwen2.5-VL Components ----
-        if config.freeze_qwen_base or config.freeze_qwen:  # Support both new and legacy names
+        if config.freeze_qwen_base:
             for param in self.qwen.parameters():
                 param.requires_grad = False
             logger.info("Froze Qwen2.5-VL base model")
@@ -288,7 +288,7 @@ class LISA_Model(nn.Module):
             logger.info("Froze SAM ImageEncoder (not used in current implementation - saves 212M params)")
         
         # SAM MaskDecoder
-        if config.freeze_sam_mask_decoder:
+        if config.freeze_sam_mask_decoder_base:
             for param in self.sam_mask_decoder.parameters():
                 param.requires_grad = False
             logger.info("Froze SAM MaskDecoder (will use LoRA if enabled)")
@@ -309,7 +309,8 @@ class LISA_Model(nn.Module):
             # Also freeze other video-related components
             video_components = [
                 'maskmem_tpos_enc', 'no_mem_embed', 'no_mem_pos_enc',
-                'no_obj_ptr', 'no_obj_embed_spatial', 'mask_downsample'
+                'no_obj_ptr', 'no_obj_embed_spatial', 'mask_downsample',
+                'memory_encoder', 'obj_ptr_proj', 'spatial_add_pos_embed'  # 追加
             ]
             for comp_name in video_components:
                 if hasattr(self.sam_model, comp_name):
@@ -320,9 +321,16 @@ class LISA_Model(nn.Module):
                     elif isinstance(comp, nn.Parameter):
                         comp.requires_grad = False
             logger.info("Froze other SAM video components")
+            
+            # さらに、sam_model内のすべてのパラメータを走査して凍結
+            # memory_encoder, obj_ptr_proj等が確実に凍結されるようにする
+            for name, param in self.sam_model.named_parameters():
+                if ('memory_encoder' in name or 'obj_ptr' in name or 
+                    'spatial_add_pos_embed' in name or 'mem_' in name):
+                    param.requires_grad = False
         
-        # Legacy support for config.freeze_sam
-        elif config.freeze_sam:
+        # Freeze SAM components individually
+        elif config.freeze_sam_mask_decoder_base and config.freeze_sam_prompt_encoder:
             # Original behavior: freeze MaskDecoder and PromptEncoder
             for param in self.sam_mask_decoder.parameters():
                 param.requires_grad = False
@@ -332,17 +340,17 @@ class LISA_Model(nn.Module):
         
         # ---- Adapter Components ----
         # Control training of adapter components
-        if hasattr(self, 'image_adapter') and not config.train_image_adapter:
+        if hasattr(self, 'image_adapter') and config.freeze_image_adapter:
             for param in self.image_adapter.parameters():
                 param.requires_grad = False
             logger.info("Froze Image Adapter")
         
-        if hasattr(self, 'text_prompt_proj') and not config.train_text_prompt_projector:
+        if hasattr(self, 'text_prompt_proj') and config.freeze_text_prompt_projector:
             for param in self.text_prompt_proj.parameters():
                 param.requires_grad = False
             logger.info("Froze Text Prompt Projector")
         
-        if hasattr(self, 'token_fpn') and not config.train_token_fpn:
+        if hasattr(self, 'token_fpn') and config.freeze_token_fpn:
             for param in self.token_fpn.parameters():
                 param.requires_grad = False
             logger.info("Froze Token-FPN")
@@ -373,7 +381,7 @@ class LISA_Model(nn.Module):
         self.seg_token_id = tokenizer.convert_tokens_to_ids(seg_token)
         
         # Enable SEG token embedding training
-        if self.config.train_seg_token:
+        if not self.config.freeze_seg_token:
             # Use requires_grad_ to ensure it's set properly
             self.qwen.get_input_embeddings().weight[self.seg_token_id].requires_grad_(True)
             logger.info(f"SEG token embedding training enabled for token ID {self.seg_token_id}")
@@ -1218,7 +1226,7 @@ class LISA_Model(nn.Module):
                       os.path.join(save_directory, "high_res_generator.pt"))
         
         # Save Qwen if modified (e.g., with LoRA or new embeddings)
-        if not self.config.freeze_qwen or self.config.train_seg_token:
+        if not self.config.freeze_qwen_base or not self.config.freeze_seg_token:
             self.qwen.save_pretrained(os.path.join(save_directory, "qwen"))
     
     @classmethod

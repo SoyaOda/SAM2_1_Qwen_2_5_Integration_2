@@ -214,16 +214,16 @@ def main():
         device_map="cuda",
         torch_dtype="auto",
         use_flash_attention=False,
-        # Training configuration - Test A2: Unfreeze SAM
-        train_qwen_lora=True,         # Qwen LoRA有効
-        train_seg_token=True,         # SEGトークン学習可能
-        train_sam_lora=True,          # SAM MaskDecoder LoRA有効（A2の特徴）
-        train_image_adapter=True,     # アダプター学習可能
-        train_text_prompt_projector=True,  # プロジェクター学習可能
-        train_token_fpn=True,         # Token-FPN学習可能
-        train_prompt_beta=False,      # A2ではBetaなし
+        # Freeze configuration - Test A2: Unfreeze SAM
+        freeze_qwen_lora=False,         # Qwen LoRA有効 (trainable)
+        freeze_seg_token=False,         # SEGトークン学習可能
+        freeze_sam_lora=False,          # SAM MaskDecoder LoRA有効（A2の特徴）
+        freeze_image_adapter=False,     # アダプター学習可能
+        freeze_text_prompt_projector=False,  # プロジェクター学習可能
+        freeze_token_fpn=False,         # Token-FPN学習可能
+        freeze_prompt_beta=True,        # A2ではBeta無効 (frozen)
         # Freeze settings
-        freeze_sam_mask_decoder=False # A2: SAM MaskDecoder学習可能
+        freeze_sam_mask_decoder_base=False # A2: SAM MaskDecoder学習可能
     )
     processor = None
     if config.use_dynamic_resolution:
@@ -255,7 +255,7 @@ def main():
     
     # SAM側はfreeze=Falseなので、LoRAを追加しない（全パラメータを学習）
     # Qwen側にはLoRAを追加
-    if config.freeze_qwen and hasattr(config, 'qwen_lora_r') and config.qwen_lora_r > 0:
+    if config.freeze_qwen_base and hasattr(config, 'qwen_lora_r') and config.qwen_lora_r > 0:
         from peft import LoraConfig, get_peft_model
         lora_config = LoraConfig(
             r=config.qwen_lora_r,
@@ -489,9 +489,9 @@ def main():
     # 結果の保存
     results = {
         'config': {
-            'freeze_qwen': config.freeze_qwen,
-            'freeze_sam': config.freeze_sam,
-            'train_seg_token': config.train_seg_token,
+            'freeze_qwen_base': config.freeze_qwen_base,
+            'freeze_sam_mask_decoder_base': config.freeze_sam_mask_decoder_base,
+            'freeze_seg_token': config.freeze_seg_token,
             'learning_rate': learning_rate,
             'batch_size': batch_size,
             'num_steps': num_steps,

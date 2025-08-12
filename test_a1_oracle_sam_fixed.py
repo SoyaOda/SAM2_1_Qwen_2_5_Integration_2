@@ -102,13 +102,13 @@ class OracleSAMTester:
             torch_dtype="auto",
             use_flash_attention=False,
             # Training configuration - Test A1: Oracle SAM Fixed
-            train_qwen_lora=False,        # Qwenは完全凍結（A1）
-            train_seg_token=False,        # SEGトークンも凍結（A1）
-            train_sam_lora=False,         # SAMも凍結（A1）
-            train_image_adapter=False,    # アダプターも凍結（A1）
-            train_text_prompt_projector=False,  # プロジェクターも凍結（A1）
-            train_token_fpn=False,        # Token-FPNも凍結（A1）
-            train_prompt_beta=False       # Betaも凍結（A1）
+            freeze_qwen_lora=True,        # Qwenは完全凍結（A1）
+            freeze_seg_token=True,        # SEGトークンも凍結（A1）
+            freeze_sam_lora=True,         # SAMも凍結（A1）
+            freeze_image_adapter=True,    # アダプターも凍結（A1）
+            freeze_text_prompt_projector=True,  # プロジェクターも凍結（A1）
+            freeze_token_fpn=True,        # Token-FPNも凍結（A1）
+            freeze_prompt_beta=True       # Betaも凍結（A1）
         )
         
         # トークナイザーとプロセッサの準備
@@ -142,8 +142,8 @@ class OracleSAMTester:
         from src.utils.model_utils import display_parameter_statistics
         display_parameter_statistics(self.model, logger_name=__name__)
         
-        # SAM MaskDecoderへのLoRA適用（minimal_train.pyと同じ）
-        if hasattr(self.lisa_config, 'sam_lora_r') and self.lisa_config.sam_lora_r > 0:
+        # SAM MaskDecoderへのLoRA適用（freeze_sam_loraがFalseの場合のみ）
+        if not self.lisa_config.freeze_sam_lora and hasattr(self.lisa_config, 'sam_lora_r') and self.lisa_config.sam_lora_r > 0:
             logger.info(f"Applying LoRA to SAM MaskDecoder (r={self.lisa_config.sam_lora_r})")
             self.model.add_sam_lora(
                 lora_r=self.lisa_config.sam_lora_r,

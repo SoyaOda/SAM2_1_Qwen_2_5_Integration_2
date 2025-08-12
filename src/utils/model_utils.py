@@ -51,8 +51,28 @@ def display_parameter_statistics(model, logger_name=None):
                     category = 'SAM Neck (FPN)'
                 else:
                     category = 'SAM ImageEncoder'
+            elif 'memory_encoder' in name:
+                category = 'SAM MemoryEncoder (Video)'
+            elif 'memory_attention' in name:
+                category = 'SAM MemoryAttention (Video)'
+            elif 'obj_ptr_proj' in name:
+                category = 'SAM ObjectPointer (Video)'
+            elif 'spatial_add_pos_embed' in name:
+                category = 'SAM SpatialPosEmbed (Video)'
+            elif 'point_emb' in name or 'pe_layer' in name:
+                category = 'SAM PositionalEncoding'
+            elif 'token_learner' in name:
+                category = 'SAM TokenLearner'
             else:
-                category = 'SAM Other'
+                # より詳細なサブカテゴリ
+                if 'conv' in name.lower():
+                    category = 'SAM Convolutions'
+                elif 'norm' in name.lower():
+                    category = 'SAM Normalization'
+                elif 'proj' in name.lower():
+                    category = 'SAM Projections'
+                else:
+                    category = 'SAM Other (Misc)'
         elif 'image_adapter' in name:
             category = 'Image Adapter'
         elif 'text_prompt_proj' in name or 'prompt_proj' in name:
@@ -111,12 +131,10 @@ def display_parameter_statistics(model, logger_name=None):
     
     frozen_components.sort(key=lambda x: x[1], reverse=True)
     
-    for category, param_count in frozen_components[:3]:  # 上位3つのみ表示
+    # すべての凍結コンポーネントを表示（省略なし）
+    for category, param_count in frozen_components:
         percentage = (param_count / frozen_all * 100) if frozen_all > 0 else 0
         log.info(f"  - {category:25} {param_count:12,} ({percentage:5.1f}%)")
-    
-    if len(frozen_components) > 3:
-        log.info(f"  ... 他{len(frozen_components)-3}カテゴリ")
     
     log.info("="*80)
 
