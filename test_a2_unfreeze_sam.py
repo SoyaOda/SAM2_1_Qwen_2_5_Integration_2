@@ -223,7 +223,9 @@ def main():
         freeze_token_fpn=False,         # Token-FPN学習可能
         freeze_prompt_beta=True,        # A2ではBeta無効 (frozen)
         # Freeze settings
-        freeze_sam_mask_decoder_base=False # A2: SAM MaskDecoder学習可能
+        freeze_sam_mask_decoder_base=False, # A2: SAM MaskDecoder学習可能（unfrozenなのでLoRA無効）
+        # LoRA settings
+        sam_lora_r=0  # MaskDecoderがunfrozenの場合、LoRAは自動的に無効化される
     )
     processor = None
     if config.use_dynamic_resolution:
