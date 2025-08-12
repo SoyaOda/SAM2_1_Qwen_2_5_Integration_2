@@ -227,15 +227,22 @@ def main():
     
     # 1. モデルとトークナイザの準備
     config = LISAConfig(
-        freeze_qwen=True,
-        freeze_sam=False,
-        train_seg_token=True,
+        qwen_model_name="Qwen/Qwen2.5-VL-3B-Instruct",
+        sam_model_name="./checkpoints/sam2.1_hiera_large.pt",
+        device_map="cuda",
+        torch_dtype="auto",
+        use_flash_attention=False,
+        # Training configuration - Test A3: Gated Embedding
+        train_qwen_lora=True,         # Qwen LoRA有効
+        train_seg_token=True,         # SEGトークン学習可能
+        train_sam_lora=True,          # SAM LoRA有効
+        train_image_adapter=True,     # アダプター学習可能
+        train_text_prompt_projector=True,  # プロジェクター学習可能
+        train_token_fpn=True,         # Token-FPN学習可能
+        train_prompt_beta=True        # A3: Gated embedding用Beta学習可能
     )
-    logger.info(f"Config: freeze_qwen={config.freeze_qwen}, freeze_sam={config.freeze_sam}")
     
-    # トークナイザとプロセッサの用意
-    tokenizer = prepare_tokenizer_for_lisa(model_name=config.qwen_model_name, seg_token=config.seg_token)
-    processor = None
+    # プロセッサーの準備（動的解像度対応）
     if config.use_dynamic_resolution:
         processor = AutoProcessor.from_pretrained(
             config.qwen_model_name,
@@ -465,8 +472,18 @@ def main():
             return logits, mask_logits
     
     # モデル初期化
+    # トークナイザーの準備
+    tokenizer = prepare_tokenizer_for_lisa(
+        model_name=config.qwen_model_name,
+        seg_token=config.seg_token
+    )
+    
     model = LISA_Model_Gated(config)
     model.set_tokenizer(tokenizer)
+    
+    # パラメータ統計の詳細表示
+    from src.utils.model_utils import display_parameter_statistics
+    display_parameter_statistics(model, logger_name=__name__)
     
     # LoRA設定（Qwen側）
     if config.freeze_qwen and hasattr(config, 'qwen_lora_r') and config.qwen_lora_r > 0:

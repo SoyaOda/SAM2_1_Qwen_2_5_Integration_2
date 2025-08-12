@@ -82,20 +82,127 @@ class MinimalTrainer:
         with open(self.output_dir / "config.json", 'w') as f:
             json.dump(vars(config), f, indent=2)
     
+    def display_parameter_statistics(self):
+        """パラメータ統計の詳細表示"""
+        from collections import defaultdict
+        
+        # カテゴリ別にパラメータを分類
+        categories = defaultdict(lambda: {'total': 0, 'trainable': 0, 'params': []})
+        
+        for name, param in self.model.named_parameters():
+            numel = param.numel()
+            is_trainable = param.requires_grad
+            
+            # カテゴリ分類
+            if 'qwen' in name:
+                if 'lora_A' in name or 'lora_B' in name:
+                    category = 'Qwen LoRA'
+                elif 'word_embeddings' in name or 'embed_tokens' in name:
+                    if is_trainable:
+                        category = 'SEG Token Embedding'
+                    else:
+                        category = 'Qwen Base (frozen)'
+                else:
+                    category = 'Qwen Base (frozen)'
+            elif 'sam' in name or 'sam_model' in name:
+                if 'lora' in name.lower():
+                    category = 'SAM LoRA'
+                elif 'mask_decoder' in name:
+                    category = 'SAM MaskDecoder'
+                elif 'prompt_encoder' in name:
+                    category = 'SAM PromptEncoder'
+                elif 'image_encoder' in name:
+                    if 'neck' in name:
+                        category = 'SAM Neck (FPN)'
+                    else:
+                        category = 'SAM ImageEncoder'
+                else:
+                    category = 'SAM Other'
+            elif 'image_adapter' in name:
+                category = 'Image Adapter'
+            elif 'text_prompt_proj' in name or 'prompt_proj' in name:
+                category = 'Text Prompt Projector'
+            elif 'prompt_beta' in name:
+                category = 'Prompt Beta'
+            elif 'fpn' in name or 'token_fpn' in name:
+                category = 'Token-FPN'
+            else:
+                category = 'Other'
+            
+            categories[category]['total'] += numel
+            if is_trainable:
+                categories[category]['trainable'] += numel
+            categories[category]['params'].append((name, numel, is_trainable))
+        
+        # 全体統計
+        total_all = sum(cat['total'] for cat in categories.values())
+        trainable_all = sum(cat['trainable'] for cat in categories.values())
+        frozen_all = total_all - trainable_all
+        
+        # 表示
+        logger.info("="*80)
+        logger.info("パラメータ統計詳細")
+        logger.info("="*80)
+        logger.info(f"総パラメータ数: {total_all:,}")
+        logger.info(f"学習可能パラメータ数: {trainable_all:,}")
+        logger.info(f"凍結パラメータ数: {frozen_all:,}")
+        logger.info(f"学習可能パラメータの割合: {100 * trainable_all / total_all:.2f}%")
+        
+        # 学習可能コンポーネントの詳細
+        logger.info("-"*80)
+        logger.info("学習可能コンポーネントの内訳:")
+        
+        trainable_components = []
+        for category, info in categories.items():
+            if info['trainable'] > 0:
+                trainable_components.append((category, info['trainable']))
+        
+        # サイズ順にソート
+        trainable_components.sort(key=lambda x: x[1], reverse=True)
+        
+        for i, (category, param_count) in enumerate(trainable_components, 1):
+            percentage = (param_count / trainable_all * 100) if trainable_all > 0 else 0
+            logger.info(f"  {i:2}. {category:25} {param_count:12,} ({percentage:5.1f}%)")
+        
+        # 凍結コンポーネントのサマリー
+        logger.info("-"*80)
+        logger.info("凍結コンポーネント:")
+        
+        frozen_components = []
+        for category, info in categories.items():
+            frozen_count = info['total'] - info['trainable']
+            if frozen_count > 0:
+                frozen_components.append((category, frozen_count))
+        
+        frozen_components.sort(key=lambda x: x[1], reverse=True)
+        
+        for category, param_count in frozen_components[:3]:  # 上位3つのみ表示
+            percentage = (param_count / frozen_all * 100) if frozen_all > 0 else 0
+            logger.info(f"  - {category:25} {param_count:12,} ({percentage:5.1f}%)")
+        
+        if len(frozen_components) > 3:
+            logger.info(f"  ... 他{len(frozen_components)-3}カテゴリ")
+        
+        logger.info("="*80)
+
     def setup_model_and_data(self):
         """モデルとデータセットのセットアップ"""
         logger.info("モデルとデータセットのセットアップを開始")
         
         # LISAConfig作成
+        # デフォルト値はconfig.pyで管理されているため、必要な値のみオーバーライド
         self.lisa_config = LISAConfig(
             qwen_model_name="Qwen/Qwen2.5-VL-3B-Instruct",
             sam_model_name="./checkpoints/sam2.1_hiera_large.pt",
             device_map=str(self.device),
             torch_dtype="auto",
-            freeze_qwen=True,
-            freeze_sam=True,
-            train_seg_token=True,
-            use_flash_attention=False
+            use_flash_attention=False,
+            # Training configuration is now centralized in config.py
+            # Override specific flags if needed via command line args
+            lora_r=self.config.lora_r,
+            lora_alpha=self.config.lora_alpha,
+            sam_lora_r=self.config.lora_r,  # SAM LoRAも同じランクを使用
+            sam_lora_alpha=self.config.lora_alpha * 2  # SAM LoRAはalphaを2倍
         )
         
         # トークナイザーとプロセッサの準備
@@ -130,17 +237,20 @@ class MinimalTrainer:
         logger.info("トークナイザーを設定してSEGトークンの埋め込みをリサイズ")
         self.model.set_tokenizer(self.tokenizer)
         
-        # LoRAの設定（resize_token_embeddings後に実行）
-        logger.info("LoRAの設定")
-        lora_config = LoraConfig(
-            r=self.config.lora_r,
-            lora_alpha=self.config.lora_alpha,
-            target_modules=["q_proj", "v_proj", "k_proj"],
-            lora_dropout=0.1,
-            bias="none",
-            task_type=TaskType.CAUSAL_LM,
-        )
-        self.model.qwen = get_peft_model(self.model.qwen, lora_config)
+        # Qwen LoRAの設定（config.pyの設定に従う）
+        if self.lisa_config.train_qwen_lora:
+            logger.info(f"Qwen LoRAを設定 (r={self.config.lora_r}, alpha={self.config.lora_alpha})")
+            lora_config = LoraConfig(
+                r=self.config.lora_r,
+                lora_alpha=self.config.lora_alpha,
+                target_modules=["q_proj", "v_proj", "k_proj"],
+                lora_dropout=0.1,
+                bias="none",
+                task_type=TaskType.CAUSAL_LM,
+            )
+            self.model.qwen = get_peft_model(self.model.qwen, lora_config)
+        else:
+            logger.info("Qwen LoRAは無効化されています")
         
         # SAM MaskDecoderへのLoRA適用（設定されている場合）
         if hasattr(self.lisa_config, 'sam_lora_r') and self.lisa_config.sam_lora_r > 0:
@@ -154,12 +264,9 @@ class MinimalTrainer:
         # デバイスに移動
         self.model = self.model.to(self.device)
         
-        # パラメータ統計の表示
-        total_params = sum(p.numel() for p in self.model.parameters())
-        trainable_params = sum(p.numel() for p in self.model.parameters() if p.requires_grad)
-        logger.info(f"総パラメータ数: {total_params:,}")
-        logger.info(f"学習可能パラメータ数: {trainable_params:,}")
-        logger.info(f"学習可能パラメータの割合: {100 * trainable_params / total_params:.2f}%")
+        # パラメータ統計の詳細表示
+        from src.utils.model_utils import display_parameter_statistics
+        display_parameter_statistics(self.model, logger_name=__name__)
         
         # データセットの作成
         logger.info("データセットの作成")
@@ -218,7 +325,7 @@ class MinimalTrainer:
         
         for name, param in self.model.named_parameters():
             if param.requires_grad:
-                if "adapter" in name or "prompt_proj" in name:
+                if "adapter" in name or "prompt_proj" in name or "prompt_beta" in name:
                     adapter_params.append(param)
                 elif "lora" in name:
                     lora_params.append(param)
@@ -253,6 +360,225 @@ class MinimalTrainer:
         
         logger.info(f"総ステップ数: {num_training_steps}")
         logger.info(f"ウォームアップステップ数: {num_warmup_steps}")
+
+    def get_alignment_checkpoint_path(self):
+        """アライメントチェックポイントのパスを取得"""
+        if self.config.alignment_checkpoint:
+            return Path(self.config.alignment_checkpoint)
+        
+        # 自動生成パス: checkpoints/alignment/align_{steps}.pt
+        align_dir = Path("checkpoints/alignment")
+        align_dir.mkdir(parents=True, exist_ok=True)
+        return align_dir / f"align_{self.config.align_steps}.pt"
+    
+    def save_alignment_checkpoint(self):
+        """アライメント完了後の状態を保存"""
+        checkpoint_path = self.get_alignment_checkpoint_path()
+        
+        checkpoint = {
+            'model_state_dict': self.model.state_dict(),
+            'alignment_steps': self.config.align_steps,
+            'beta_value': torch.sigmoid(self.model.prompt_beta).item() if hasattr(self.model, 'prompt_beta') else None,
+            'timestamp': datetime.now().isoformat(),
+            'config': {
+                'lora_lr': self.config.lora_lr,
+                'seg_token_lr': self.config.seg_token_lr,
+                'adapter_lr': self.config.adapter_lr,
+            }
+        }
+        
+        torch.save(checkpoint, checkpoint_path)
+        logger.info(f"アライメントチェックポイントを保存: {checkpoint_path}")
+        
+        # メタデータファイルも保存（人間が読める形式）
+        meta_path = checkpoint_path.with_suffix('.json')
+        with open(meta_path, 'w') as f:
+            json.dump({
+                'alignment_steps': self.config.align_steps,
+                'beta_value': checkpoint['beta_value'],
+                'timestamp': checkpoint['timestamp'],
+                'config': checkpoint['config']
+            }, f, indent=2)
+    
+    def load_alignment_checkpoint(self, checkpoint_path):
+        """保存済みアライメントチェックポイントを読み込み"""
+        checkpoint = torch.load(checkpoint_path, map_location=self.device)
+        
+        # モデルの状態を復元
+        self.model.load_state_dict(checkpoint['model_state_dict'], strict=False)
+        
+        logger.info(f"アライメントチェックポイントを読み込みました: {checkpoint_path}")
+        logger.info(f"  - アライメントステップ: {checkpoint['alignment_steps']}")
+        if checkpoint.get('beta_value'):
+            logger.info(f"  - Beta値: {checkpoint['beta_value']:.4f}")
+        logger.info(f"  - 保存日時: {checkpoint['timestamp']}")
+        
+        return checkpoint
+    
+    def check_alignment_cache(self):
+        """既存のアライメントチェックポイントをチェック"""
+        if self.config.force_realign:
+            logger.info("--force_realignが指定されたため、再アライメントを実行します")
+            return False
+        
+        checkpoint_path = self.get_alignment_checkpoint_path()
+        
+        if checkpoint_path.exists():
+            # メタデータを確認
+            meta_path = checkpoint_path.with_suffix('.json')
+            if meta_path.exists():
+                with open(meta_path, 'r') as f:
+                    meta = json.load(f)
+                logger.info(f"既存のアライメントチェックポイントを検出:")
+                logger.info(f"  - ステップ数: {meta['alignment_steps']}")
+                logger.info(f"  - Beta値: {meta.get('beta_value', 'N/A')}")
+                logger.info(f"  - 作成日時: {meta['timestamp']}")
+            return True
+        
+        return False
+    
+    def run_alignment_stage(self):
+        """埋め込みアライメントステージの実行"""
+        if self.config.align_steps <= 0:
+            return
+        
+        # キャッシュされたアライメントをチェック
+        if self.config.use_cached_alignment and self.check_alignment_cache():
+            checkpoint_path = self.get_alignment_checkpoint_path()
+            logger.info(f"キャッシュされたアライメントを使用します: {checkpoint_path}")
+            self.load_alignment_checkpoint(checkpoint_path)
+            return
+        
+        logger.info(f"ステージ0: 埋め込みアライメントを{self.config.align_steps}ステップ実行します")
+        
+        self.model.train()
+        
+        # アライメント用のオプティマイザを構築
+        align_params = []
+        for name, param in self.model.named_parameters():
+            if not param.requires_grad:
+                continue
+            
+            # QwenのLoRAパラメータ
+            if "qwen" in name and "lora" in name:
+                align_params.append({"params": param, "lr": self.config.lora_lr})
+            # SEGトークンEmbedding
+            elif "word_embeddings" in name:
+                align_params.append({"params": param, "lr": self.config.seg_token_lr})
+            # テキスト関連アダプタ（TextPromptProjectorとprompt_beta）
+            elif "prompt_proj" in name or "prompt_beta" in name:
+                align_params.append({"params": param, "lr": self.config.adapter_lr})
+        
+        if not align_params:
+            logger.warning("アライメント対象のパラメータがありません")
+            return
+        
+        align_optimizer = torch.optim.AdamW(align_params)
+        
+        # データローダーのイテレータ
+        data_iter = iter(self.train_loader)
+        
+        # アライメント学習ループ
+        for step in range(self.config.align_steps):
+            # バッチ取得
+            try:
+                batch = next(data_iter)
+            except StopIteration:
+                data_iter = iter(self.train_loader)
+                batch = next(data_iter)
+            
+            # デバイスへ転送
+            for k, v in batch.items():
+                if isinstance(v, torch.Tensor):
+                    batch[k] = v.to(self.device)
+            
+            # フォワードパス
+            forward_kwargs = {
+                'input_ids': batch['input_ids'],
+                'pixel_values': batch['pixel_values'],
+                'attention_mask': batch['attention_mask'],
+                'labels': batch['labels'],
+                'mask_labels': batch['mask_labels']
+            }
+            
+            # image_grid_thwがある場合は追加
+            if 'image_grid_thw' in batch and batch['image_grid_thw'] is not None:
+                forward_kwargs['image_grid_thw'] = batch['image_grid_thw']
+            
+            outputs = self.model(**forward_kwargs)
+            
+            # LLM埋め込みとSAM埋め込みを取得してMSEロスを計算
+            align_loss = torch.tensor(0.0, device=self.device)
+            align_count = 0
+            
+            if outputs.seg_token_positions is not None:
+                hidden_states = outputs.language_hidden_states
+                
+                for i, seg_list in enumerate(outputs.seg_token_positions):
+                    if len(seg_list) == 0:
+                        continue
+                    
+                    # 最初のSEGトークン位置のみ使用
+                    j = seg_list[0]
+                    
+                    # LLM埋め込みを取得（dtypeを統一）
+                    e_llm = self.model.text_prompt_proj(hidden_states[i, j])
+                    
+                    # GTマスクから重心を計算してSAM埋め込みを取得
+                    if batch['mask_labels'][i] is None:
+                        continue
+                    
+                    gt_mask = batch['mask_labels'][i]
+                    if isinstance(gt_mask, list):
+                        gt_mask = gt_mask[0] if len(gt_mask) > 0 else None
+                    
+                    if gt_mask is None:
+                        continue
+                    
+                    # 重心計算
+                    orig_h = batch['pixel_values'].shape[-2] if batch['pixel_values'] is not None else 1024
+                    orig_w = batch['pixel_values'].shape[-1] if batch['pixel_values'] is not None else 1024
+                    center = self.model.compute_mask_centroid(gt_mask, orig_h, orig_w)
+                    cx, cy = int(center[0].item()), int(center[1].item())
+                    
+                    # SAM PromptEncoderから埋め込みを取得
+                    point = torch.tensor([[cx, cy]], dtype=torch.float32, device=self.device)
+                    point_label = torch.tensor([1], dtype=torch.int32, device=self.device)
+                    
+                    sparse_embeddings, _ = self.model.sam_prompt_encoder(
+                        points=(point.unsqueeze(0), point_label.unsqueeze(0)),
+                        boxes=None,
+                        masks=None
+                    )
+                    
+                    if sparse_embeddings.shape[1] == 0:
+                        continue
+                    
+                    # SAM埋め込みをdetachして勾配を流さない
+                    e_pos = sparse_embeddings[0, 0, :].detach()
+                    
+                    # MSEロス計算（dtypeを統一）
+                    align_loss += torch.nn.functional.mse_loss(e_llm.float(), e_pos.float())
+                    align_count += 1
+            
+            if align_count > 0:
+                align_loss = align_loss / align_count
+                
+                # 逆伝播と最適化
+                align_optimizer.zero_grad()
+                align_loss.backward()
+                align_optimizer.step()
+                
+                if (step + 1) % 100 == 0:
+                    logger.info(f"[Align Stage] Step {step+1}/{self.config.align_steps}, align_loss={align_loss.item():.6f}")
+        
+        # モデル全体の勾配をリセット
+        self.model.zero_grad(set_to_none=True)
+        
+        logger.info("ステージ0完了。LLMの<SEG>埋め込みを事前調整しました。")
+        
+        # アライメントチェックポイントを保存
+        self.save_alignment_checkpoint()
     
     def compute_loss(self, outputs, labels, mask_labels):
         """損失計算（1会話1マスクに最適化）"""
@@ -452,12 +778,16 @@ class MinimalTrainer:
             epoch_lm_loss += lm_loss.item()
             epoch_seg_loss += seg_loss.item() if isinstance(seg_loss, torch.Tensor) else seg_loss
             
+            # βパラメータの値を取得
+            beta_value = torch.sigmoid(self.model.prompt_beta).item() if hasattr(self.model, 'prompt_beta') else 0.0
+            
             # プログレスバーの更新
             progress_bar.set_postfix({
                 'loss': f"{total_loss.item():.4f}",
                 'lm': f"{lm_loss.item():.4f}",
                 'seg': f"{seg_loss:.4f}" if isinstance(seg_loss, torch.Tensor) else f"{seg_loss:.4f}",
-                'lr': f"{self.scheduler.get_last_lr()[0]:.2e}"
+                'lr': f"{self.scheduler.get_last_lr()[0]:.2e}",
+                'β': f"{beta_value:.3f}"
             })
             
             # WandBログ（使用する場合）
@@ -905,6 +1235,16 @@ def main():
     parser.add_argument('--seg_loss_weight', type=float, default=1.0,
                        help='セグメンテーション損失の重み')
     
+    # アライメントステージ設定
+    parser.add_argument('--align_steps', type=int, default=0,
+                       help='埋め込みアライメントステップ数（0の場合は実行しない）')
+    parser.add_argument('--use_cached_alignment', action='store_true',
+                       help='既存のアライメントチェックポイントを自動検出して使用')
+    parser.add_argument('--alignment_checkpoint', type=str, default=None,
+                       help='読み込むアライメントチェックポイントのパス')
+    parser.add_argument('--force_realign', action='store_true',
+                       help='キャッシュを無視して再アライメント')
+    
     # その他
     parser.add_argument('--save_steps', type=int, default=100,
                        help='チェックポイント保存間隔')
@@ -947,6 +1287,11 @@ def main():
     trainer = MinimalTrainer(args)
     trainer.setup_model_and_data()
     trainer.setup_optimizer_and_scheduler()
+    
+    # アライメントステージの実行（オプション）
+    trainer.run_alignment_stage()
+    
+    # 本学習の実行
     trainer.train()
     
     # WandBの終了

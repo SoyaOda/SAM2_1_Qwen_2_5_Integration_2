@@ -2,233 +2,406 @@
 
 ## 概要
 
-このドキュメントでは、LISA改（Qwen2.5-VL-3B + SAM2.1）モデルを実データで訓練するためのミニマルな実装について説明します。
+このドキュメントは、Qwen2.5-VLとSAM2.1を統合したLISA改モデルのトレーニング方法を説明します。
 
-## 実装内容
+### 主な改善点（2025年1月版）
 
-### `minimal_train.py`
+1. **加算アプローチによる埋め込み融合**
+   - SAMの位置情報を100%保持しつつLLM情報を追加
+   - 学習可能なβパラメータによる自動最適化
 
-実データを使用した最小限のトレーニングスクリプトです。
+2. **アライメントステージ（ステージ0）**
+   - LLM埋め込みをSAM埋め込みに事前調整
+   - seg_lossの初期値を大幅に改善
 
-**主な特徴:**
-- マルチデータセット対応（セマンティック/参照セグメンテーション、VQA、推論セグメンテーション）
-- LoRAによる効率的なファインチューニング
-- 勾配累積とメモリ最適化（4ステップ）
-- チェックポイント保存機能
-- WandB対応（オプション）
-- Loss推移の可視化機能
-- O3推奨の最適化実装済み
+3. **アライメントチェックポイントのキャッシュ**
+   - 一度実行したアライメントを再利用可能
+   - 開発効率の大幅向上
 
-### 主要コンポーネント
+## クイックスタート
 
-1. **モデル構成**
-   - Qwen2.5-VL-3B: ビジョン・言語理解
-   - SAM2.1: 高精度セグメンテーション
-   - <SEG>トークン: セグメンテーション指示
-
-2. **学習可能パラメータ**
-   - LoRAアダプター（r=8, α=32）
-   - 画像特徴アダプター
-   - テキストプロンプト射影層（2層MLP + LayerNorm）
-   - <SEG>トークン埋め込み
-
-3. **損失関数**
-   - 言語モデリング損失（CrossEntropy）
-   - セグメンテーション損失（BCE + Dice）
-
-## 実行方法
-
-### 1. 環境準備
+### 最小構成での動作確認
 
 ```bash
-# 必要なライブラリのインストール
-pip install -r requirements.txt
+# 5サンプルで動作確認（約1分）
+python minimal_train.py \
+  --samples_per_epoch 5 \
+  --batch_size 1 \
+  --num_epochs 1 \
+  --fast_dev_run
 
-# SAM2.1チェックポイントのダウンロード
-wget https://dl.fbaipublicfiles.com/segment_anything_2/092824/sam2.1_hiera_large.pt -P checkpoints/
+# アライメント付き（推奨）
+python minimal_train.py \
+  --samples_per_epoch 5 \
+  --batch_size 1 \
+  --num_epochs 1 \
+  --fast_dev_run \
+  --align_steps 10
 ```
 
-### 2. データセットの準備
-
-データセットを以下の構造で配置：
-
-```
-/path/to/your/data/
-├── ADEChallengeData2016/             # セマンティックセグメンテーション
-│   ├── images/
-│   └── annotations/
-├── coco/                            # COCOStuff
-│   ├── train2017/
-│   └── stuffthingmaps_trainval2017/
-├── refcoco/                         # 参照セグメンテーション
-│   ├── refcoco/
-│   ├── refcoco+/
-│   └── refcocog/
-├── llava_instruct_150k.json        # VQAデータ
-└── reason_seg/                      # 推論セグメンテーション
-```
-
-#### 対応データセット
-- **sem_seg**: ADE20K (20,210サンプル), COCOStuff (118,287サンプル)
-- **refer_seg**: RefCOCO/RefCOCO+/RefCOCOg (合計55,885サンプル)
-- **vqa**: LLaVA Instruct 150k (157,712サンプル)
-- **reason_seg**: ReasonSeg (239サンプル)
-
-### 3. トレーニングの実行
+### 標準的な学習設定
 
 ```bash
-# 基本的な実行（セマンティックセグメンテーションのみ）
+# 中規模学習（数時間）
 python minimal_train.py \
-    --dataset_types sem_seg \
-    --samples_per_epoch 1000 \
-    --batch_size 2 \
-    --gradient_accumulation_steps 4 \
-    --num_epochs 3
+  --samples_per_epoch 1000 \
+  --batch_size 2 \
+  --gradient_accumulation_steps 4 \
+  --num_epochs 5 \
+  --align_steps 100 \
+  --use_cached_alignment \
+  --save_steps 100 \
+  --visualize \
+  --visualize_steps 20
+```
 
-# マルチデータセットでの訓練（セマンティック + 参照セグメンテーション）
-python minimal_train.py \
-    --dataset_types "sem_seg||refer_seg" \
-    --sample_rates "7,3" \
-    --samples_per_epoch 1000 \
-    --batch_size 2 \
-    --gradient_accumulation_steps 4 \
-    --num_epochs 3
+## アライメントステージ機能
 
-# 全データセットタイプを使用した大規模訓練
-python minimal_train.py \
-    --dataset_types "sem_seg||refer_seg||vqa||reason_seg" \
-    --sample_rates "9,3,3,1" \
-    --samples_per_epoch 10000 \
-    --batch_size 2 \
-    --gradient_accumulation_steps 8 \
-    --num_epochs 10 \
-    --save_steps 500 \
-    --use_wandb \
-    --wandb_project lisa-kai-full
+### 基本的な使い方
 
-# デバッグモードでの実行
+```bash
+# 初回：アライメントを実行（約30分/2000ステップ）
+python minimal_train.py --align_steps 2000 --samples_per_epoch 500
+
+# 2回目以降：キャッシュを使用（アライメントをスキップ）
+python minimal_train.py --align_steps 2000 --use_cached_alignment --samples_per_epoch 500
+```
+
+### アライメントチェックポイントの管理
+
+アライメント完了後、以下のファイルが自動生成されます：
+
+```
+checkpoints/alignment/
+├── align_2000.pt      # モデルの重み
+└── align_2000.json    # メタデータ（人間が読める形式）
+```
+
+### 高度な使い方
+
+```bash
+# 特定のチェックポイントを指定
 python minimal_train.py \
-    --dataset_types "sem_seg||refer_seg" \
-    --sample_rates "5,5" \
-    --samples_per_epoch 10 \
-    --batch_size 1 \
-    --num_epochs 1 \
-    --save_steps 5 \
-    --debug
+  --alignment_checkpoint "checkpoints/alignment/align_2000.pt" \
+  --samples_per_epoch 1000
+
+# キャッシュを無視して再実行
+python minimal_train.py \
+  --align_steps 2000 \
+  --force_realign \
+  --samples_per_epoch 500
+```
+
+## データセット設定
+
+### 単一データセット
+
+```bash
+# セマンティックセグメンテーションのみ
+python minimal_train.py --dataset_types "sem_seg" --sample_rates "1.0"
+
+# Referring Segmentationのみ
+python minimal_train.py --dataset_types "refer_seg" --sample_rates "1.0"
+
+# VQAのみ
+python minimal_train.py --dataset_types "vqa" --sample_rates "1.0"
+
+# Reasoning Segmentationのみ
+python minimal_train.py --dataset_types "reason_seg" --sample_rates "1.0"
+```
+
+### 複数データセット
+
+```bash
+# セグメンテーション特化（VQA除外）
+python minimal_train.py \
+  --dataset_types "sem_seg||refer_seg||reason_seg" \
+  --sample_rates "6,3,1" \
+  --samples_per_epoch 1000
+
+# 全データセット（デフォルト）
+python minimal_train.py \
+  --dataset_types "sem_seg||refer_seg||vqa||reason_seg" \
+  --sample_rates "9,3,3,1" \
+  --samples_per_epoch 5000
+```
+
+## 学習パラメータ調整
+
+### メモリ効率重視
+
+```bash
+# GPUメモリ12GB以下向け
+python minimal_train.py \
+  --batch_size 1 \
+  --gradient_accumulation_steps 16 \
+  --samples_per_epoch 500 \
+  --align_steps 50 \
+  --use_cached_alignment
+```
+
+### 学習率の調整
+
+```bash
+# 高学習率（初期実験）
+python minimal_train.py \
+  --adapter_lr 5e-3 \
+  --lora_lr 5e-4 \
+  --seg_token_lr 1e-4 \
+  --samples_per_epoch 200
+
+# 低学習率（ファインチューニング）
+python minimal_train.py \
+  --adapter_lr 1e-4 \
+  --lora_lr 1e-5 \
+  --seg_token_lr 5e-6 \
+  --samples_per_epoch 1000
+```
+
+### LoRA設定
+
+```bash
+# 小ランク（メモリ節約）
+python minimal_train.py --lora_r 4 --lora_alpha 16
+
+# 標準（デフォルト）
+python minimal_train.py --lora_r 8 --lora_alpha 32
+
+# 大ランク（表現力重視）
+python minimal_train.py --lora_r 16 --lora_alpha 64
+```
+
+## 本格的な学習パターン
+
+### 短期実験（1-2時間）
+
+```bash
+python minimal_train.py \
+  --samples_per_epoch 500 \
+  --batch_size 2 \
+  --gradient_accumulation_steps 4 \
+  --num_epochs 3 \
+  --align_steps 100 \
+  --use_cached_alignment \
+  --save_steps 100 \
+  --visualize \
+  --visualize_steps 20
+```
+
+### 中期学習（半日）
+
+```bash
+python minimal_train.py \
+  --samples_per_epoch 2000 \
+  --batch_size 4 \
+  --gradient_accumulation_steps 4 \
+  --num_epochs 5 \
+  --align_steps 500 \
+  --use_cached_alignment \
+  --save_steps 200 \
+  --adapter_lr 1e-3 \
+  --lora_lr 1e-4 \
+  --seg_token_lr 5e-5
+```
+
+### 本番学習（1日以上）
+
+```bash
+python minimal_train.py \
+  --samples_per_epoch 10000 \
+  --batch_size 4 \
+  --gradient_accumulation_steps 8 \
+  --num_epochs 10 \
+  --align_steps 2000 \
+  --use_cached_alignment \
+  --save_steps 500 \
+  --adapter_lr 5e-4 \
+  --lora_lr 5e-5 \
+  --seg_token_lr 1e-5 \
+  --warmup_ratio 0.1 \
+  --weight_decay 0.01 \
+  --seg_loss_weight 1.0 \
+  --use_wandb \
+  --wandb_project "lisa-kai-production"
+```
+
+## モニタリングとデバッグ
+
+### 可視化機能
+
+```bash
+# 可視化を有効化
+python minimal_train.py \
+  --visualize \
+  --visualize_steps 10 \
+  --samples_per_epoch 100
+```
+
+可視化結果は以下に保存されます：
+- `outputs/minimal_train_YYYYMMDD_HHMMSS/visualizations/`
+- 各ステップでマスク予測の比較画像を生成
+- Dice Score、IoU、損失値を表示
+
+### WandB統合
+
+```bash
+# WandBでモニタリング
+python minimal_train.py \
+  --use_wandb \
+  --wandb_project "lisa-kai-experiment" \
+  --samples_per_epoch 1000
+```
+
+### デバッグモード
+
+```bash
+# 詳細ログ出力
+python minimal_train.py \
+  --debug \
+  --samples_per_epoch 10 \
+  --batch_size 1
+```
+
+## 出力ファイル構造
+
+```
+outputs/minimal_train_YYYYMMDD_HHMMSS/
+├── config.json                    # 学習設定
+├── loss_curves.png                # 損失曲線グラフ
+├── combined_loss_curves.png       # 統合損失グラフ
+├── loss_history.json              # 損失履歴データ
+├── checkpoints/
+│   ├── best/                     # ベストモデル
+│   ├── epoch_1/                  # エポック終了時
+│   ├── step_100/                 # 定期保存
+│   └── final/                    # 最終モデル
+└── visualizations/               # 可視化結果（--visualize時）
+    ├── step_000005.png
+    ├── step_000005.json
+    └── ...
+```
+
+## トラブルシューティング
+
+### メモリ不足エラー
+
+```bash
+# バッチサイズを小さくする
+--batch_size 1 --gradient_accumulation_steps 16
+
+# LoRAランクを下げる
+--lora_r 4 --lora_alpha 16
+
+# サンプル数を減らす
+--samples_per_epoch 100
+```
+
+### seg_lossが下がらない
+
+```bash
+# アライメントステップを増やす
+--align_steps 500
+
+# 学習率を調整
+--adapter_lr 5e-3 --lora_lr 5e-4
+
+# SAM側のLoRAランクを上げる（lisa_config.pyで設定）
+sam_lora_r=16
+```
+
+### アライメントチェックポイントのリセット
+
+```bash
+# キャッシュを削除
+rm -rf checkpoints/alignment/
+
+# または強制再実行
+--force_realign
 ```
 
 ## パラメータ説明
 
-### データ関連
-- `--data_dir`: データセットのベースディレクトリ（省略時はLISAConfigのデフォルト値を使用）
-- `--samples_per_epoch`: 1エポックあたりのサンプル数（デフォルト: 1000）
-- `--dataset_types`: データセットタイプ（||で区切る）（デフォルト: sem_seg）
-- `--sample_rates`: 各データセットのサンプルレート（,で区切る）（デフォルト: 1.0）
+| パラメータ | デフォルト | 説明 |
+|---------|----------|------|
+| `--samples_per_epoch` | 10 | 1エポックあたりのサンプル数 |
+| `--batch_size` | 4 | バッチサイズ |
+| `--gradient_accumulation_steps` | 4 | 勾配累積ステップ数 |
+| `--num_epochs` | 3 | エポック数 |
+| `--align_steps` | 0 | アライメントステップ数（0=無効） |
+| `--use_cached_alignment` | False | キャッシュされたアライメントを使用 |
+| `--force_realign` | False | キャッシュを無視して再アライメント |
+| `--adapter_lr` | 1e-3 | アダプター学習率 |
+| `--lora_lr` | 1e-4 | LoRA学習率 |
+| `--seg_token_lr` | 5e-5 | SEGトークン学習率 |
+| `--lora_r` | 8 | LoRAランク |
+| `--lora_alpha` | 32 | LoRAアルファ |
+| `--seg_loss_weight` | 1.0 | セグメンテーション損失の重み |
+| `--visualize` | False | 可視化を有効化 |
+| `--visualize_steps` | 5 | 可視化間隔（ステップ） |
 
-### 訓練設定
-- `--batch_size`: バッチサイズ（デフォルト: 4）
-- `--gradient_accumulation_steps`: 勾配累積ステップ数（デフォルト: 4）
-- `--num_epochs`: エポック数（デフォルト: 3）
-- `--warmup_ratio`: ウォームアップ比率（デフォルト: 0.1）
+## 推奨される学習フロー
 
-### 学習率
-- `--adapter_lr`: アダプター学習率（デフォルト: 1e-3）
-- `--lora_lr`: LoRA学習率（デフォルト: 1e-4）
-- `--seg_token_lr`: SEGトークン学習率（デフォルト: 5e-5）
+1. **初期実験**（動作確認）
+   ```bash
+   python minimal_train.py --samples_per_epoch 10 --fast_dev_run
+   ```
 
-### LoRA設定
-- `--lora_r`: LoRAランク（デフォルト: 8）
-- `--lora_alpha`: LoRAアルファ（デフォルト: 32）
+2. **アライメント実行**（初回のみ）
+   ```bash
+   python minimal_train.py --align_steps 500 --samples_per_epoch 100
+   ```
 
-### その他
-- `--save_steps`: チェックポイント保存間隔（デフォルト: 100）
-- `--use_wandb`: WandB使用フラグ
-- `--wandb_project`: WandBプロジェクト名
-- `--debug`: デバッグモード有効化
+3. **パラメータ探索**（キャッシュ利用）
+   ```bash
+   for lr in 1e-3 5e-4 1e-4; do
+     python minimal_train.py \
+       --align_steps 500 \
+       --use_cached_alignment \
+       --adapter_lr $lr \
+       --samples_per_epoch 500 \
+       --num_epochs 3
+   done
+   ```
 
-## WandB統合
+4. **本番学習**
+   ```bash
+   python minimal_train.py \
+     --align_steps 2000 \
+     --use_cached_alignment \
+     --samples_per_epoch 10000 \
+     --num_epochs 10 \
+     --use_wandb
+   ```
 
-### 自動設定
-`--use_wandb`フラグを使用すると、自動的にWandBが有効になります：
-```bash
-python minimal_train.py --use_wandb --wandb_project my-project
+## 技術的詳細
+
+### 加算アプローチの実装
+
+```python
+# 位置埋め込みを100%保持しつつLLM情報を追加
+e_pos = sparse_embeddings[:, 0, :]  # SAMの位置埋め込み
+beta_scaled = torch.sigmoid(self.prompt_beta)  # 学習可能な係数
+e_add = e_pos + beta_scaled * llm_embed  # 加算融合
+sparse_embeddings[:, 0, :] = e_add
 ```
 
-APIキーは自動的に設定されます（環境変数で上書き可能）。
+### アライメントステージのロス
 
-### 手動設定（推奨）
-```bash
-# 環境変数で設定
-export WANDB_API_KEY=your_api_key_here
-
-# または .env ファイルを作成
-cp .env.example .env
-# .env ファイルを編集してAPIキーを設定
+```python
+# LLM埋め込みをSAM埋め込みに近づける
+align_loss = MSE(e_llm, e_pos.detach())
 ```
 
-## 出力構造
+## 更新履歴
 
-```
-outputs/
-└── minimal_train_YYYYMMDD_HHMMSS/
-    ├── config.json          # 訓練設定
-    ├── loss_history.json    # Loss履歴
-    ├── loss_curves.png      # Lossグラフ（4分割）
-    ├── combined_loss_curves.png  # 統合Lossグラフ
-    └── checkpoints/
-        ├── best/           # ベストモデル
-        ├── epoch_1/        # エポック終了時
-        ├── step_100/       # ステップチェックポイント
-        └── final/          # 最終モデル
-```
+- **2025.01.11**: 加算アプローチとアライメントステージを実装
+- **2025.01.11**: アライメントチェックポイントのキャッシュ機能を追加
+- **2025.01.11**: β値のモニタリング機能を追加
 
-## メモリ要件
+## 関連ファイル
 
-- GPU: 最小16GB VRAM推奨（バッチサイズ2 + Gradient Accumulation 4の場合）
-- RAM: 32GB以上推奨
-
-### メモリ使用量の目安
-- バッチサイズ1: ~12GB VRAM
-- バッチサイズ2: ~16GB VRAM
-- バッチサイズ4: ~24GB VRAM
-
-## トラブルシューティング
-
-### OOMエラーの場合
-```bash
-# バッチサイズを小さくし、Gradient Accumulationで補う
---batch_size 1 --gradient_accumulation_steps 8
-
-# LoRAランクを小さくする
---lora_r 4 --lora_alpha 16
-```
-
-### データセットが見つからない場合
-- `--data_dir`パスを確認
-- データセット構造が正しいか確認
-
-## 次のステップ
-
-1. **評価スクリプト**: mIoUやcIoUの計算
-2. **推論最適化**: バッチ推論やストリーミング対応
-3. **EdgeLoss実装**: エッジ認識精度の向上
-
-## O3推奨の最適化実装済み
-
-1. **Gradient Accumulation**: 実効バッチサイズの増加
-2. **LoRA α=32**: 学習初期の安定性向上
-3. **2層MLP + LayerNorm**: マッチング精度の向上
-4. **トークン数上限チェック**: RoPE制限（2048トークン）への対応
-5. **Loss推移可視化**: 詳細な学習状況のモニタリング
-
-## 参考情報
-
-- [LISA論文](https://arxiv.org/abs/2308.00692)
-- [Qwen2.5-VL](https://github.com/QwenLM/Qwen2.5-VL)
-- [SAM2.1](https://github.com/facebookresearch/sam2)
-
-## 注意事項
-
-- このスクリプトは実データでの動作を前提としています
-- GPUメモリに応じてバッチサイズを調整してください
-- 初回実行時はモデルのダウンロードに時間がかかります
+- `minimal_train.py`: メイン学習スクリプト
+- `src/models/lisa_model.py`: モデル実装（加算アプローチ）
+- `src/config.py`: 設定クラス
+- `test_residual_addition.py`: 実装テストスクリプト
+- `md_files/current/residual_addition_pre_alignment20250811.md`: 技術仕様書

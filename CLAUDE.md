@@ -41,7 +41,7 @@ FoodLMM改や最終目標モデルは将来的な目標なので、一旦は事�
 事前タスク：詳細はgithub のminimal_train.py, test_a4_addition_embedding.pyとその関連ファイルを全て読んで統合モデルの詳細を把握して。
 
 本番タスク：
-minimal_train.pyを進めた場合のSEG LOSSがほぼ下がらない問題がある。そこでGTP-5proにより修正方針をmd_files/current/residual_addition_pre_alignment20250811.mdに作成したので、順に修正をすること。できる限り、各段階でTestで動作確認をすること。
+minimal_train.pyを進めた場合のSEG LOSSがほぼ下がらない問題がある。そこでGTP-5proにより修正方針をmd_files/current/residual_addition_pre_alignment20250811.mdに作成したので、参考にして修正・実装をすること。できる限り、各段階でTestで動作確認をすること。
 
 ※作業の途中でminimal_train.pyでseg lossが下がらない理由の可能性のあるバグを発見したら報告すること。
 

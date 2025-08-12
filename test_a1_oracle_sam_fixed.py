@@ -100,11 +100,15 @@ class OracleSAMTester:
             sam_model_name="./checkpoints/sam2.1_hiera_large.pt",
             device_map=str(self.device),
             torch_dtype="auto",
-            freeze_qwen=True,  # Qwenは完全凍結
-            freeze_sam=False,   # SAMは学習可能
-            train_seg_token=False,  # SEGトークンは使わない（オラクルテスト）
-            train_adapters=True,  # アダプタは学習可能
-            use_flash_attention=False
+            use_flash_attention=False,
+            # Training configuration - Test A1: Oracle SAM Fixed
+            train_qwen_lora=False,        # Qwenは完全凍結（A1）
+            train_seg_token=False,        # SEGトークンも凍結（A1）
+            train_sam_lora=False,         # SAMも凍結（A1）
+            train_image_adapter=False,    # アダプターも凍結（A1）
+            train_text_prompt_projector=False,  # プロジェクターも凍結（A1）
+            train_token_fpn=False,        # Token-FPNも凍結（A1）
+            train_prompt_beta=False       # Betaも凍結（A1）
         )
         
         # トークナイザーとプロセッサの準備
@@ -133,6 +137,10 @@ class OracleSAMTester:
         
         # トークナイザーを設定
         self.model.set_tokenizer(self.tokenizer)
+        
+        # パラメータ統計の詳細表示
+        from src.utils.model_utils import display_parameter_statistics
+        display_parameter_statistics(self.model, logger_name=__name__)
         
         # SAM MaskDecoderへのLoRA適用（minimal_train.pyと同じ）
         if hasattr(self.lisa_config, 'sam_lora_r') and self.lisa_config.sam_lora_r > 0:

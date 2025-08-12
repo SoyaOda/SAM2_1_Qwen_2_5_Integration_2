@@ -26,17 +26,54 @@ class LISAConfig:
     # Special tokens
     seg_token: str = "<SEG>"
     
-    # LoRA configuration
+    # ========================================================================
+    # LoRA Configuration
+    # ========================================================================
+    
+    # Qwen2.5-VL LoRA settings
     lora_r: int = 8
     lora_alpha: int = 32
     lora_dropout: float = 0.1
     lora_target_modules: list = None  # Will be set based on model architecture
     
-    # Training configuration
-    freeze_qwen: bool = True
-    freeze_sam: bool = True
-    train_seg_token: bool = True
-    train_adapters: bool = True
+    # SAM2.1 MaskDecoder LoRA settings
+    sam_lora_r: int = 8  # 0 to disable, 4-8 for enabling LoRA on MaskDecoder
+    sam_lora_alpha: int = 16  # LoRA alpha for MaskDecoder
+    sam_lora_dropout: float = 0.1  # LoRA dropout for MaskDecoder
+    sam_lora_target_modules: list = None  # Will be set in __post_init__
+    
+    # ========================================================================
+    # Training Configuration - Centralized control for all components
+    # ========================================================================
+    
+    # ---- Training Flags (What to train) ----
+    # Qwen2.5-VL
+    train_qwen_lora: bool = True           # Qwen LoRA adapters (2.5M params)
+    train_seg_token: bool = True           # SEG token embedding
+    
+    # SAM2.1
+    train_sam_lora: bool = True            # SAM MaskDecoder LoRA (61K params)
+    
+    # Adapter Components  
+    train_image_adapter: bool = True       # Qwen→SAM feature adapter (1.2M params)
+    train_text_prompt_projector: bool = True  # LLM→SAM embedding projector (1.2M params)
+    train_token_fpn: bool = True           # Multi-scale feature extractor (3.7M params)
+    train_prompt_beta: bool = True         # Embedding fusion weight β (1 param)
+    
+    # ---- Freeze Flags (What NOT to train) ----
+    # Qwen2.5-VL
+    freeze_qwen_base: bool = True          # Freeze Qwen base model (3.7B params)
+    
+    # SAM2.1
+    freeze_sam_image_encoder: bool = True  # ALWAYS True - not used (saves 212M params!)
+    freeze_sam_mask_decoder: bool = True   # Freeze SAM MaskDecoder base
+    freeze_sam_prompt_encoder: bool = True # Freeze SAM PromptEncoder
+    freeze_sam_memory_attention: bool = True  # ALWAYS True - video only (saves 8.3M params!)
+    
+    # ---- Legacy/Compatibility (DO NOT USE) ----
+    freeze_qwen: bool = True               # Deprecated - use freeze_qwen_base
+    freeze_sam: bool = True                # Deprecated - use specific freeze_sam_* flags
+    train_adapters: bool = True            # Deprecated - use specific train_* flags
     
     # Loss weights
     language_loss_weight: float = 1.0

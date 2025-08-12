@@ -209,15 +209,22 @@ def main():
     
     # 1. モデルとトークナイザの準備
     config = LISAConfig(
-        freeze_qwen=True,
-        freeze_sam=False,        # MaskDecoderも学習させる
-        train_seg_token=True,
-        # LoRA設定はデフォルト（Qwen側 r=8 等）。SAM側もsam_lora_r=8だがfreeze解除するので気にしない
+        qwen_model_name="Qwen/Qwen2.5-VL-3B-Instruct",
+        sam_model_name="./checkpoints/sam2.1_hiera_large.pt",
+        device_map="cuda",
+        torch_dtype="auto",
+        use_flash_attention=False,
+        # Training configuration - Test A2: Unfreeze SAM
+        train_qwen_lora=True,         # Qwen LoRA有効
+        train_seg_token=True,         # SEGトークン学習可能
+        train_sam_lora=True,          # SAM MaskDecoder LoRA有効（A2の特徴）
+        train_image_adapter=True,     # アダプター学習可能
+        train_text_prompt_projector=True,  # プロジェクター学習可能
+        train_token_fpn=True,         # Token-FPN学習可能
+        train_prompt_beta=False,      # A2ではBetaなし
+        # Freeze settings
+        freeze_sam_mask_decoder=False # A2: SAM MaskDecoder学習可能
     )
-    logger.info(f"Config: freeze_qwen={config.freeze_qwen}, freeze_sam={config.freeze_sam}, train_seg_token={config.train_seg_token}")
-    
-    # トークナイザとプロセッサの用意（SEGトークン追加）
-    tokenizer = prepare_tokenizer_for_lisa(model_name=config.qwen_model_name, seg_token=config.seg_token)
     processor = None
     if config.use_dynamic_resolution:
         processor = AutoProcessor.from_pretrained(
@@ -233,8 +240,18 @@ def main():
         processor.tokenizer.add_special_tokens({"additional_special_tokens": [config.seg_token]})
     
     # モデル初期化
+    # トークナイザーの準備
+    tokenizer = prepare_tokenizer_for_lisa(
+        model_name=config.qwen_model_name,
+        seg_token=config.seg_token
+    )
+    
     model = LISA_Model(config)
     model.set_tokenizer(tokenizer)
+    
+    # パラメータ統計の詳細表示
+    from src.utils.model_utils import display_parameter_statistics
+    display_parameter_statistics(model, logger_name=__name__)
     
     # SAM側はfreeze=Falseなので、LoRAを追加しない（全パラメータを学習）
     # Qwen側にはLoRAを追加

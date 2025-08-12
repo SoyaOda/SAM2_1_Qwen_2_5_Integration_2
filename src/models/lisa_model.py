@@ -268,16 +268,87 @@ class LISA_Model(nn.Module):
             ).to(device=model_device, dtype=model_dtype)
             logger.info("Using simple HighResFeatureGenerator")
         
-        # Freeze models as specified
-        if config.freeze_qwen:
+        # ========================================================================
+        # Apply freeze settings from config - Centralized control
+        # ========================================================================
+        
+        # ---- Qwen2.5-VL Components ----
+        if config.freeze_qwen_base or config.freeze_qwen:  # Support both new and legacy names
             for param in self.qwen.parameters():
                 param.requires_grad = False
+            logger.info("Froze Qwen2.5-VL base model")
         
-        if config.freeze_sam:
+        # ---- SAM2.1 Components (Fine-grained control) ----
+        
+        # SAM ImageEncoder - Always freeze as it's not used in forward pass
+        # We use Qwen's vision encoder instead (saves 212M params!)
+        if config.freeze_sam_image_encoder and hasattr(self, 'sam_image_encoder'):
+            for param in self.sam_image_encoder.parameters():
+                param.requires_grad = False
+            logger.info("Froze SAM ImageEncoder (not used in current implementation - saves 212M params)")
+        
+        # SAM MaskDecoder
+        if config.freeze_sam_mask_decoder:
+            for param in self.sam_mask_decoder.parameters():
+                param.requires_grad = False
+            logger.info("Froze SAM MaskDecoder (will use LoRA if enabled)")
+        
+        # SAM PromptEncoder  
+        if config.freeze_sam_prompt_encoder:
+            for param in self.sam_prompt_encoder.parameters():
+                param.requires_grad = False
+            logger.info("Froze SAM PromptEncoder")
+        
+        # SAM Memory/Video components - Always freeze for image tasks
+        # These are for video tracking and not needed (saves 8.3M params!)
+        if config.freeze_sam_memory_attention and hasattr(self.sam_model, 'memory_attention'):
+            for param in self.sam_model.memory_attention.parameters():
+                param.requires_grad = False
+            logger.info("Froze SAM memory_attention (video components - saves 8.3M params)")
+            
+            # Also freeze other video-related components
+            video_components = [
+                'maskmem_tpos_enc', 'no_mem_embed', 'no_mem_pos_enc',
+                'no_obj_ptr', 'no_obj_embed_spatial', 'mask_downsample'
+            ]
+            for comp_name in video_components:
+                if hasattr(self.sam_model, comp_name):
+                    comp = getattr(self.sam_model, comp_name)
+                    if hasattr(comp, 'parameters'):
+                        for param in comp.parameters():
+                            param.requires_grad = False
+                    elif isinstance(comp, nn.Parameter):
+                        comp.requires_grad = False
+            logger.info("Froze other SAM video components")
+        
+        # Legacy support for config.freeze_sam
+        elif config.freeze_sam:
+            # Original behavior: freeze MaskDecoder and PromptEncoder
             for param in self.sam_mask_decoder.parameters():
                 param.requires_grad = False
             for param in self.sam_prompt_encoder.parameters():
                 param.requires_grad = False
+            logger.info("Froze SAM components (legacy freeze_sam=True)")
+        
+        # ---- Adapter Components ----
+        # Control training of adapter components
+        if hasattr(self, 'image_adapter') and not config.train_image_adapter:
+            for param in self.image_adapter.parameters():
+                param.requires_grad = False
+            logger.info("Froze Image Adapter")
+        
+        if hasattr(self, 'text_prompt_proj') and not config.train_text_prompt_projector:
+            for param in self.text_prompt_proj.parameters():
+                param.requires_grad = False
+            logger.info("Froze Text Prompt Projector")
+        
+        if hasattr(self, 'token_fpn') and not config.train_token_fpn:
+            for param in self.token_fpn.parameters():
+                param.requires_grad = False
+            logger.info("Froze Token-FPN")
+        
+        # 加算アプローチ用の学習可能なスケーリング係数β
+        self.prompt_beta = nn.Parameter(torch.tensor(0.01))
         
         # Store tokenizer and SEG token info
         self.tokenizer = tokenizer
@@ -762,10 +833,20 @@ class LISA_Model(nn.Module):
                             masks=None,
                         )
                         
-                        # Replace the point embedding with our text-derived embedding
+                        # 加算アプローチによる埋め込み融合
                         # sparse_embeddings: [1, N, C] where C=256 for SAM2.1
                         if sparse_embeddings.shape[1] > 0:
-                            sparse_embeddings[:, 0, :] = prompt_embed.unsqueeze(0)
+                            # 元の位置埋め込みを保持
+                            e_pos = sparse_embeddings[:, 0, :]  # [1, 256] SAMの位置埋め込み
+                            
+                            # βをsigmoidで0〜1に制限
+                            beta_scaled = torch.sigmoid(self.prompt_beta)
+                            
+                            # 加算による融合（位置情報を100%保持しつつLLM情報を追加）
+                            e_add = e_pos + beta_scaled * prompt_embed.unsqueeze(0)
+                            
+                            # 融合結果で埋め込みを更新
+                            sparse_embeddings[:, 0, :] = e_add
                         
                         # Ensure dense_embeddings matches image_features spatial size
                         if dense_embeddings.shape[-2:] != image_features_sam[i:i+1].shape[-2:]:
