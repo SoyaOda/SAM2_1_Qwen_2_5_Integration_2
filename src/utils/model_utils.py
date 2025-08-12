@@ -21,69 +21,98 @@ def display_parameter_statistics(model, logger_name=None):
     else:
         log = logger
     
-    # カテゴリ別にパラメータを分類
+    # カテゴリ別にパラメータを分類（configの命名と完全一致）
     categories = defaultdict(lambda: {'total': 0, 'trainable': 0, 'params': []})
     
     for name, param in model.named_parameters():
         numel = param.numel()
         is_trainable = param.requires_grad
         
-        # カテゴリ分類
-        if 'qwen' in name:
+        # カテゴリ分類（configの freeze_* 命名に完全対応）
+        # Token-FPNを先に判定（upsample_s1などでsamが誤検出されるのを防ぐ）
+        if 'token_fpn' in name or 'fpn' in name:
+            category = 'Token-FPN (freeze_token_fpn)'
+        elif 'qwen' in name:
             if 'lora_A' in name or 'lora_B' in name:
-                category = 'Qwen LoRA'
-            elif 'word_embeddings' in name or 'embed_tokens' in name:
+                category = 'Qwen LoRA (freeze_qwen_lora)'
+            elif ('word_embeddings' in name or 'embed_tokens' in name):
+                # embedding層全体がtrainableかどうかをチェック
                 if is_trainable:
-                    category = 'SEG Token Embedding'
+                    category = 'SEG Token (freeze_seg_token)'
                 else:
-                    category = 'Qwen Base (frozen)'
+                    # embedding層は凍結されているが、SEG tokenの個別要素がtrainableか確認
+                    seg_token_trainable = False
+                    try:
+                        if hasattr(model, 'seg_token_id') and model.seg_token_id is not None:
+                            # SEG tokenの特定要素のrequires_gradをチェック
+                            if param.dim() >= 2:
+                                seg_token_trainable = param[model.seg_token_id].requires_grad
+                    except:
+                        pass
+                    
+                    if seg_token_trainable:
+                        # SEG tokenのembedding次元数を取得
+                        embed_dim = param.shape[-1] if param.dim() >= 2 else 1
+                        categories['SEG Token (freeze_seg_token)']['total'] += embed_dim
+                        categories['SEG Token (freeze_seg_token)']['trainable'] += embed_dim
+                        categories['SEG Token (freeze_seg_token)']['params'].append((f"{name}[seg_token:{model.seg_token_id}]", embed_dim, True))
+                        
+                        # 残りの部分をQwen Baseに追加
+                        remaining_params = numel - embed_dim
+                        categories['Qwen Base (freeze_qwen_base)']['total'] += remaining_params
+                        categories['Qwen Base (freeze_qwen_base)']['params'].append((f"{name}[except_seg_token]", remaining_params, False))
+                        continue  # 通常の処理をスキップ
+                    else:
+                        category = 'Qwen Base (freeze_qwen_base)'
             else:
-                category = 'Qwen Base (frozen)'
+                category = 'Qwen Base (freeze_qwen_base)'
         elif 'sam' in name or 'sam_model' in name:
-            if 'lora' in name.lower():
-                category = 'SAM LoRA'
+            if 'lora_A' in name or 'lora_B' in name or 'lora' in name.lower():
+                # LoRAパラメータ（lora_A, lora_B）またはLoRA関連
+                category = 'SAM LoRA (freeze_sam_lora)'
             elif 'mask_decoder' in name:
-                category = 'SAM MaskDecoder'
+                # MaskDecoder内のパラメータ
+                # LoRAパラメータかどうかで分類を決定
+                if 'lora_A' in name or 'lora_B' in name:
+                    # 明示的にLoRAパラメータの場合
+                    category = 'SAM LoRA (freeze_sam_lora)'
+                else:
+                    # 通常のMaskDecoderパラメータ
+                    # freeze_sam_mask_decoder_base=Falseの場合は学習可能
+                    category = 'SAM MaskDecoder Base (freeze_sam_mask_decoder_base)'
             elif 'prompt_encoder' in name:
-                category = 'SAM PromptEncoder'
+                category = 'SAM PromptEncoder (freeze_sam_prompt_encoder)'
             elif 'image_encoder' in name:
-                if 'neck' in name:
-                    category = 'SAM Neck (FPN)'
-                else:
-                    category = 'SAM ImageEncoder'
-            elif 'memory_encoder' in name:
-                category = 'SAM MemoryEncoder (Video)'
+                category = 'SAM ImageEncoder (freeze_sam_image_encoder)'
             elif 'memory_attention' in name:
-                category = 'SAM MemoryAttention (Video)'
-            elif 'obj_ptr_proj' in name:
-                category = 'SAM ObjectPointer (Video)'
-            elif 'spatial_add_pos_embed' in name:
-                category = 'SAM SpatialPosEmbed (Video)'
-            elif 'point_emb' in name or 'pe_layer' in name:
-                category = 'SAM PositionalEncoding'
-            elif 'token_learner' in name:
-                category = 'SAM TokenLearner'
+                category = 'SAM MemoryAttention (freeze_sam_memory_attention)'
+            elif 'memory_encoder' in name:
+                # メモリエンコーダー（ビデオトラッキング用）
+                category = 'SAM Video Components (frozen)'
+            elif 'maskmem' in name or 'no_mem' in name or 'no_obj' in name:
+                # ビデオトラッキング関連のメモリコンポーネント
+                category = 'SAM Video Components (frozen)'
+            elif 'mask_downsample' in name:
+                # マスクダウンサンプリング（ビデオ用）
+                category = 'SAM Video Components (frozen)'
+            elif 'obj_ptr' in name or 'spatial_add_pos_embed' in name:
+                # オブジェクトポインタと空間位置埋め込み（ビデオ用）
+                category = 'SAM Video Components (frozen)'
             else:
-                # より詳細なサブカテゴリ
-                if 'conv' in name.lower():
-                    category = 'SAM Convolutions'
-                elif 'norm' in name.lower():
-                    category = 'SAM Normalization'
-                elif 'proj' in name.lower():
-                    category = 'SAM Projections'
-                else:
-                    category = 'SAM Other (Misc)'
+                # その他のSAMコンポーネント
+                category = 'SAM Other (Misc)'
         elif 'image_adapter' in name:
-            category = 'Image Adapter'
+            category = 'Image Adapter (freeze_image_adapter)'
         elif 'text_prompt_proj' in name or 'prompt_proj' in name:
-            category = 'Text Prompt Projector'
+            category = 'Text Prompt Projector (freeze_text_prompt_projector)'
         elif 'prompt_beta' in name:
-            category = 'Prompt Beta'
-        elif 'fpn' in name or 'token_fpn' in name:
-            category = 'Token-FPN'
+            category = 'Prompt Beta (freeze_prompt_beta)'
+        elif 'seg_token_embedding' in name:
+            category = 'SEG Token (freeze_seg_token)'
         else:
             category = 'Other'
         
+        # 通常の集計
         categories[category]['total'] += numel
         if is_trainable:
             categories[category]['trainable'] += numel
@@ -117,7 +146,7 @@ def display_parameter_statistics(model, logger_name=None):
     
     for i, (category, param_count) in enumerate(trainable_components, 1):
         percentage = (param_count / trainable_all * 100) if trainable_all > 0 else 0
-        log.info(f"  {i:2}. {category:25} {param_count:12,} ({percentage:5.1f}%)")
+        log.info(f"  {i:2}. {category:45} {param_count:12,} ({percentage:5.1f}%)")
     
     # 凍結コンポーネントのサマリー
     log.info("-"*80)
@@ -134,7 +163,7 @@ def display_parameter_statistics(model, logger_name=None):
     # すべての凍結コンポーネントを表示（省略なし）
     for category, param_count in frozen_components:
         percentage = (param_count / frozen_all * 100) if frozen_all > 0 else 0
-        log.info(f"  - {category:25} {param_count:12,} ({percentage:5.1f}%)")
+        log.info(f"  - {category:45} {param_count:12,} ({percentage:5.1f}%)")
     
     log.info("="*80)
 

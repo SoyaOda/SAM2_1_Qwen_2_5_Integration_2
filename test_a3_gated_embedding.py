@@ -239,7 +239,7 @@ def main():
         freeze_image_adapter=False,     # アダプター学習可能
         freeze_text_prompt_projector=False,  # プロジェクター学習可能
         freeze_token_fpn=False,         # Token-FPN学習可能
-        freeze_prompt_beta=False        # A3: Gated embedding用Beta学習可能
+        freeze_prompt_beta=True         # A3: ゲーティングアプローチはalphaを使用、betaは不使用
     )
     
     # プロセッサーの準備（動的解像度対応）

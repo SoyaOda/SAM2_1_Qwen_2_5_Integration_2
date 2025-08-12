@@ -362,6 +362,29 @@ class LISA_Model(nn.Module):
         self.tokenizer = tokenizer
         self.seg_token_id = None
         
+        # ========================================================================
+        # SAM LoRA Configuration
+        # ========================================================================
+        # IMPORTANT: SAM LoRAはMaskDecoderがfreezeされている場合のみ適用
+        # MaskDecoderがunfreeze（学習可能）の場合、LoRAは無効化される
+        if config.sam_lora_r > 0 and config.freeze_sam_mask_decoder_base:
+            # MaskDecoderがfreezeの場合のみLoRAを適用
+            logger.info(f"SAM MaskDecoder is frozen. Applying LoRA (r={config.sam_lora_r})...")
+            self.add_sam_lora(
+                lora_r=config.sam_lora_r,
+                lora_alpha=config.sam_lora_alpha,
+                lora_dropout=config.sam_lora_dropout
+            )
+        elif config.sam_lora_r > 0 and not config.freeze_sam_mask_decoder_base:
+            # MaskDecoderがunfreezeの場合、LoRAを無効化
+            logger.warning(
+                f"SAM MaskDecoder is unfrozen (freeze_sam_mask_decoder_base=False). "
+                f"LoRA will be disabled even though sam_lora_r={config.sam_lora_r} is set. "
+                f"MaskDecoder will be trained directly."
+            )
+        else:
+            logger.info("SAM LoRA disabled (sam_lora_r=0)")
+        
     def set_tokenizer(self, tokenizer: AutoTokenizer, seg_token: str = "<SEG>"):
         """
         Set tokenizer and configure SEG token
@@ -382,13 +405,31 @@ class LISA_Model(nn.Module):
         
         # Enable SEG token embedding training
         if not self.config.freeze_seg_token:
-            # Use requires_grad_ to ensure it's set properly
-            self.qwen.get_input_embeddings().weight[self.seg_token_id].requires_grad_(True)
-            logger.info(f"SEG token embedding training enabled for token ID {self.seg_token_id}")
+            # Since the entire embedding layer is frozen, we need to create a separate
+            # learnable parameter for the SEG token and replace it dynamically
+            embed_dim = self.qwen.get_input_embeddings().weight.shape[1]
+            device = self.qwen.get_input_embeddings().weight.device
+            dtype = self.qwen.get_input_embeddings().weight.dtype
+            
+            # Create a learnable SEG token embedding
+            self.seg_token_embedding = nn.Parameter(
+                torch.randn(embed_dim, device=device, dtype=dtype) * 0.02
+            )
+            
+            # Replace the SEG token in the frozen embedding with our learnable version
+            with torch.no_grad():
+                self.qwen.get_input_embeddings().weight[self.seg_token_id] = self.seg_token_embedding.data
+            
+            logger.info(f"SEG token embedding training enabled for token ID {self.seg_token_id} (separate parameter: {embed_dim} dims)")
+        else:
+            self.seg_token_embedding = None
     
     def add_sam_lora(self, lora_r: int = 4, lora_alpha: int = 16, lora_dropout: float = 0.1):
         """
         Add LoRA adapters to SAM2.1 MaskDecoder attention layers
+        
+        IMPORTANT: LoRA should only be applied when MaskDecoder is frozen.
+        If MaskDecoder is unfrozen, it will be trained directly without LoRA.
         
         Args:
             lora_r: LoRA rank (4-8 recommended)
@@ -396,6 +437,15 @@ class LISA_Model(nn.Module):
             lora_dropout: LoRA dropout rate
         """
         import torch.nn as nn
+        
+        # Check if MaskDecoder is frozen
+        mask_decoder_frozen = not any(p.requires_grad for p in self.sam_mask_decoder.parameters())
+        if not mask_decoder_frozen:
+            logger.warning(
+                "SAM MaskDecoder is not frozen! LoRA should only be applied to frozen layers. "
+                "Consider setting freeze_sam_mask_decoder_base=True in config."
+            )
+            return
         
         if lora_r <= 0:
             logger.info("SAM LoRA disabled (lora_r=0)")
@@ -692,6 +742,11 @@ class LISA_Model(nn.Module):
             Model outputs including language logits and mask predictions
         """
         B = input_ids.size(0)
+        
+        # Update SEG token embedding in the frozen embedding layer before forward pass
+        if hasattr(self, 'seg_token_embedding') and self.seg_token_embedding is not None:
+            with torch.no_grad():
+                self.qwen.get_input_embeddings().weight[self.seg_token_id] = self.seg_token_embedding.data
         
         # 1. Run Qwen model for vision-language understanding
         qwen_outputs = self.qwen(

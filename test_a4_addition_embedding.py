@@ -239,8 +239,8 @@ def main():
         
         def __init__(self, config):
             super().__init__(config)
-            # 学習可能なスケーリング係数β
-            self.beta = nn.Parameter(torch.tensor(initial_beta))
+            # 親クラスのprompt_betaを使用（重複を避ける）
+            # self.prompt_betaは親クラスで既に定義済み
         
         def forward_with_addition(
             self,
@@ -377,7 +377,7 @@ def main():
                             e_pos = sparse_embeddings[:, 0, :]  # [1, 256]
                             
                             # βをsigmoidで0-1に制限
-                            beta_scaled = torch.sigmoid(self.beta)
+                            beta_scaled = torch.sigmoid(self.prompt_beta)
                             
                             # 加算（位置情報を完全に保持しつつLLM情報を加える）
                             e_add = e_pos + beta_scaled * llm_embed.unsqueeze(0)
@@ -548,7 +548,7 @@ def main():
                     batch[k] = v.to(device)
             
             # 現在のbeta値を取得
-            beta_value = torch.sigmoid(model.beta).item()
+            beta_value = torch.sigmoid(model.prompt_beta).item()
             
             # モデルforward（加算アプローチ適用）
             logits, mask_logits = model.forward_with_addition(
