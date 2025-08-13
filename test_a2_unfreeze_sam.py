@@ -217,15 +217,13 @@ def main():
         # Freeze configuration - Test A2: Unfreeze SAM
         freeze_qwen_lora=False,         # Qwen LoRA有効 (trainable)
         freeze_seg_token=False,         # SEGトークン学習可能
-        freeze_sam_lora=False,          # SAM MaskDecoder LoRA有効（A2の特徴）
+        sam_lora_r = 8,
         freeze_image_adapter=False,     # アダプター学習可能
         freeze_text_prompt_projector=False,  # プロジェクター学習可能
         freeze_token_fpn=False,         # Token-FPN学習可能
         freeze_prompt_beta=True,        # A2ではBeta無効 (frozen)
         # Freeze settings
-        freeze_sam_mask_decoder_base=False, # A2: SAM MaskDecoder学習可能（unfrozenなのでLoRA無効）
-        # LoRA settings
-        sam_lora_r=0  # MaskDecoderがunfrozenの場合、LoRAは自動的に無効化される
+        freeze_sam_mask_decoder_base=True,
     )
     processor = None
     if config.use_dynamic_resolution:

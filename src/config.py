@@ -37,6 +37,9 @@ class LISAConfig:
     lora_target_modules: list = None  # Will be set based on model architecture
     
     # SAM2.1 MaskDecoder LoRA settings
+    # NOTE: LoRAは freeze_sam_mask_decoder_base=True の場合のみ適用されます
+    #   - freeze_sam_mask_decoder_base=True → sam_lora_r>0 でLoRA適用
+    #   - freeze_sam_mask_decoder_base=False → LoRA無視、MaskDecoder直接学習
     sam_lora_r: int = 8  # 0 to disable, 4-8 for enabling LoRA on MaskDecoder
     sam_lora_alpha: int = 16  # LoRA alpha for MaskDecoder
     sam_lora_dropout: float = 0.1  # LoRA dropout for MaskDecoder
@@ -52,7 +55,10 @@ class LISAConfig:
     freeze_seg_token: bool = False          # SEG token embedding - False = trainable
     
     # SAM2.1
-    freeze_sam_lora: bool = False           # SAM MaskDecoder LoRA (61K params) - False = trainable
+    # NOTE: freeze_sam_lora は現在未使用です。SAM LoRAの適用は以下の条件で自動制御されます：
+    #   - freeze_sam_mask_decoder_base=True かつ sam_lora_r>0 → LoRA適用（61K params学習可能）
+    #   - freeze_sam_mask_decoder_base=False → MaskDecoder直接学習（4.2M params学習可能）
+    freeze_sam_lora: bool = False           # [DEPRECATED] この設定は無視されます
     
     # Adapter Components  
     freeze_image_adapter: bool = False      # Qwen→SAM feature adapter (1.2M params) - False = trainable
@@ -66,7 +72,7 @@ class LISAConfig:
     
     # SAM2.1
     freeze_sam_image_encoder: bool = True  # ALWAYS True - not used (saves 212M params!)
-    freeze_sam_mask_decoder_base: bool = False   # Freeze SAM MaskDecoder base (non-LoRA parts)
+    freeze_sam_mask_decoder_base: bool = True   # True: LoRA適用（sam_lora_r>0なら）, False: 直接学習（4.2M）
     freeze_sam_prompt_encoder: bool = True # Freeze SAM PromptEncoder
     freeze_sam_memory_attention: bool = True  # ALWAYS True - video only (saves 8.3M params!)
     
@@ -115,12 +121,6 @@ class LISAConfig:
     vision_feature_dim: int = 2048  # Currently 2048 (LLM-projected); will be 2560 for PatchMerge
     token_selection_strategy: str = "none"  # Options: "top128", "none" - Use "none" for segmentation
     
-    # SAM2.1 MaskDecoder LoRA configuration
-    sam_lora_r: int = 8  # 0 to disable, 4-8 for enabling LoRA on MaskDecoder
-    sam_lora_alpha: int = 16  # LoRA alpha for MaskDecoder
-    sam_lora_dropout: float = 0.1  # LoRA dropout for MaskDecoder
-    sam_lora_target_modules: list = None  # Will be set in __post_init__
-    
     # Dataset paths
     sem_seg_data: str = "ade20k||cocostuff"
     refer_seg_data: str = "refcoco||refcoco+||refcocog"
@@ -137,12 +137,12 @@ class LISAConfig:
     
     def __post_init__(self):
         if self.lora_target_modules is None:
-            # Default target modules for Qwen cross-attention
+            # Default target modules for Qwen2.5-VL attention layers
+            # Note: Qwen2.5-VLは q_proj, k_proj, v_proj を使用
             self.lora_target_modules = [
-                "cross_attn",
-                "cross_attention",
-                "encoder_attn",
-                "encoder_attention"
+                "q_proj",
+                "k_proj",
+                "v_proj"
             ]
         
         if self.sam_lora_target_modules is None:

@@ -102,13 +102,14 @@ class OracleSAMTester:
             torch_dtype="auto",
             use_flash_attention=False,
             # Training configuration - Test A1: Oracle SAM Fixed
-            freeze_qwen_lora=True,        # Qwenは完全凍結（A1）
-            freeze_seg_token=True,        # SEGトークンも凍結（A1）
-            freeze_sam_lora=True,         # SAMも凍結（A1）
-            freeze_image_adapter=True,    # アダプターも凍結（A1）
-            freeze_text_prompt_projector=True,  # プロジェクターも凍結（A1）
-            freeze_token_fpn=True,        # Token-FPNも凍結（A1）
-            freeze_prompt_beta=True       # Betaも凍結（A1）
+            freeze_sam_mask_decoder_base=True,
+            sam_lora_r = 0,               
+            freeze_qwen_lora=True,        # Qwenは凍結
+            freeze_seg_token=True,        # SEGトークンも凍結
+            freeze_image_adapter=True,
+            freeze_text_prompt_projector=True,
+            freeze_token_fpn=False,
+            freeze_prompt_beta=True       # Betaも凍結（A1ではβ使用不可）
         )
         
         # トークナイザーとプロセッサの準備

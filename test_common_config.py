@@ -13,7 +13,7 @@ import random
 SEED = 42
 
 # 学習パラメータ
-NUM_STEPS = 100  # 総ステップ数
+NUM_STEPS = 300  # 総ステップ数
 BATCH_SIZE = 2    # バッチサイズ
 LEARNING_RATE = 1e-4  # 学習率
 NUM_FIXED_SAMPLES = 10  # 固定サンプル数（各テストで同じ100個）
@@ -75,8 +75,8 @@ class FixedSampleDataset(torch.utils.data.Dataset):
         return self.fixed_samples[idx % self.num_samples]
 
 
-def save_test_config(output_dir, test_name, additional_config=None):
-    """テスト設定を保存"""
+def save_test_config(output_dir, test_name, lisa_config=None, additional_config=None):
+    """テスト設定を保存（freeze/unfreezeパラメータ情報も含む）"""
     import json
     from pathlib import Path
     
@@ -93,6 +93,35 @@ def save_test_config(output_dir, test_name, additional_config=None):
         'log_interval': LOG_INTERVAL,
         'eval_threshold': EVAL_THRESHOLD,
     }
+    
+    # LISA Configのfreeze/unfreezeパラメータを追加
+    if lisa_config:
+        freeze_params = {
+            # Qwen関連
+            'freeze_qwen_base': lisa_config.freeze_qwen_base,
+            'freeze_qwen_lora': lisa_config.freeze_qwen_lora,
+            'freeze_seg_token': lisa_config.freeze_seg_token,
+            
+            # SAM関連
+            'freeze_sam_image_encoder': lisa_config.freeze_sam_image_encoder,
+            'freeze_sam_mask_decoder_base': lisa_config.freeze_sam_mask_decoder_base,
+            'freeze_sam_prompt_encoder': lisa_config.freeze_sam_prompt_encoder,
+            'freeze_sam_memory_attention': lisa_config.freeze_sam_memory_attention,
+            'freeze_sam_lora': lisa_config.freeze_sam_lora,
+            
+            # アダプター関連
+            'freeze_image_adapter': lisa_config.freeze_image_adapter,
+            'freeze_text_prompt_projector': lisa_config.freeze_text_prompt_projector,
+            'freeze_token_fpn': lisa_config.freeze_token_fpn,
+            'freeze_prompt_beta': lisa_config.freeze_prompt_beta,
+            
+            # LoRA設定
+            'lora_r': lisa_config.lora_r,
+            'lora_alpha': lisa_config.lora_alpha,
+            'sam_lora_r': lisa_config.sam_lora_r,
+            'sam_lora_alpha': lisa_config.sam_lora_alpha,
+        }
+        config['freeze_unfreeze_params'] = freeze_params
     
     # 追加の設定があれば追加
     if additional_config:

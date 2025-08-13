@@ -30,7 +30,6 @@ from src.utils import prepare_tokenizer_for_lisa
 from src.data.dataset import HybridDataset
 from src.data.collators import MultiModalDataCollator
 from transformers import AutoProcessor, get_linear_schedule_with_warmup
-from peft import LoraConfig, get_peft_model, TaskType
 
 # ロギング設定
 logging.basicConfig(
@@ -237,20 +236,8 @@ class MinimalTrainer:
         logger.info("トークナイザーを設定してSEGトークンの埋め込みをリサイズ")
         self.model.set_tokenizer(self.tokenizer)
         
-        # Qwen LoRAの設定（config.pyの設定に従う）
-        if not self.lisa_config.freeze_qwen_lora:
-            logger.info(f"Qwen LoRAを設定 (r={self.config.lora_r}, alpha={self.config.lora_alpha})")
-            lora_config = LoraConfig(
-                r=self.config.lora_r,
-                lora_alpha=self.config.lora_alpha,
-                target_modules=["q_proj", "v_proj", "k_proj"],
-                lora_dropout=0.1,
-                bias="none",
-                task_type=TaskType.CAUSAL_LM,
-            )
-            self.model.qwen = get_peft_model(self.model.qwen, lora_config)
-        else:
-            logger.info("Qwen LoRAは無効化されています")
+        # Qwen LoRAはLISA_Model内で設定されるため、ここでは何もしない
+        # config.freeze_qwen_lora=FalseならLISA_Model.__init__でLoRAが適用される
         
         # SAM MaskDecoderへのLoRA適用（設定されている場合）
         if hasattr(self.lisa_config, 'sam_lora_r') and self.lisa_config.sam_lora_r > 0:

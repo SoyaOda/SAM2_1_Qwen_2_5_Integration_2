@@ -18,6 +18,7 @@ from transformers import (
     AutoProcessor
 )
 from sam2.sam2_image_predictor import SAM2ImagePredictor
+from peft import LoraConfig, get_peft_model, TaskType
 
 from .adapters import ImageFeatureAdapter, TextPromptProjector
 from .token_fpn import TokenFPN
@@ -358,6 +359,11 @@ class LISA_Model(nn.Module):
         # 加算アプローチ用の学習可能なスケーリング係数β
         self.prompt_beta = nn.Parameter(torch.tensor(0.01))
         
+        # Freeze prompt_beta if specified
+        if config.freeze_prompt_beta:
+            self.prompt_beta.requires_grad = False
+            logger.info("Froze Prompt Beta")
+        
         # Store tokenizer and SEG token info
         self.tokenizer = tokenizer
         self.seg_token_id = None
@@ -384,6 +390,70 @@ class LISA_Model(nn.Module):
             )
         else:
             logger.info("SAM LoRA disabled (sam_lora_r=0)")
+        
+        # ========================================================================
+        # Qwen LoRA Configuration
+        # ========================================================================
+        # Apply LoRA to Qwen if freeze_qwen_lora=False and lora_r > 0
+        if not config.freeze_qwen_lora and config.lora_r > 0:
+            logger.info(f"Applying LoRA to Qwen2.5-VL (r={config.lora_r}, alpha={config.lora_alpha})...")
+            self.add_qwen_lora(
+                lora_r=config.lora_r,
+                lora_alpha=config.lora_alpha,
+                lora_dropout=config.lora_dropout,
+                target_modules=config.lora_target_modules
+            )
+        elif config.freeze_qwen_lora:
+            logger.info("Qwen LoRA is frozen (freeze_qwen_lora=True)")
+        else:
+            logger.info("Qwen LoRA disabled (lora_r=0)")
+        
+    def add_qwen_lora(self, lora_r: int = 8, lora_alpha: int = 32, lora_dropout: float = 0.1, target_modules: list = None):
+        """
+        Add LoRA adapters to Qwen2.5-VL model
+        
+        Args:
+            lora_r: LoRA rank
+            lora_alpha: LoRA alpha scaling parameter
+            lora_dropout: Dropout probability for LoRA layers
+            target_modules: List of module names to apply LoRA to
+        """
+        if lora_r <= 0:
+            logger.info("Qwen LoRA disabled (lora_r=0)")
+            return
+        
+        # Check if Qwen base is frozen
+        qwen_frozen = not any(p.requires_grad for p in self.qwen.parameters())
+        if not qwen_frozen:
+            logger.warning(
+                "Qwen base model is not frozen! This will result in a very large number of trainable parameters. "
+                "Consider setting freeze_qwen_base=True in config."
+            )
+        
+        # Default target modules for Qwen
+        if target_modules is None:
+            target_modules = ["q_proj", "v_proj", "k_proj"]  # Attention projections
+            logger.info(f"Using default target modules for Qwen LoRA: {target_modules}")
+        
+        # Create LoRA configuration
+        lora_config = LoraConfig(
+            r=lora_r,
+            lora_alpha=lora_alpha,
+            target_modules=target_modules,
+            lora_dropout=lora_dropout,
+            bias="none",
+            task_type=TaskType.CAUSAL_LM,
+        )
+        
+        # Apply LoRA to Qwen
+        self.qwen = get_peft_model(self.qwen, lora_config)
+        
+        # Count LoRA parameters
+        lora_params = sum(p.numel() for n, p in self.qwen.named_parameters() if "lora" in n.lower() and p.requires_grad)
+        logger.info(f"Added {lora_params:,} LoRA parameters to Qwen2.5-VL")
+        
+        # Print trainable parameters summary
+        self.qwen.print_trainable_parameters()
         
     def set_tokenizer(self, tokenizer: AutoTokenizer, seg_token: str = "<SEG>"):
         """
