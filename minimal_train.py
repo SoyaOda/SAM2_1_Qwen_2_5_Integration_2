@@ -359,14 +359,34 @@ class MinimalTrainer:
         return align_dir / f"align_{self.config.align_steps}.pt"
     
     def save_alignment_checkpoint(self):
-        """アライメント完了後の状態を保存"""
+        """アライメント完了後の状態を保存（最適化版）"""
         checkpoint_path = self.get_alignment_checkpoint_path()
         
+        # アライメントで学習したパラメータのみを保存
+        alignment_state = {}
+        
+        # 1. Qwen LoRAパラメータ
+        for name, param in self.model.named_parameters():
+            if "qwen" in name and "lora" in name:
+                alignment_state[name] = param.data.cpu()
+        
+        # 2. SEGトークン埋め込み（個別管理）
+        if hasattr(self.model, 'seg_token_embedding') and self.model.seg_token_embedding is not None:
+            alignment_state['seg_token_embedding'] = self.model.seg_token_embedding.data.cpu()
+        
+        # 3. TextPromptProjector
+        alignment_state['text_prompt_proj_state'] = self.model.text_prompt_proj.state_dict()
+        
+        # 4. prompt_beta
+        if hasattr(self.model, 'prompt_beta'):
+            alignment_state['prompt_beta'] = self.model.prompt_beta.data.cpu()
+        
         checkpoint = {
-            'model_state_dict': self.model.state_dict(),
+            'alignment_state': alignment_state,  # 学習済みパラメータのみ
             'alignment_steps': self.config.align_steps,
             'beta_value': torch.sigmoid(self.model.prompt_beta).item() if hasattr(self.model, 'prompt_beta') else None,
             'timestamp': datetime.now().isoformat(),
+            'seg_token_id': self.model.seg_token_id if hasattr(self.model, 'seg_token_id') else None,
             'config': {
                 'lora_lr': self.config.lora_lr,
                 'seg_token_lr': self.config.seg_token_lr,
@@ -374,8 +394,11 @@ class MinimalTrainer:
             }
         }
         
-        torch.save(checkpoint, checkpoint_path)
-        logger.info(f"アライメントチェックポイントを保存: {checkpoint_path}")
+        torch.save(checkpoint, checkpoint_path, _use_new_zipfile_serialization=True)
+        
+        # ファイルサイズを確認
+        file_size_mb = checkpoint_path.stat().st_size / (1024 * 1024)
+        logger.info(f"アライメントチェックポイントを保存: {checkpoint_path} ({file_size_mb:.1f} MB)")
         
         # メタデータファイルも保存（人間が読める形式）
         meta_path = checkpoint_path.with_suffix('.json')
@@ -384,7 +407,9 @@ class MinimalTrainer:
                 'alignment_steps': self.config.align_steps,
                 'beta_value': checkpoint['beta_value'],
                 'timestamp': checkpoint['timestamp'],
-                'config': checkpoint['config']
+                'seg_token_id': checkpoint['seg_token_id'],
+                'config': checkpoint['config'],
+                'file_size_mb': file_size_mb
             }, f, indent=2)
 
     def _apply_alignment_freeze_settings(self):
@@ -402,9 +427,8 @@ class MinimalTrainer:
             if "qwen" in name and "lora" in name and not self.lisa_config.freeze_qwen_lora:
                 should_train = True
             # 2. SEGトークンEmbedding（Configに従う）
-            # 注: SEGトークンは個別管理されているため、embed_tokensの特定インデックスのみ学習可能
-            elif "embed_tokens" in name and not self.lisa_config.freeze_seg_token:
-                # embed_tokensは全体として1つのパラメータなので、SEGトークンを含む場合は学習可能にする
+            # seg_token_embeddingは個別のパラメータとして管理されている
+            elif "seg_token_embedding" in name and not self.lisa_config.freeze_seg_token:
                 should_train = True
             # 3. TextPromptProjector（Configに従う）
             elif "text_prompt_proj" in name and not self.lisa_config.freeze_text_prompt_projector:
@@ -478,11 +502,46 @@ class MinimalTrainer:
         logger.info("通常学習用設定の復元が完了しました")
     
     def load_alignment_checkpoint(self, checkpoint_path):
-        """保存済みアライメントチェックポイントを読み込み"""
+        """保存済みアライメントチェックポイントを読み込み（最適化版）"""
         checkpoint = torch.load(checkpoint_path, map_location=self.device)
         
-        # モデルの状態を復元
-        self.model.load_state_dict(checkpoint['model_state_dict'], strict=False)
+        # 新形式と旧形式の両方に対応
+        if 'alignment_state' in checkpoint:
+            # 新形式：最適化された保存形式
+            alignment_state = checkpoint['alignment_state']
+            
+            # 1. Qwen LoRAパラメータを復元
+            for name, param in self.model.named_parameters():
+                if name in alignment_state:
+                    param.data.copy_(alignment_state[name].to(self.device))
+            
+            # 2. SEGトークン埋め込みを復元
+            if 'seg_token_embedding' in alignment_state:
+                if hasattr(self.model, 'seg_token_embedding'):
+                    self.model.seg_token_embedding.data.copy_(
+                        alignment_state['seg_token_embedding'].to(self.device)
+                    )
+            
+            # 3. TextPromptProjectorを復元
+            if 'text_prompt_proj_state' in alignment_state:
+                self.model.text_prompt_proj.load_state_dict(alignment_state['text_prompt_proj_state'])
+            
+            # 4. prompt_betaを復元
+            if 'prompt_beta' in alignment_state and hasattr(self.model, 'prompt_beta'):
+                self.model.prompt_beta.data.copy_(
+                    alignment_state['prompt_beta'].to(self.device)
+                )
+            
+            # SEGトークンIDを復元
+            if 'seg_token_id' in checkpoint:
+                self.model.seg_token_id = checkpoint['seg_token_id']
+                
+        elif 'model_state_dict' in checkpoint:
+            # 旧形式：全体のstate_dictを保存している場合（後方互換性）
+            logger.warning("旧形式のアライメントチェックポイントを検出。新形式への移行を推奨します。")
+            self.model.load_state_dict(checkpoint['model_state_dict'], strict=False)
+        else:
+            raise ValueError(f"不明なチェックポイント形式: {checkpoint_path}")
         
         logger.info(f"アライメントチェックポイントを読み込みました: {checkpoint_path}")
         logger.info(f"  - アライメントステップ: {checkpoint['alignment_steps']}")
@@ -534,8 +593,11 @@ class MinimalTrainer:
         self.model.train()
         
         # アライメント用のオプティマイザを構築
+        logger.info("アライメント用オプティマイザを構築中...")
         align_params = []
+        total_params_checked = 0
         for name, param in self.model.named_parameters():
+            total_params_checked += 1
             if not param.requires_grad:
                 continue
             
@@ -545,8 +607,8 @@ class MinimalTrainer:
                 align_params.append({"params": param, "lr": self.config.lora_lr})
                 logger.debug(f"[Align] Added Qwen LoRA param: {name}")
             # 2. SEGトークンEmbedding（Configに従う）
-            # 注: SEGトークンは個別管理されているため、embed_tokensの特定インデックスのみ学習可能
-            elif "embed_tokens" in name and not self.lisa_config.freeze_seg_token:
+            # seg_token_embeddingは個別のパラメータとして管理されている
+            elif "seg_token_embedding" in name and not self.lisa_config.freeze_seg_token:
                 align_params.append({"params": param, "lr": self.config.seg_token_lr})
                 logger.debug(f"[Align] Added SEG token param: {name}")
             # 3. TextPromptProjector（Configに従う）
@@ -561,28 +623,48 @@ class MinimalTrainer:
                 # アライメントステージでは学習対象外
                 logger.debug(f"[Align] Skipped param: {name} (requires_grad={param.requires_grad})")
         
+        logger.info(f"アライメント用パラメータ検索完了: {total_params_checked}個のパラメータをチェック")
+        logger.info(f"アライメント対象パラメータ数: {len(align_params)}")
+        
         if not align_params:
             logger.warning("アライメント対象のパラメータがありません")
             return
         
+        logger.info("AdamWオプティマイザを作成中...")
         align_optimizer = torch.optim.AdamW(align_params)
+        logger.info("オプティマイザ作成完了")
         
         # データローダーのイテレータ
+        logger.info("データローダーのイテレータを作成中...")
         data_iter = iter(self.train_loader)
+        logger.info("イテレータ作成完了")
         
         # アライメント学習ループ
+        logger.info(f"アライメント学習ループ開始: {self.config.align_steps}ステップ")
         for step in range(self.config.align_steps):
+            if step % 50 == 0 and step > 0:  # 50ステップごとに進捗表示
+                logger.info(f"アライメントステップ {step}/{self.config.align_steps}")
+            
             # バッチ取得
             try:
+                if step == 0:
+                    logger.info("最初のバッチを取得中...")
                 batch = next(data_iter)
+                if step == 0:
+                    logger.info(f"バッチ取得成功: keys={list(batch.keys())}")
             except StopIteration:
+                logger.info("データローダーを再初期化")
                 data_iter = iter(self.train_loader)
                 batch = next(data_iter)
             
             # デバイスへ転送
+            if step == 0:
+                logger.info("デバイスへバッチデータを転送中...")
             for k, v in batch.items():
                 if isinstance(v, torch.Tensor):
                     batch[k] = v.to(self.device)
+            if step == 0:
+                logger.info("デバイス転送完了")
             
             # フォワードパス
             forward_kwargs = {
@@ -597,18 +679,48 @@ class MinimalTrainer:
             if 'image_grid_thw' in batch and batch['image_grid_thw'] is not None:
                 forward_kwargs['image_grid_thw'] = batch['image_grid_thw']
             
+            if step == 0:
+                logger.info("モデルのフォワードパスを実行中...")
+                logger.info(f"  input_ids shape: {batch['input_ids'].shape}")
+                logger.info(f"  pixel_values shape: {batch['pixel_values'].shape}")
+                if 'image_grid_thw' in batch and batch['image_grid_thw'] is not None:
+                    logger.info(f"  image_grid_thw: {batch['image_grid_thw']}")
+            
             outputs = self.model(**forward_kwargs)
             
+            if step == 0:
+                logger.info("フォワードパス完了")
+            
             # LLM埋め込みとSAM埋め込みを取得してMSEロスを計算
+            if step == 0:
+                logger.info("アライメント損失の計算開始...")
+            
             align_loss = torch.tensor(0.0, device=self.device)
             align_count = 0
             
-            if outputs.seg_token_positions is not None:
+            if step == 0:
+                logger.info(f"seg_token_positions: {outputs.seg_token_positions if hasattr(outputs, 'seg_token_positions') else 'Not found'}")
+            
+            if hasattr(outputs, 'seg_token_positions') and outputs.seg_token_positions is not None:
+                if step == 0:
+                    logger.info(f"seg_token_positions値: {outputs.seg_token_positions}")
+                
+                # language_hidden_statesを取得
+                if not hasattr(outputs, 'language_hidden_states'):
+                    if step == 0:
+                        logger.warning("outputs.language_hidden_statesが存在しません")
+                    continue
+                    
                 hidden_states = outputs.language_hidden_states
+                if step == 0:
+                    logger.info(f"hidden_states shape: {hidden_states.shape if hidden_states is not None else 'None'}")
                 
                 for i, seg_list in enumerate(outputs.seg_token_positions):
                     if len(seg_list) == 0:
                         continue
+                    
+                    if step == 0 and i == 0:
+                        logger.info(f"Sample {i}: SEGトークン位置 = {seg_list}")
                     
                     # 最初のSEGトークン位置のみ使用
                     j = seg_list[0]
@@ -630,6 +742,10 @@ class MinimalTrainer:
                     # 重心計算
                     orig_h = batch['pixel_values'].shape[-2] if batch['pixel_values'] is not None else 1024
                     orig_w = batch['pixel_values'].shape[-1] if batch['pixel_values'] is not None else 1024
+                    
+                    if step == 0 and i == 0:
+                        logger.info(f"マスク重心計算中...")
+                    
                     center = self.model.compute_mask_centroid(gt_mask, orig_h, orig_w)
                     cx, cy = int(center[0].item()), int(center[1].item())
                     
@@ -653,16 +769,33 @@ class MinimalTrainer:
                     align_loss += torch.nn.functional.mse_loss(e_llm.float(), e_pos.float())
                     align_count += 1
             
+            if step == 0:
+                logger.info(f"アライメント損失計算完了: align_count={align_count}")
+            
             if align_count > 0:
                 align_loss = align_loss / align_count
+                
+                if step == 0:
+                    logger.info(f"損失値: {align_loss.item():.6f}")
+                    logger.info("逆伝播開始...")
                 
                 # 逆伝播と最適化
                 align_optimizer.zero_grad()
                 align_loss.backward()
+                
+                if step == 0:
+                    logger.info("逆伝播完了、最適化ステップ実行...")
+                    
                 align_optimizer.step()
                 
-                if (step + 1) % 100 == 0:
+                if step == 0:
+                    logger.info("最適化ステップ完了")
+                
+                if (step + 1) % 10 == 0:  # 10ステップごとに表示（100から変更）
                     logger.info(f"[Align Stage] Step {step+1}/{self.config.align_steps}, align_loss={align_loss.item():.6f}")
+            else:
+                if step == 0:
+                    logger.warning(f"アライメント損失が計算されませんでした (align_count=0)")
         
         # モデル全体の勾配をリセット
         self.model.zero_grad(set_to_none=True)
