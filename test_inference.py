@@ -200,10 +200,28 @@ class InferenceRunner:
     def run_inference(self, image: Image.Image, prompt: str) -> Dict:
         """単一画像に対して推論を実行"""
         
-        # 画像を前処理
+        # Qwen2.5-VL用のメッセージフォーマットを作成
+        messages = [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "image", "image": image},
+                    {"type": "text", "text": prompt}
+                ]
+            }
+        ]
+        
+        # プロセッサで処理（画像トークンも含まれる）
+        text = self.processor.apply_chat_template(
+            messages,
+            tokenize=False,
+            add_generation_prompt=True
+        )
+        
+        # 画像とテキストを一緒に処理
         inputs = self.processor(
-            text=prompt,
-            images=image,
+            text=[text],
+            images=[image],
             return_tensors="pt",
             padding=True
         ).to(self.device)
@@ -221,15 +239,6 @@ class InferenceRunner:
                 image_grid_thw = torch.tensor([[1, patch_h, patch_w]], dtype=torch.long).to(self.device)
             else:
                 image_grid_thw = None
-        
-        # トークナイズ
-        text_inputs = self.tokenizer(
-            prompt,
-            return_tensors="pt",
-            padding=True,
-            truncation=True,
-            max_length=512
-        ).to(self.device)
         
         # SAM用の高解像度画像を準備
         sam_image = np.array(image.resize((1024, 1024)))

@@ -811,6 +811,7 @@ class LISA_Model(nn.Module):
         Returns:
             Model outputs including language logits and mask predictions
         """
+        logger.debug(f"[FORWARD START] input_ids shape: {input_ids.shape}, seg_token_id: {self.seg_token_id}")
         B = input_ids.size(0)
         
         # Update SEG token embedding in the frozen embedding layer before forward pass
@@ -849,7 +850,8 @@ class LISA_Model(nn.Module):
             # Transform to SAM format using adapter
             image_features_sam = self.image_adapter(vision_features, image_grid_thw)  # [B, 256, H, W]
             
-            # Generate high-res features using Token-FPN or simple generator
+                        # Generate high-res features using Token-FPN or simple generator
+            logger.debug(f"[HIGH RES] use_token_fpn = {self.use_token_fpn}")
             if self.use_token_fpn:
                 # Token-FPNを使用してマルチスケール特徴を生成
                 image_features_sam_fpn, sam_high_res_features = self.token_fpn(
@@ -872,6 +874,7 @@ class LISA_Model(nn.Module):
         
         # Check if seg_token_id is set
         if self.seg_token_id is None:
+            logger.warning("[FORWARD] seg_token_id is None!")
             return LISAModelOutput(logits=logits, mask_logits=mask_logits, seg_token_positions=seg_positions)
         
         # Determine SEG positions based on labels (training) or generated tokens (inference)
@@ -884,17 +887,24 @@ class LISA_Model(nn.Module):
                 else:
                     seg_positions.append([])
         else:
-            # Inference: find SEG tokens in input_ids
+                        # Inference: find SEG tokens in input_ids
             for i in range(B):
                 seg_pos = (input_ids[i] == self.seg_token_id).nonzero(as_tuple=True)[0]
+                logger.debug(f"[SEG SEARCH] Batch {i}: Found {len(seg_pos)} SEG tokens at positions {seg_pos.tolist() if len(seg_pos) > 0 else []}")
                 if len(seg_pos) > 0:
                     seg_positions.append(seg_pos.tolist())
                 else:
                     seg_positions.append([])
         
-        # 4. Generate masks for each SEG position using proper SAM2.1 implementation
+                        # 4. Generate masks for each SEG position using proper SAM2.1 implementation
+        logger.debug(f"[MASK GEN] Total seg_positions: {seg_positions}")
+        logger.debug(f"[MASK GEN] Total batches: {B}")
         for i in range(B):
             sample_masks = []
+            
+            # Debug: Log seg_positions for this batch
+            logger.debug(f"[MASK GEN] Batch {i}: seg_positions = {seg_positions[i]}")
+            logger.debug(f"[MASK GEN] image_features_sam shape: {image_features_sam.shape if image_features_sam is not None else 'None'}")
             
             if len(seg_positions[i]) > 0 and image_features_sam is not None and i < image_features_sam.shape[0]:
                 # Extract hidden states at SEG positions
@@ -906,8 +916,10 @@ class LISA_Model(nn.Module):
                 else:
                     prompt_embeds = self.text_prompt_proj(seg_hidden_states)  # [num_segs, 256]
                 
-                # Generate mask for each SEG token
+                                # Generate mask for each SEG token
+                logger.debug(f"[MASK GEN] Batch {i}: Processing {len(seg_positions[i])} SEG tokens")
                 for j, prompt_embed in enumerate(prompt_embeds if len(seg_positions[i]) > 1 else [prompt_embeds]):
+                    logger.debug(f"[MASK GEN] Batch {i}, SEG {j}: Starting mask generation")
                     try:
                         # Get positional encoding from SAM prompt encoder
                         image_pe = self.sam_prompt_encoder.get_dense_pe()
@@ -1056,6 +1068,9 @@ class LISA_Model(nn.Module):
                         sample_masks.append(mask_logit.squeeze(0))  # Remove batch dim
                             
                     except Exception as e:
+                        logger.error(f"SAM2.1 mask generation failed with error: {e}")
+                        import traceback
+                        traceback.print_exc()
                         print(f"Warning: SAM2.1 mask generation failed with error: {e}")
                         import traceback
                         print(f"Traceback: {traceback.format_exc()}")
@@ -1329,30 +1344,252 @@ class LISA_Model(nn.Module):
         }
     
     def save_pretrained(self, save_directory: str):
-        """Save model components"""
+        """Save all model components and trainable parameters"""
         import os
         os.makedirs(save_directory, exist_ok=True)
         
-        # Save config
+        logger.info(f"Saving model to {save_directory}")
+        
+        # 1. Save config
         torch.save(self.config, os.path.join(save_directory, "config.pt"))
         
-        # Save adapter weights
+        # 2. Save all adapter components (always trainable in our setup)
+        # Image Adapter
         torch.save(self.image_adapter.state_dict(), 
                   os.path.join(save_directory, "image_adapter.pt"))
+        logger.info(f"Saved image_adapter: {sum(p.numel() for p in self.image_adapter.parameters())} params")
+        
+        # Text Prompt Projector
         torch.save(self.text_prompt_proj.state_dict(), 
                   os.path.join(save_directory, "text_prompt_proj.pt"))
+        logger.info(f"Saved text_prompt_proj: {sum(p.numel() for p in self.text_prompt_proj.parameters())} params")
         
-        # Save high-res feature generator (Token-FPN or simple generator)
+        # Token-FPN or High-res Generator
         if self.use_token_fpn:
             torch.save(self.token_fpn.state_dict(),
                       os.path.join(save_directory, "token_fpn.pt"))
+            logger.info(f"Saved token_fpn: {sum(p.numel() for p in self.token_fpn.parameters())} params")
         else:
             torch.save(self.high_res_generator.state_dict(),
                       os.path.join(save_directory, "high_res_generator.pt"))
+            logger.info(f"Saved high_res_generator: {sum(p.numel() for p in self.high_res_generator.parameters())} params")
         
-        # Save Qwen if modified (e.g., with LoRA or new embeddings)
-        if not self.config.freeze_qwen_base or not self.config.freeze_seg_token:
+        # 3. Save trainable special parameters
+        # Prompt Beta (residual addition scaling)
+        torch.save({'prompt_beta': self.prompt_beta.data}, 
+                  os.path.join(save_directory, "prompt_beta.pt"))
+        logger.info(f"Saved prompt_beta: {self.prompt_beta.data.item()}")
+        
+        # SEG Token Embedding (if trainable)
+        if hasattr(self, 'seg_token_embedding') and self.seg_token_embedding is not None:
+            torch.save({
+                'seg_token_embedding': self.seg_token_embedding.data,
+                'seg_token_id': self.seg_token_id
+            }, os.path.join(save_directory, "seg_token_embedding.pt"))
+            logger.info(f"Saved SEG token embedding for ID {self.seg_token_id}")
+        
+        # 4. Save SAM components
+        # SAM LoRA weights (if enabled)
+        if self.config.sam_lora_r > 0 and self.config.freeze_sam_mask_decoder_base:
+            sam_lora_state = {}
+            for name, param in self.sam_mask_decoder.named_parameters():
+                if 'lora_' in name and param.requires_grad:
+                    sam_lora_state[name] = param.data
+            if sam_lora_state:
+                torch.save(sam_lora_state, 
+                          os.path.join(save_directory, "sam_lora.pt"))
+                logger.info(f"Saved SAM LoRA: {len(sam_lora_state)} modules, {sum(p.numel() for p in sam_lora_state.values())} params")
+        
+        # If SAM MaskDecoder is not frozen (trained directly)
+        elif not self.config.freeze_sam_mask_decoder_base:
+            torch.save(self.sam_mask_decoder.state_dict(),
+                      os.path.join(save_directory, "sam_mask_decoder.pt"))
+            logger.info(f"Saved full SAM MaskDecoder: {sum(p.numel() for p in self.sam_mask_decoder.parameters())} params")
+        
+        # 5. Save Qwen components
+        # Qwen LoRA (if enabled)
+        if not self.config.freeze_qwen_lora and self.config.lora_r > 0:
+            # Save using PEFT's save_pretrained method
+            os.makedirs(os.path.join(save_directory, "qwen"), exist_ok=True)
+            try:
+                # For PEFT models
+                self.qwen.save_pretrained(os.path.join(save_directory, "qwen"))
+                logger.info(f"Saved Qwen LoRA adapter")
+            except Exception as e:
+                # Fallback: manually save LoRA weights
+                logger.warning(f"PEFT save failed: {e}, trying manual save")
+                qwen_lora_state = {}
+                for name, param in self.qwen.named_parameters():
+                    if 'lora_' in name and param.requires_grad:
+                        qwen_lora_state[name] = param.data
+                if qwen_lora_state:
+                    torch.save(qwen_lora_state,
+                              os.path.join(save_directory, "qwen", "lora_weights.pt"))
+                    logger.info(f"Saved Qwen LoRA manually: {len(qwen_lora_state)} modules")
+        
+        # If Qwen base is not frozen (unlikely but possible)
+        elif not self.config.freeze_qwen_base:
             self.qwen.save_pretrained(os.path.join(save_directory, "qwen"))
+            logger.info(f"Saved full Qwen model")
+        
+        # 6. Create a metadata file for easy loading
+        metadata = {
+            'model_type': 'LISA_Model',
+            'config_class': 'LISAConfig',
+            'use_token_fpn': self.use_token_fpn,
+            'has_seg_token_embedding': hasattr(self, 'seg_token_embedding') and self.seg_token_embedding is not None,
+            'has_sam_lora': self.config.sam_lora_r > 0 and self.config.freeze_sam_mask_decoder_base,
+            'has_qwen_lora': not self.config.freeze_qwen_lora and self.config.lora_r > 0,
+            'seg_token_id': self.seg_token_id if hasattr(self, 'seg_token_id') else None,
+        }
+        torch.save(metadata, os.path.join(save_directory, "metadata.pt"))
+        
+        logger.info(f"Model saved successfully to {save_directory}")
+
+    @classmethod
+    def load_pretrained(cls, load_directory: str, device='cuda', **kwargs):
+        """Load model from saved checkpoint
+        
+        Args:
+            load_directory: Directory containing saved model
+            device: Device to load model on
+            **kwargs: Additional arguments to override config
+        
+        Returns:
+            Loaded LISA_Model instance
+        """
+        import os
+        from pathlib import Path
+        
+        load_dir = Path(load_directory)
+        logger.info(f"Loading model from {load_dir}")
+        
+        # 1. Load config
+        config_path = load_dir / "config.pt"
+        if not config_path.exists():
+            raise FileNotFoundError(f"Config file not found: {config_path}")
+        
+        config = torch.load(config_path, map_location=device, weights_only=False)
+        
+        # Override config with kwargs
+        for key, value in kwargs.items():
+            if hasattr(config, key):
+                setattr(config, key, value)
+        
+        # 2. Load metadata if exists
+        metadata_path = load_dir / "metadata.pt"
+        metadata = {}
+        if metadata_path.exists():
+            metadata = torch.load(metadata_path, map_location=device, weights_only=False)
+            logger.info(f"Loaded metadata: {metadata}")
+        
+        # 3. Initialize model
+        model = cls(config=config)
+        
+        # 4. Load adapter components
+        # Image Adapter
+        image_adapter_path = load_dir / "image_adapter.pt"
+        if image_adapter_path.exists():
+            state_dict = torch.load(image_adapter_path, map_location=device, weights_only=True)
+            model.image_adapter.load_state_dict(state_dict)
+            logger.info(f"Loaded image_adapter")
+        
+        # Text Prompt Projector
+        text_prompt_proj_path = load_dir / "text_prompt_proj.pt"
+        if text_prompt_proj_path.exists():
+            state_dict = torch.load(text_prompt_proj_path, map_location=device, weights_only=True)
+            model.text_prompt_proj.load_state_dict(state_dict)
+            logger.info(f"Loaded text_prompt_proj")
+        
+        # Token-FPN or High-res Generator
+        token_fpn_path = load_dir / "token_fpn.pt"
+        high_res_gen_path = load_dir / "high_res_generator.pt"
+        
+        if token_fpn_path.exists():
+            state_dict = torch.load(token_fpn_path, map_location=device, weights_only=True)
+            model.token_fpn.load_state_dict(state_dict)
+            logger.info(f"Loaded token_fpn")
+        elif high_res_gen_path.exists():
+            state_dict = torch.load(high_res_gen_path, map_location=device, weights_only=True)
+            model.high_res_generator.load_state_dict(state_dict)
+            logger.info(f"Loaded high_res_generator")
+        
+        # 5. Load special parameters
+        # Prompt Beta
+        prompt_beta_path = load_dir / "prompt_beta.pt"
+        if prompt_beta_path.exists():
+            state = torch.load(prompt_beta_path, map_location=device, weights_only=False)
+            if 'prompt_beta' in state:
+                model.prompt_beta.data = state['prompt_beta'].to(device)
+                logger.info(f"Loaded prompt_beta: {state['prompt_beta'].item()}")
+        
+        # SEG Token Embedding
+        seg_embedding_path = load_dir / "seg_token_embedding.pt"
+        if seg_embedding_path.exists():
+            state = torch.load(seg_embedding_path, map_location=device, weights_only=False)
+            if 'seg_token_embedding' in state:
+                model.seg_token_embedding = nn.Parameter(state['seg_token_embedding'].to(device))
+                if 'seg_token_id' in state:
+                    model.seg_token_id = state['seg_token_id']
+                logger.info(f"Loaded SEG token embedding for ID {model.seg_token_id}")
+        
+        # 6. Load SAM components
+        # SAM LoRA
+        sam_lora_path = load_dir / "sam_lora.pt"
+        sam_mask_decoder_path = load_dir / "sam_mask_decoder.pt"
+        
+        if sam_lora_path.exists():
+            sam_lora_state = torch.load(sam_lora_path, map_location=device, weights_only=True)
+            # Apply LoRA weights
+            for name, param in model.sam_mask_decoder.named_parameters():
+                if name in sam_lora_state:
+                    param.data = sam_lora_state[name].to(device)
+            logger.info(f"Loaded SAM LoRA: {len(sam_lora_state)} modules")
+        elif sam_mask_decoder_path.exists():
+            # Load full MaskDecoder
+            state_dict = torch.load(sam_mask_decoder_path, map_location=device, weights_only=True)
+            model.sam_mask_decoder.load_state_dict(state_dict)
+            logger.info(f"Loaded full SAM MaskDecoder")
+        
+        # 7. Load Qwen components
+        qwen_dir = load_dir / "qwen"
+        if qwen_dir.exists():
+            # Check if it's LoRA or full model
+            adapter_config_path = qwen_dir / "adapter_config.json"
+            lora_weights_path = qwen_dir / "lora_weights.pt"
+            
+            if adapter_config_path.exists():
+                # Load PEFT LoRA adapter
+                try:
+                    from peft import PeftModel
+                    model.qwen = PeftModel.from_pretrained(model.qwen, str(qwen_dir))
+                    logger.info(f"Loaded Qwen LoRA adapter")
+                except Exception as e:
+                    logger.warning(f"Failed to load PEFT adapter: {e}")
+                    # Try alternative loading
+                    if lora_weights_path.exists():
+                        lora_state = torch.load(lora_weights_path, map_location=device, weights_only=True)
+                        for name, param in model.qwen.named_parameters():
+                            if name in lora_state:
+                                param.data = lora_state[name].to(device)
+                        logger.info(f"Loaded Qwen LoRA manually")
+            elif lora_weights_path.exists():
+                # Load manual LoRA weights
+                lora_state = torch.load(lora_weights_path, map_location=device, weights_only=True)
+                for name, param in model.qwen.named_parameters():
+                    if name in lora_state:
+                        param.data = lora_state[name].to(device)
+                logger.info(f"Loaded Qwen LoRA weights")
+            else:
+                # Load full Qwen model
+                from transformers import Qwen2_5_VLForConditionalGeneration
+                model.qwen = Qwen2_5_VLForConditionalGeneration.from_pretrained(str(qwen_dir))
+                logger.info(f"Loaded full Qwen model")
+        
+        model.to(device)
+        logger.info(f"Model loaded successfully from {load_dir}")
+        
+        return model
     
     @classmethod
     def from_pretrained(cls, load_directory: str, **kwargs):

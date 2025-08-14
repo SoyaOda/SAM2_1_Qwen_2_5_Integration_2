@@ -1168,23 +1168,304 @@ class MinimalTrainer:
             logger.warning(f"Failed to save visualization at step {step}: {e}")
     
     def save_checkpoint(self, name="best"):
-        """チェックポイントの保存"""
-        save_path = self.checkpoint_dir / name
-        save_path.mkdir(exist_ok=True)
+        """チェックポイントの保存（新しいcheckpoint_io使用）"""
+        from src.utils.checkpoint_io import save_lisa_checkpoint, build_checkpoint_dir
         
-        # モデルとトークナイザーの保存
-        self.model.save_pretrained(str(save_path))
-        self.tokenizer.save_pretrained(str(save_path))
+        # チェックポイントディレクトリを構築
+        if name == "best" or name == "final":
+            # best/finalは既存のディレクトリ構造を使用
+            save_path = self.checkpoint_dir / name
+        else:
+            # それ以外（epoch_X, step_X）も既存構造を維持
+            save_path = self.checkpoint_dir / name
         
-        # 訓練状態の保存
-        torch.save({
-            'global_step': self.global_step,
-            'optimizer_state_dict': self.optimizer.state_dict(),
-            'scheduler_state_dict': self.scheduler.state_dict(),
-            'best_loss': self.best_loss,
-        }, save_path / 'training_state.pt')
+        # 新しい保存関数を使用
+        save_lisa_checkpoint(
+            checkpoint_dir=str(save_path),
+            model=self.model,
+            processor=self.processor,
+            config=self.lisa_config,
+            optimizer=self.optimizer,
+            scheduler=self.scheduler,
+            scaler=None,  # AMPを使用していない場合
+            global_step=self.global_step,
+            best_loss=self.best_loss,
+            epoch=getattr(self, 'current_epoch', 0),
+            additional_info={
+                'save_name': name,
+                'total_steps': getattr(self, 'total_steps', self.global_step),
+                'learning_rate': self.scheduler.get_last_lr()[0] if self.scheduler else getattr(self.config, 'learning_rate', 1e-4),
+            }
+        )
         
-        logger.info(f"チェックポイント保存: {save_path}")
+        logger.info(f"チェックポイント保存完了: {save_path}")
+        
+        # チェックポイント保存時に推論評価を実行（フラグがTrueの場合）
+        if getattr(self.config, 'run_inference_eval', False):
+            try:
+                self.run_inference_evaluation(save_path, name)
+            except Exception as e:
+                logger.warning(f"推論評価の実行に失敗: {e}")
+    
+    def run_inference_evaluation(self, checkpoint_path, checkpoint_name):
+        """チェックポイント保存時に推論評価を実行
+        
+        test_inference_v2.pyと同じサンプル画像を使用して推論を実行し、
+        結果を可視化してチェックポイントディレクトリに保存します。
+        
+        Args:
+            checkpoint_path: チェックポイントのパス
+            checkpoint_name: チェックポイントの名前（best, final, step_X など）
+        
+        Note:
+            - --run_inference_eval フラグで有効化
+            - --inference_eval_samples でサンプル数を指定（デフォルト3、最大3）
+            - 結果は checkpoint_path/inference_results/ に保存
+            - 各ステップでの推論性能の変化を追跡可能
+        """
+        logger.info(f"🔍 チェックポイント {checkpoint_name} の推論評価を開始...")
+        
+        # 推論結果を保存するディレクトリ
+        inference_dir = checkpoint_path / "inference_results"
+        inference_dir.mkdir(exist_ok=True)
+        
+        # モデルを評価モードに
+        self.model.eval()
+        
+        # サンプル画像をダウンロードまたは使用
+        sample_images = self.get_sample_images_for_inference()
+        
+        results = []
+        with torch.no_grad():
+            for idx, img_data in enumerate(sample_images):
+                try:
+                    # 推論を実行
+                    result = self.run_single_inference(
+                        img_data['image'], 
+                        img_data['prompt']
+                    )
+                    
+                    # 結果を可視化して保存
+                    if result['mask'] is not None:
+                        self.visualize_inference_result(
+                            img_data['image'],
+                            result['mask'],
+                            img_data['name'],
+                            img_data['prompt'],
+                            inference_dir
+                        )
+                        
+                        # 統計情報を記録
+                        mask = result['mask']
+                        result_info = {
+                            "name": img_data['name'],
+                            "prompt": img_data['prompt'],
+                            "checkpoint": checkpoint_name,
+                            "global_step": self.global_step,
+                            "mask_min": float(mask.min()),
+                            "mask_max": float(mask.max()),
+                            "mask_mean": float(mask.mean()),
+                            "positive_pixels": int((mask > 0.5).sum()),
+                            "total_pixels": int(mask.size)
+                        }
+                        results.append(result_info)
+                        logger.info(f"  ✓ {img_data['name']}: mean={result_info['mask_mean']:.3f}, positive={result_info['positive_pixels']}/{result_info['total_pixels']}")
+                        
+                except Exception as e:
+                    logger.warning(f"  ✗ {img_data['name']}: 推論失敗 - {e}")
+                    continue
+        
+        # 結果をJSONで保存
+        if results:
+            results_path = inference_dir / "evaluation_results.json"
+            with open(results_path, 'w') as f:
+                json.dump(results, f, indent=2)
+            logger.info(f"  → 評価結果を保存: {results_path}")
+        
+        # モデルを訓練モードに戻す
+        self.model.train()
+        logger.info(f"✅ 推論評価完了: {len(results)}/{len(sample_images)} 成功")
+    
+    def get_sample_images_for_inference(self):
+        """推論評価用のサンプル画像を取得"""
+        import requests
+        from io import BytesIO
+        from PIL import Image
+        
+        # キャッシュディレクトリ
+        cache_dir = self.output_dir / "inference_cache"
+        cache_dir.mkdir(exist_ok=True)
+        
+        sample_images = [
+            {
+                "url": "https://raw.githubusercontent.com/facebookresearch/segment-anything/main/notebooks/images/truck.jpg",
+                "name": "truck",
+                "prompt": "Please segment the truck in the image."
+            },
+            {
+                "url": "https://raw.githubusercontent.com/facebookresearch/segment-anything/main/notebooks/images/groceries.jpg",
+                "name": "groceries",
+                "prompt": "Please segment the fruits on the table."
+            },
+            {
+                "url": "https://raw.githubusercontent.com/facebookresearch/segment-anything/main/notebooks/images/dog.jpg",
+                "name": "dog",
+                "prompt": "Please segment the dog in the image."
+            },
+        ]
+        
+        # サンプル数を制限
+        max_samples = getattr(self.config, 'inference_eval_samples', 3)
+        sample_images = sample_images[:max_samples]
+        
+        downloaded_images = []
+        for img_info in sample_images:
+            # キャッシュをチェック
+            cache_path = cache_dir / f"{img_info['name']}.jpg"
+            
+            try:
+                if cache_path.exists():
+                    # キャッシュから読み込み
+                    image = Image.open(cache_path).convert("RGB")
+                else:
+                    # ダウンロードしてキャッシュに保存
+                    response = requests.get(img_info["url"], timeout=10)
+                    response.raise_for_status()
+                    image = Image.open(BytesIO(response.content)).convert("RGB")
+                    image.save(cache_path)
+                
+                downloaded_images.append({
+                    "image": image,
+                    "name": img_info["name"],
+                    "prompt": img_info["prompt"]
+                })
+                
+            except Exception as e:
+                logger.warning(f"画像 {img_info['name']} の取得に失敗: {e}")
+                continue
+        
+        return downloaded_images
+    
+    def run_single_inference(self, image, prompt):
+        """単一画像に対する推論を実行（test_inference_v2.pyと同様）"""
+        from PIL import Image
+        import numpy as np
+        
+        # プロンプトに<SEG>トークンを追加
+        if self.lisa_config.seg_token not in prompt:
+            prompt = prompt + f" {self.lisa_config.seg_token}"
+        
+        # メッセージフォーマット
+        messages = [{
+            "role": "user",
+            "content": [
+                {"type": "image", "image": image},
+                {"type": "text", "text": prompt}
+            ]
+        }]
+        
+        # テキストプロンプトを生成
+        text_prompt = self.processor.apply_chat_template(
+            messages,
+            tokenize=False,
+            add_generation_prompt=True
+        )
+        
+        # 画像処理（qwen_vl_utilsを使用）
+        try:
+            from qwen_vl_utils import process_vision_info
+            image_inputs, video_inputs = process_vision_info(messages)
+        except ImportError:
+            # フォールバック
+            image_inputs = [image]
+            video_inputs = []
+        
+        # プロセッサで処理
+        if video_inputs:
+            inputs = self.processor(
+                text=[text_prompt],
+                images=image_inputs,
+                videos=video_inputs,
+                padding=True,
+                return_tensors="pt",
+                max_length=8192
+            ).to(self.device)
+        else:
+            inputs = self.processor(
+                text=[text_prompt],
+                images=image_inputs,
+                padding=True,
+                return_tensors="pt",
+                max_length=8192
+            ).to(self.device)
+        
+        # SAM用の高解像度画像を準備
+        sam_image = np.array(image.resize((1024, 1024)))
+        sam_image_tensor = torch.from_numpy(sam_image).permute(2, 0, 1).float() / 255.0
+        sam_image_tensor = sam_image_tensor.unsqueeze(0).to(self.device)
+        
+        # モデルのforward
+        outputs = self.model(
+            input_ids=inputs.input_ids,
+            attention_mask=inputs.attention_mask,
+            pixel_values=inputs.pixel_values if hasattr(inputs, 'pixel_values') else None,
+            image_grid_thw=inputs.image_grid_thw if hasattr(inputs, 'image_grid_thw') else None,
+            sam_images=sam_image_tensor,
+            labels=None,
+            mask_labels=None
+        )
+        
+        # マスクを取得
+        pred_mask = None
+        if hasattr(outputs, 'pred_masks') and outputs.pred_masks is not None:
+            pred_mask = outputs.pred_masks[0].cpu().numpy()
+        elif hasattr(outputs, 'mask_logits') and outputs.mask_logits is not None:
+            if len(outputs.mask_logits) > 0 and outputs.mask_logits[0] is not None:
+                mask_logit = outputs.mask_logits[0]
+                if isinstance(mask_logit, list):
+                    mask_logit = mask_logit[0]
+                pred_mask = torch.sigmoid(mask_logit).detach().cpu().numpy()
+                if pred_mask.ndim > 2:
+                    pred_mask = pred_mask.squeeze()
+        
+        if pred_mask is None:
+            pred_mask = np.zeros((image.height, image.width))
+        
+        return {
+            "mask": pred_mask,
+            "logits": outputs.logits if hasattr(outputs, 'logits') else None
+        }
+    
+    def visualize_inference_result(self, image, mask, name, prompt, output_dir):
+        """推論結果を可視化して保存"""
+        import matplotlib.pyplot as plt
+        import matplotlib.patches as mpatches
+        
+        fig, axes = plt.subplots(1, 3, figsize=(15, 5))
+        
+        # 元画像
+        axes[0].imshow(image)
+        axes[0].set_title("Original Image")
+        axes[0].axis('off')
+        
+        # セグメンテーションマスク
+        axes[1].imshow(mask, cmap='jet', alpha=0.7)
+        axes[1].set_title("Segmentation Mask")
+        axes[1].axis('off')
+        
+        # オーバーレイ
+        axes[2].imshow(image)
+        axes[2].imshow(mask, cmap='jet', alpha=0.5)
+        axes[2].set_title("Overlay")
+        axes[2].axis('off')
+        
+        # プロンプトを表示
+        fig.suptitle(f"Step {self.global_step}: {prompt[:50]}...", fontsize=10)
+        
+        # 保存
+        output_path = output_dir / f"{name}_step{self.global_step}.png"
+        plt.savefig(output_path, dpi=100, bbox_inches='tight')
+        plt.close()
     
     def plot_loss_history(self):
         """Loss履歴を可視化して保存"""
@@ -1364,6 +1645,10 @@ def main():
                        help='訓練中の可視化を有効化')
     parser.add_argument('--visualize_steps', type=int, default=5,
                        help='可視化の間隔（ステップ数）')
+    parser.add_argument('--run_inference_eval', action='store_true',
+                       help='チェックポイント保存時に推論評価を実行')
+    parser.add_argument('--inference_eval_samples', type=int, default=3,
+                       help='推論評価で使用するサンプル数（最大3）')
     
     args = parser.parse_args()
     
