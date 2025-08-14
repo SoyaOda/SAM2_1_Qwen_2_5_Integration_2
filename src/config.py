@@ -65,6 +65,7 @@ class LISAConfig:
     freeze_text_prompt_projector: bool = False  # LLM→SAM embedding projector (1.2M params) - False = trainable
     freeze_token_fpn: bool = False          # Multi-scale feature extractor (3.7M params) - False = trainable
     freeze_prompt_beta: bool = False        # Embedding fusion weight β (1 param) - False = trainable
+    freeze_image_fusion_beta: bool = False  # Image feature fusion weight β (1 param) - False = trainable
     
     # ---- Always Frozen Components ----
     # Qwen2.5-VL

@@ -358,11 +358,19 @@ class LISA_Model(nn.Module):
         
         # 加算アプローチ用の学習可能なスケーリング係数β
         self.prompt_beta = nn.Parameter(torch.tensor(0.01))
+        # 画像特徴融合用のスケーリング係数β（SAM ViT Sigma Add Fusion用）
+        self.image_fusion_beta = nn.Parameter(torch.zeros(1))
+        logger.info("Added image_fusion_beta parameter for SAM-Qwen feature fusion")
         
         # Freeze prompt_beta if specified
         if config.freeze_prompt_beta:
             self.prompt_beta.requires_grad = False
             logger.info("Froze Prompt Beta")
+        
+        # Freeze image_fusion_beta if specified
+        if hasattr(config, 'freeze_image_fusion_beta') and config.freeze_image_fusion_beta:
+            self.image_fusion_beta.requires_grad = False
+            logger.info("Froze Image Fusion Beta")
         
         # Store tokenizer and SEG token info
         self.tokenizer = tokenizer
@@ -837,7 +845,9 @@ class LISA_Model(nn.Module):
         vision_features = None
         image_features_sam = None
         sam_high_res_features = None
+        sam_image_embeddings = None
         
+        # 2.1 Extract Qwen vision features
         if pixel_values is not None:
             # Get vision features from Qwen
             vision_features = self.extract_vision_features(pixel_values, image_grid_thw)
@@ -849,24 +859,100 @@ class LISA_Model(nn.Module):
             
             # Transform to SAM format using adapter
             image_features_sam = self.image_adapter(vision_features, image_grid_thw)  # [B, 256, H, W]
+        
+        # 2.2 Extract SAM vision features if sam_images provided
+        if sam_images is not None:
+            logger.debug(f"[SAM ViT] Processing SAM images with shape: {sam_images.shape}")
+            # SAM2.1のImageEncoderに高解像度画像を入力し、特徴マップを取得
+            # 期待される入力: [B, 3, 1024, 1024]
+            # 期待される出力: [B, 256, 64, 64]
+            with torch.no_grad():  # SAM ImageEncoderは凍結されている
+                # SAM ImageEncoderを通して特徴抽出
+                # 注: SAM2のimage_encoderは直接呼び出すと backbone_out を返す
+                backbone_out = self.sam_image_encoder(sam_images)
+                
+                # SAM2の_prepare_backbone_features相当の処理が必要
+                # backbone_outは通常dict形式でキー'vision_features'と'vision_pos_enc'を含む
+                if isinstance(backbone_out, dict):
+                    sam_image_embeddings = backbone_out.get('vision_features', backbone_out.get('image_embeddings'))
+                    # 位置埋め込みも取得できる（必要なら）
+                    # sam_pos_embeddings = backbone_out.get('vision_pos_enc', None)
+                else:
+                    # 直接テンソルが返る場合
+                    sam_image_embeddings = backbone_out
+                
+                logger.debug(f"[SAM ViT] Extracted SAM embeddings shape: {sam_image_embeddings.shape if sam_image_embeddings is not None else 'None'}")
+        
+        # 2.3 Fuse Qwen and SAM features
+        if sam_image_embeddings is not None and image_features_sam is not None:
+            logger.debug(f"[FUSION] Fusing Qwen features {image_features_sam.shape} with SAM features {sam_image_embeddings.shape}")
             
-                        # Generate high-res features using Token-FPN or simple generator
+            # 空間解像度を合わせる
+            # SAM特徴は通常64x64、Qwen特徴は可変
+            if image_features_sam.shape[-2:] != sam_image_embeddings.shape[-2:]:
+                # Qwen特徴をSAM特徴と同じ解像度にリサイズ
+                image_features_sam_resized = F.interpolate(
+                    image_features_sam,
+                    size=sam_image_embeddings.shape[-2:],
+                    mode='bilinear',
+                    align_corners=False
+                )
+                logger.debug(f"[FUSION] Resized Qwen features to {image_features_sam_resized.shape}")
+            else:
+                image_features_sam_resized = image_features_sam
+            
+            # β係数を0〜1に正規化
+            beta_scaled = torch.sigmoid(self.image_fusion_beta)
+            logger.debug(f"[FUSION] Using image_fusion_beta={self.image_fusion_beta.item():.4f}, scaled={beta_scaled.item():.4f}")
+            
+            # SAM特徴にQwen特徴を加算融合
+            # SAMの特徴をベースに、Qwen特徴をβでスケーリングして加算
+            fused_image_embeddings = sam_image_embeddings + beta_scaled * image_features_sam_resized
+            logger.debug(f"[FUSION] Created fused embeddings with shape: {fused_image_embeddings.shape}")
+            
+            # 融合後の特徴を使用
+            image_features_sam = fused_image_embeddings
+        elif sam_image_embeddings is not None:
+            # SAM特徴のみ使用
+            logger.debug("[FUSION] Using only SAM features (no Qwen features)")
+            image_features_sam = sam_image_embeddings
+        # else: Qwen特徴のみ使用（既存のimage_features_samをそのまま使用）
+        
+        # 2.4 Generate high-resolution features from (potentially fused) features
+        if image_features_sam is not None:
+            logger.debug(f"[HIGH RES] Generating high-res features from embeddings shape: {image_features_sam.shape}")
             logger.debug(f"[HIGH RES] use_token_fpn = {self.use_token_fpn}")
+            
             if self.use_token_fpn:
                 # Token-FPNを使用してマルチスケール特徴を生成
-                image_features_sam_fpn, sam_high_res_features = self.token_fpn(
-                    image_features_sam,
-                    image_grid_thw=image_grid_thw,
-                    use_hooks=True  # フックから中間特徴を使用
-                )
-                # FPNから得た特徴をSAM用に使用
-                image_features_sam = image_features_sam_fpn
+                # 注: 融合後の特徴に対してToken-FPNを適用
+                if sam_image_embeddings is not None:
+                    # 融合後の特徴から高解像度特徴を再生成
+                    # Token-FPNのアップサンプラを直接使用
+                    sam_dtype = next(self.sam_mask_decoder.parameters()).dtype
+                    device = image_features_sam.device
+                    
+                    # 融合特徴から高解像度特徴を生成
+                    # Token-FPNは既にQwen特徴用に初期化されているため、
+                    # 融合特徴に対しても適用可能
+                    feat_s1 = self.token_fpn.upsample_s1(image_features_sam.to(dtype=sam_dtype))  # stride-8 [B,256,128,128]
+                    feat_s0 = self.token_fpn.upsample_s0(image_features_sam.to(dtype=sam_dtype))  # stride-4 [B,256,256,256]
+                    sam_high_res_features = [feat_s0, feat_s1]
+                    logger.debug(f"[HIGH RES] Generated fused high-res features: s0={feat_s0.shape}, s1={feat_s1.shape}")
+                else:
+                    # 融合なしの場合は通常のToken-FPN処理
+                    image_features_sam_fpn, sam_high_res_features = self.token_fpn(
+                        image_features_sam,
+                        image_grid_thw=image_grid_thw,
+                        use_hooks=True  # フックから中間特徴を使用
+                    )
+                    # FPNから得た特徴をSAM用に使用
+                    image_features_sam = image_features_sam_fpn
             else:
                 # 従来のHighResFeatureGeneratorを使用
+                # 融合後の特徴に対して適用
                 sam_high_res_features = self.high_res_generator(image_features_sam)
-            
-            # High-res features are now generated from Qwen vision features
-            # using the HighResFeatureGenerator - no need for SAM2.1's native extraction
+                logger.debug(f"[HIGH RES] Generated high-res features using HighResFeatureGenerator")
         
         # 3. Find SEG token positions and generate masks
         mask_logits = []
@@ -1380,6 +1466,11 @@ class LISA_Model(nn.Module):
                   os.path.join(save_directory, "prompt_beta.pt"))
         logger.info(f"Saved prompt_beta: {self.prompt_beta.data.item()}")
         
+        # Image Fusion Beta (SAM-Qwen feature fusion scaling)
+        torch.save({'image_fusion_beta': self.image_fusion_beta.data}, 
+                  os.path.join(save_directory, "image_fusion_beta.pt"))
+        logger.info(f"Saved image_fusion_beta: {self.image_fusion_beta.data.item()}")
+        
         # SEG Token Embedding (if trainable)
         if hasattr(self, 'seg_token_embedding') and self.seg_token_embedding is not None:
             torch.save({
@@ -1522,6 +1613,14 @@ class LISA_Model(nn.Module):
             if 'prompt_beta' in state:
                 model.prompt_beta.data = state['prompt_beta'].to(device)
                 logger.info(f"Loaded prompt_beta: {state['prompt_beta'].item()}")
+        
+        # Image Fusion Beta
+        image_fusion_beta_path = load_dir / "image_fusion_beta.pt"
+        if image_fusion_beta_path.exists():
+            state = torch.load(image_fusion_beta_path, map_location=device, weights_only=False)
+            if 'image_fusion_beta' in state:
+                model.image_fusion_beta.data = state['image_fusion_beta'].to(device)
+                logger.info(f"Loaded image_fusion_beta: {state['image_fusion_beta'].item()}")
         
         # SEG Token Embedding
         seg_embedding_path = load_dir / "seg_token_embedding.pt"
