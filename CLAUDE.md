@@ -37,8 +37,8 @@ FoodLMM改や最終目標モデルは将来的な目標なので、一旦は事�
 
 [命令]
 上記の方針で実装を進めてきた。
-事前タスク：詳細はminimal_train.py（学習Script）, test_inference_v2.py（推論Script）とその関連ファイルを全て読んで統合モデルの詳細を把握して。
-本番タスク：md_files/current/sam_vit_sigma_add_fusion20250814.mdを参考にして実装を進めて
+事前タスク：詳細はminimal_train.py（学習Script）, test_inference_v2.py（推論Script）とその関連ファイル、md_files/current/sam_vit_sigma_add_fusion20250814.mdを全て読んで統合モデルの詳細を把握して。
+本番タスク：現状md_files/current/sam_vit_sigma_add_fusion20250814.mdの実装が終わったところである。SAM2.1のViTの統合方法として、sigma_add_fusionの代わりに、Cross Attentionを用いた統合方法も選べるようにしたい。md_files/current/sam_vit_cross_attention20250814.mdを参考に実装を進めていって。
 
 
 ※作業の途中で不適切なコードや冗長なコードを発見したら報告して修正すること。
