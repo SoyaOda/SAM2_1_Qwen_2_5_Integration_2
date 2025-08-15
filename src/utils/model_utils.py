@@ -21,6 +21,11 @@ def display_parameter_statistics(model, logger_name=None):
     else:
         log = logger
     
+    # fusion_typeを取得（モデルから）
+    fusion_type = getattr(model, 'fusion_type', None)
+    if fusion_type is None and hasattr(model, 'config'):
+        fusion_type = getattr(model.config, 'fusion_type', None)
+    
     # カテゴリ別にパラメータを分類（configの命名と完全一致）
     categories = defaultdict(lambda: {'total': 0, 'trainable': 0, 'params': []})
     
@@ -34,7 +39,11 @@ def display_parameter_statistics(model, logger_name=None):
             category = 'Token-FPN (freeze_token_fpn)'
         elif 'qwen' in name:
             if 'lora_A' in name or 'lora_B' in name:
-                category = 'Qwen LoRA (freeze_qwen_lora)'
+                # Check if it's Visual ViT LoRA or Language LoRA
+                if 'visual.blocks' in name:
+                    category = 'Qwen Visual ViT LoRA'
+                else:
+                    category = 'Qwen Language LoRA (freeze_qwen_lora)'
             elif ('word_embeddings' in name or 'embed_tokens' in name):
                 # embedding層全体がtrainableかどうかをチェック
                 if is_trainable:
@@ -107,10 +116,34 @@ def display_parameter_statistics(model, logger_name=None):
             category = 'Text Prompt Projector (freeze_text_prompt_projector)'
         elif 'prompt_beta' in name:
             category = 'Prompt Beta (freeze_prompt_beta)'
+        elif 'image_fusion_beta' in name:
+            # Sigma-Add fusionのbetaパラメータ
+            if fusion_type == 'sigma_add':
+                category = 'Image Fusion β (Sigma-Add)'
+            else:
+                category = 'Image Fusion β (unused)'
+        elif 'image_fusion' in name:
+            # Cross-Attention fusionモジュール
+            if fusion_type == 'cross_attention':
+                if 'cross_attention' in name or 'attention' in name:
+                    category = 'Cross-Attention Fusion'
+                elif 'gate' in name:
+                    category = 'Cross-Attention Gate'
+                else:
+                    category = 'Cross-Attention Fusion'
+            else:
+                # Sigma-Add fusionの場合、image_fusionモジュールは使用されない
+                category = 'Cross-Attention (unused)'
         elif 'seg_token_embedding' in name:
             category = 'SEG Token (freeze_seg_token)'
         else:
-            category = 'Other'
+            # 未分類のパラメータ - デバッグログを出力
+            category = 'Unknown'
+            if is_trainable:
+                log.warning(f"Unknown trainable parameter detected: name='{name}', shape={param.shape}, numel={numel}")
+                log.warning(f"  → This parameter should be properly categorized in model_utils.py")
+            else:
+                log.debug(f"Unknown frozen parameter: name='{name}', shape={param.shape}, numel={numel}")
         
         # 通常の集計
         categories[category]['total'] += numel

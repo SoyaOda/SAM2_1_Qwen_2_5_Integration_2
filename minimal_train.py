@@ -81,127 +81,22 @@ class MinimalTrainer:
         with open(self.output_dir / "config.json", 'w') as f:
             json.dump(vars(config), f, indent=2)
     
-    def display_parameter_statistics(self):
-        """パラメータ統計の詳細表示"""
-        from collections import defaultdict
-        
-        # カテゴリ別にパラメータを分類
-        categories = defaultdict(lambda: {'total': 0, 'trainable': 0, 'params': []})
-        
-        for name, param in self.model.named_parameters():
-            numel = param.numel()
-            is_trainable = param.requires_grad
-            
-            # カテゴリ分類
-            if 'qwen' in name:
-                if 'lora_A' in name or 'lora_B' in name:
-                    category = 'Qwen LoRA'
-                elif 'word_embeddings' in name or 'embed_tokens' in name:
-                    if is_trainable:
-                        category = 'SEG Token Embedding'
-                    else:
-                        category = 'Qwen Base (frozen)'
-                else:
-                    category = 'Qwen Base (frozen)'
-            elif 'sam' in name or 'sam_model' in name:
-                if 'lora' in name.lower():
-                    category = 'SAM LoRA'
-                elif 'mask_decoder' in name:
-                    category = 'SAM MaskDecoder'
-                elif 'prompt_encoder' in name:
-                    category = 'SAM PromptEncoder'
-                elif 'image_encoder' in name:
-                    if 'neck' in name:
-                        category = 'SAM Neck (FPN)'
-                    else:
-                        category = 'SAM ImageEncoder'
-                else:
-                    category = 'SAM Other'
-            elif 'image_adapter' in name:
-                category = 'Image Adapter'
-            elif 'text_prompt_proj' in name or 'prompt_proj' in name:
-                category = 'Text Prompt Projector'
-            elif 'prompt_beta' in name:
-                category = 'Prompt Beta'
-            elif 'fpn' in name or 'token_fpn' in name:
-                category = 'Token-FPN'
-            else:
-                category = 'Other'
-            
-            categories[category]['total'] += numel
-            if is_trainable:
-                categories[category]['trainable'] += numel
-            categories[category]['params'].append((name, numel, is_trainable))
-        
-        # 全体統計
-        total_all = sum(cat['total'] for cat in categories.values())
-        trainable_all = sum(cat['trainable'] for cat in categories.values())
-        frozen_all = total_all - trainable_all
-        
-        # 表示
-        logger.info("="*80)
-        logger.info("パラメータ統計詳細")
-        logger.info("="*80)
-        logger.info(f"総パラメータ数: {total_all:,}")
-        logger.info(f"学習可能パラメータ数: {trainable_all:,}")
-        logger.info(f"凍結パラメータ数: {frozen_all:,}")
-        logger.info(f"学習可能パラメータの割合: {100 * trainable_all / total_all:.2f}%")
-        
-        # 学習可能コンポーネントの詳細
-        logger.info("-"*80)
-        logger.info("学習可能コンポーネントの内訳:")
-        
-        trainable_components = []
-        for category, info in categories.items():
-            if info['trainable'] > 0:
-                trainable_components.append((category, info['trainable']))
-        
-        # サイズ順にソート
-        trainable_components.sort(key=lambda x: x[1], reverse=True)
-        
-        for i, (category, param_count) in enumerate(trainable_components, 1):
-            percentage = (param_count / trainable_all * 100) if trainable_all > 0 else 0
-            logger.info(f"  {i:2}. {category:25} {param_count:12,} ({percentage:5.1f}%)")
-        
-        # 凍結コンポーネントのサマリー
-        logger.info("-"*80)
-        logger.info("凍結コンポーネント:")
-        
-        frozen_components = []
-        for category, info in categories.items():
-            frozen_count = info['total'] - info['trainable']
-            if frozen_count > 0:
-                frozen_components.append((category, frozen_count))
-        
-        frozen_components.sort(key=lambda x: x[1], reverse=True)
-        
-        for category, param_count in frozen_components[:3]:  # 上位3つのみ表示
-            percentage = (param_count / frozen_all * 100) if frozen_all > 0 else 0
-            logger.info(f"  - {category:25} {param_count:12,} ({percentage:5.1f}%)")
-        
-        if len(frozen_components) > 3:
-            logger.info(f"  ... 他{len(frozen_components)-3}カテゴリ")
-        
-        logger.info("="*80)
 
     def setup_model_and_data(self):
         """モデルとデータセットのセットアップ"""
         logger.info("モデルとデータセットのセットアップを開始")
         
         # LISAConfig作成
-        # デフォルト値はconfig.pyで管理されているため、必要な値のみオーバーライド
+        # すべての設定はconfig.pyで一元管理
+        # ここでは環境依存の設定（デバイス、モデルパス）のみオーバーライド
         self.lisa_config = LISAConfig(
+            # 環境依存の設定のみオーバーライド
             qwen_model_name="Qwen/Qwen2.5-VL-3B-Instruct",
             sam_model_name="./checkpoints/sam2.1_hiera_large.pt",
             device_map=str(self.device),
             torch_dtype="auto",
             use_flash_attention=False,
-            # Training configuration is now centralized in config.py
-            # Override specific flags if needed via command line args
-            lora_r=self.config.lora_r,
-            lora_alpha=self.config.lora_alpha,
-            sam_lora_r=self.config.lora_r,  # SAM LoRAも同じランクを使用
-            sam_lora_alpha=self.config.lora_alpha * 2  # SAM LoRAはalphaを2倍
+            # その他すべての設定（LoRA、学習率、損失重み等）はconfig.pyから自動的に読み込まれる
         )
         
         # トークナイザーとプロセッサの準備
@@ -231,6 +126,18 @@ class MinimalTrainer:
         # モデルの読み込み
         logger.info("LISA改モデルの読み込み")
         self.model = LISA_Model(self.lisa_config)
+        
+        # 融合タイプのログ出力
+        if hasattr(self.model, 'fusion_type'):
+            fusion_type = self.model.fusion_type
+            logger.info(f"特徴融合モード: {fusion_type}")
+            if fusion_type == 'sigma_add':
+                if hasattr(self.model, 'image_fusion_beta'):
+                    beta_value = torch.sigmoid(self.model.image_fusion_beta).item()
+                    logger.info(f"  - Sigma-Add融合 (学習可能パラメータ: image_fusion_beta={beta_value:.4f})")
+            elif fusion_type == 'cross_attention':
+                fusion_params = sum(p.numel() for p in self.model.image_fusion.parameters())
+                logger.info(f"  - Cross-Attention融合 (パラメータ数: {fusion_params:,})")
         
         # 重要: LoRA適用前にトークナイザーを設定してresize_token_embeddingsを実行
         logger.info("トークナイザーを設定してSEGトークンの埋め込みをリサイズ")
@@ -319,17 +226,17 @@ class MinimalTrainer:
                 elif "word_embeddings" in name:
                     seg_token_params.append(param)
         
-        # パラメータグループ
+        # パラメータグループ（学習率はLISAConfigから取得）
         param_groups = [
-            {"params": adapter_params, "lr": self.config.adapter_lr},
-            {"params": lora_params, "lr": self.config.lora_lr},
-            {"params": seg_token_params, "lr": self.config.seg_token_lr}
+            {"params": adapter_params, "lr": self.lisa_config.adapter_lr},
+            {"params": lora_params, "lr": self.lisa_config.lora_lr},
+            {"params": seg_token_params, "lr": self.lisa_config.seg_token_lr}
         ]
         
-        # オプティマイザ
+        # オプティマイザ（weight_decayもLISAConfigから取得）
         self.optimizer = torch.optim.AdamW(
             param_groups,
-            weight_decay=self.config.weight_decay
+            weight_decay=self.lisa_config.weight_decay
         )
         
         # スケジューラ
@@ -388,9 +295,9 @@ class MinimalTrainer:
             'timestamp': datetime.now().isoformat(),
             'seg_token_id': self.model.seg_token_id if hasattr(self.model, 'seg_token_id') else None,
             'config': {
-                'lora_lr': self.config.lora_lr,
-                'seg_token_lr': self.config.seg_token_lr,
-                'adapter_lr': self.config.adapter_lr,
+                'lora_lr': self.lisa_config.lora_lr,
+                'seg_token_lr': self.lisa_config.seg_token_lr,
+                'adapter_lr': self.lisa_config.adapter_lr,
             }
         }
         
@@ -604,20 +511,20 @@ class MinimalTrainer:
             # アライメントステージで学習対象となるパラメータのみを追加
             # 1. QwenのLoRAパラメータ（Configに従う）
             if "qwen" in name and "lora" in name and not self.lisa_config.freeze_qwen_lora:
-                align_params.append({"params": param, "lr": self.config.lora_lr})
+                align_params.append({"params": param, "lr": self.lisa_config.lora_lr})
                 logger.debug(f"[Align] Added Qwen LoRA param: {name}")
             # 2. SEGトークンEmbedding（Configに従う）
             # seg_token_embeddingは個別のパラメータとして管理されている
             elif "seg_token_embedding" in name and not self.lisa_config.freeze_seg_token:
-                align_params.append({"params": param, "lr": self.config.seg_token_lr})
+                align_params.append({"params": param, "lr": self.lisa_config.seg_token_lr})
                 logger.debug(f"[Align] Added SEG token param: {name}")
             # 3. TextPromptProjector（Configに従う）
             elif "text_prompt_proj" in name and not self.lisa_config.freeze_text_prompt_projector:
-                align_params.append({"params": param, "lr": self.config.adapter_lr})
+                align_params.append({"params": param, "lr": self.lisa_config.adapter_lr})
                 logger.debug(f"[Align] Added TextPromptProjector param: {name}")
             # 4. 融合β（Configに従う）
             elif "prompt_beta" in name and not self.lisa_config.freeze_prompt_beta:
-                align_params.append({"params": param, "lr": self.config.adapter_lr})
+                align_params.append({"params": param, "lr": self.lisa_config.adapter_lr})
                 logger.debug(f"[Align] Added prompt_beta param: {name}")
             else:
                 # アライメントステージでは学習対象外
@@ -908,8 +815,8 @@ class MinimalTrainer:
         if seg_count > 0:
             seg_loss = seg_loss / seg_count
         
-        # 総合損失
-        total_loss = lm_loss + self.config.seg_loss_weight * seg_loss
+        # 総合損失（損失重みもLISAConfigから取得）
+        total_loss = lm_loss + self.lisa_config.segmentation_loss_weight * seg_loss
         
         return total_loss, lm_loss, seg_loss
     
@@ -1007,16 +914,26 @@ class MinimalTrainer:
             epoch_seg_loss += seg_loss.item() if isinstance(seg_loss, torch.Tensor) else seg_loss
             
             # βパラメータの値を取得
-            beta_value = torch.sigmoid(self.model.prompt_beta).item() if hasattr(self.model, 'prompt_beta') else 0.0
+            prompt_beta_value = torch.sigmoid(self.model.prompt_beta).item() if hasattr(self.model, 'prompt_beta') else 0.0
+            
+            # Fusion betaの値を取得（Sigma-Add融合の場合）
+            fusion_info = {}
+            if hasattr(self.model, 'fusion_type'):
+                fusion_info['fusion'] = self.model.fusion_type[:2]  # 'cr' for cross_attention, 'si' for sigma_add
+                if self.model.fusion_type == 'sigma_add' and hasattr(self.model, 'image_fusion_beta'):
+                    fusion_beta = torch.sigmoid(self.model.image_fusion_beta).item()
+                    fusion_info['fβ'] = f"{fusion_beta:.3f}"
             
             # プログレスバーの更新
-            progress_bar.set_postfix({
+            postfix_dict = {
                 'loss': f"{total_loss.item():.4f}",
                 'lm': f"{lm_loss.item():.4f}",
                 'seg': f"{seg_loss:.4f}" if isinstance(seg_loss, torch.Tensor) else f"{seg_loss:.4f}",
                 'lr': f"{self.scheduler.get_last_lr()[0]:.2e}",
-                'β': f"{beta_value:.3f}"
-            })
+                'pβ': f"{prompt_beta_value:.3f}"  # prompt beta
+            }
+            postfix_dict.update(fusion_info)
+            progress_bar.set_postfix(postfix_dict)
             
             # WandBログ（使用する場合）
             if self.config.use_wandb:
@@ -1729,25 +1646,18 @@ def main():
     parser.add_argument('--warmup_ratio', type=float, default=0.1,
                        help='ウォームアップ比率')
     
-    # 学習率設定
-    parser.add_argument('--adapter_lr', type=float, default=1e-3,
-                       help='アダプター学習率')
-    parser.add_argument('--lora_lr', type=float, default=1e-4,
-                       help='LoRA学習率')
-    parser.add_argument('--seg_token_lr', type=float, default=5e-5,
-                       help='SEGトークン学習率')
-    parser.add_argument('--weight_decay', type=float, default=0.01,
-                       help='Weight decay')
+    # 注意: 学習率設定はsrc/config.pyで一元管理されています
+    # adapter_lr, lora_lr, seg_token_lr, weight_decayを変更する場合は
+    # src/config.pyを直接編集してください
     
-    # LoRA設定
-    parser.add_argument('--lora_r', type=int, default=8,
-                       help='LoRAランク')
-    parser.add_argument('--lora_alpha', type=int, default=32,
-                       help='LoRAアルファ（32推奨：学習初期の発散を抑制）')
-    
-    # 損失設定
-    parser.add_argument('--seg_loss_weight', type=float, default=1.0,
-                       help='セグメンテーション損失の重み')
+    # ========================================================================
+    # 重要: すべてのモデル設定と学習パラメータはsrc/config.pyで一元管理されています
+    # ========================================================================
+    # 以下の設定を変更する場合は、src/config.pyを直接編集してください：
+    # - LoRA設定（lora_r, lora_alpha, lora_visual_enabled等）
+    # - 学習率（adapter_lr, lora_lr, seg_token_lr）
+    # - 損失重み（segmentation_loss_weight）
+    # - その他のモデル設定
     
     # アライメントステージ設定
     parser.add_argument('--align_steps', type=int, default=0,

@@ -231,6 +231,8 @@ class InferenceRunnerV2:
             'text_prompt_proj': self.checkpoint_dir / "text_prompt_proj.pt",
             'config': self.checkpoint_dir / "config.pt",
             'prompt_beta': self.checkpoint_dir / "prompt_beta.pt",
+            'image_fusion_beta': self.checkpoint_dir / "image_fusion_beta.pt",  # Sigma-Add fusion
+            'image_fusion_cross_attention': self.checkpoint_dir / "image_fusion_cross_attention.pt",  # Cross-Attention fusion
             'seg_token_embedding': self.checkpoint_dir / "seg_token_embedding.pt",
             'sam_lora': self.checkpoint_dir / "sam_lora.pt",
         }
@@ -265,6 +267,21 @@ class InferenceRunnerV2:
             if isinstance(config_state, dict) and 'prompt_beta' in config_state:
                 model.prompt_beta.data = config_state['prompt_beta']
                 logger.info(f"Loaded prompt_beta from config: {config_state['prompt_beta'].item()}")
+        
+        # Image Fusion Beta (for Sigma-Add fusion)
+        if checkpoint_files['image_fusion_beta'].exists():
+            fusion_beta_state = torch.load(checkpoint_files['image_fusion_beta'], map_location=self.device, weights_only=False)
+            if hasattr(model, 'image_fusion_beta') and model.image_fusion_beta is not None:
+                if isinstance(fusion_beta_state, dict) and 'image_fusion_beta' in fusion_beta_state:
+                    model.image_fusion_beta.data = fusion_beta_state['image_fusion_beta']
+                    logger.info(f"Loaded image_fusion_beta: {torch.sigmoid(fusion_beta_state['image_fusion_beta']).item():.4f}")
+        
+        # Cross-Attention Fusion Module
+        if checkpoint_files['image_fusion_cross_attention'].exists():
+            if hasattr(model, 'image_fusion') and model.fusion_type == 'cross_attention':
+                fusion_state = torch.load(checkpoint_files['image_fusion_cross_attention'], map_location=self.device, weights_only=True)
+                model.image_fusion.load_state_dict(fusion_state)
+                logger.info("Loaded Cross-Attention fusion module")
         
         # SEG Token Embedding
         if checkpoint_files['seg_token_embedding'].exists():

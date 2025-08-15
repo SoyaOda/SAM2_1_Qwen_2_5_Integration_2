@@ -22,6 +22,7 @@ from peft import LoraConfig, get_peft_model, TaskType
 
 from .adapters import ImageFeatureAdapter, TextPromptProjector
 from .token_fpn import TokenFPN
+from .fusion_layers import HybridFusionModule
 from ..config import LISAConfig
 
 
@@ -286,7 +287,7 @@ class LISA_Model(nn.Module):
         if config.freeze_sam_image_encoder and hasattr(self, 'sam_image_encoder'):
             for param in self.sam_image_encoder.parameters():
                 param.requires_grad = False
-            logger.info("Froze SAM ImageEncoder (not used in current implementation - saves 212M params)")
+            logger.info("Froze SAM ImageEncoder (used for feature extraction but not trained - 212M params)")
         
         # SAM MaskDecoder
         if config.freeze_sam_mask_decoder_base:
@@ -358,19 +359,46 @@ class LISA_Model(nn.Module):
         
         # 加算アプローチ用の学習可能なスケーリング係数β
         self.prompt_beta = nn.Parameter(torch.tensor(0.01))
-        # 画像特徴融合用のスケーリング係数β（SAM ViT Sigma Add Fusion用）
-        self.image_fusion_beta = nn.Parameter(torch.zeros(1))
-        logger.info("Added image_fusion_beta parameter for SAM-Qwen feature fusion")
+        
+        # Image feature fusion module for SAM-Qwen feature fusion
+        self.fusion_type = config.fusion_type if hasattr(config, 'fusion_type') else 'sigma_add'
+        self.debug_fusion = config.debug_fusion if hasattr(config, 'debug_fusion') else False
+        
+        if self.fusion_type == "cross_attention":
+            # Use cross-attention fusion
+            self.image_fusion = HybridFusionModule(
+                dim=256,
+                fusion_type="cross_attention",
+                num_heads=config.fusion_num_heads if hasattr(config, 'fusion_num_heads') else 8,
+                dropout=config.fusion_dropout if hasattr(config, 'fusion_dropout') else 0.1,
+                use_gate=config.fusion_use_gate if hasattr(config, 'fusion_use_gate') else True
+            )
+            logger.info(f"Added Cross-Attention fusion module for SAM-Qwen features")
+        else:
+            # Use sigma-add fusion (backward compatibility)
+            # Create a single beta parameter that will be shared
+            self.image_fusion_beta = nn.Parameter(torch.zeros(1))
+            self.image_fusion = HybridFusionModule(
+                dim=256,
+                fusion_type="sigma_add",
+                external_beta=self.image_fusion_beta  # Share the beta parameter
+            )
+            logger.info("Added Sigma-Add fusion (image_fusion_beta) for SAM-Qwen features")
         
         # Freeze prompt_beta if specified
         if config.freeze_prompt_beta:
             self.prompt_beta.requires_grad = False
             logger.info("Froze Prompt Beta")
         
-        # Freeze image_fusion_beta if specified
+        # Freeze image fusion parameters if specified
         if hasattr(config, 'freeze_image_fusion_beta') and config.freeze_image_fusion_beta:
-            self.image_fusion_beta.requires_grad = False
-            logger.info("Froze Image Fusion Beta")
+            if self.fusion_type == "sigma_add" and hasattr(self, 'image_fusion_beta'):
+                self.image_fusion_beta.requires_grad = False
+                logger.info("Froze image_fusion_beta")
+            # Apply freeze to all fusion types uniformly
+            for param in self.image_fusion.parameters():
+                param.requires_grad = False
+            logger.info(f"Froze {self.fusion_type} fusion module")
         
         # Store tokenizer and SEG token info
         self.tokenizer = tokenizer
@@ -885,7 +913,8 @@ class LISA_Model(nn.Module):
         
         # 2.3 Fuse Qwen and SAM features
         if sam_image_embeddings is not None and image_features_sam is not None:
-            logger.debug(f"[FUSION] Fusing Qwen features {image_features_sam.shape} with SAM features {sam_image_embeddings.shape}")
+            if self.debug_fusion:
+                logger.debug(f"[FUSION] Fusing Qwen features {image_features_sam.shape} with SAM features {sam_image_embeddings.shape}")
             
             # 空間解像度を合わせる
             # SAM特徴は通常64x64、Qwen特徴は可変
@@ -897,18 +926,34 @@ class LISA_Model(nn.Module):
                     mode='bilinear',
                     align_corners=False
                 )
-                logger.debug(f"[FUSION] Resized Qwen features to {image_features_sam_resized.shape}")
+                if self.debug_fusion:
+                    logger.debug(f"[FUSION] Resized Qwen features to {image_features_sam_resized.shape}")
             else:
                 image_features_sam_resized = image_features_sam
             
-            # β係数を0〜1に正規化
-            beta_scaled = torch.sigmoid(self.image_fusion_beta)
-            logger.debug(f"[FUSION] Using image_fusion_beta={self.image_fusion_beta.item():.4f}, scaled={beta_scaled.item():.4f}")
+            # Apply fusion based on fusion_type
+            if self.fusion_type == "cross_attention":
+                # Cross-attention fusion
+                if self.debug_fusion:
+                    logger.debug(f"[FUSION] Using Cross-Attention fusion")
+                fused_image_embeddings = self.image_fusion(
+                    sam_features=sam_image_embeddings,
+                    qwen_features=image_features_sam_resized
+                )
+                if self.debug_fusion:
+                    logger.debug(f"[FUSION] Cross-attention output shape: {fused_image_embeddings.shape}")
+            else:
+                # Sigma-add fusion (backward compatibility)
+                beta_scaled = torch.sigmoid(self.image_fusion_beta)
+                if self.debug_fusion:
+                    logger.debug(f"[FUSION] Using Sigma-Add fusion, beta={self.image_fusion_beta.item():.4f}, scaled={beta_scaled.item():.4f}")
+                fused_image_embeddings = self.image_fusion(
+                    sam_features=sam_image_embeddings,
+                    qwen_features=image_features_sam_resized
+                )
             
-            # SAM特徴にQwen特徴を加算融合
-            # SAMの特徴をベースに、Qwen特徴をβでスケーリングして加算
-            fused_image_embeddings = sam_image_embeddings + beta_scaled * image_features_sam_resized
-            logger.debug(f"[FUSION] Created fused embeddings with shape: {fused_image_embeddings.shape}")
+            if self.debug_fusion:
+                logger.debug(f"[FUSION] Created fused embeddings with shape: {fused_image_embeddings.shape}")
             
             # 融合後の特徴を使用
             image_features_sam = fused_image_embeddings
@@ -1466,10 +1511,15 @@ class LISA_Model(nn.Module):
                   os.path.join(save_directory, "prompt_beta.pt"))
         logger.info(f"Saved prompt_beta: {self.prompt_beta.data.item()}")
         
-        # Image Fusion Beta (SAM-Qwen feature fusion scaling)
-        torch.save({'image_fusion_beta': self.image_fusion_beta.data}, 
-                  os.path.join(save_directory, "image_fusion_beta.pt"))
-        logger.info(f"Saved image_fusion_beta: {self.image_fusion_beta.data.item()}")
+        # Image Fusion parameters (SAM-Qwen feature fusion)
+        if self.fusion_type == "sigma_add" and hasattr(self, 'image_fusion_beta'):
+            torch.save({'image_fusion_beta': self.image_fusion_beta.data}, 
+                      os.path.join(save_directory, "image_fusion_beta.pt"))
+            logger.info(f"Saved image_fusion_beta: {self.image_fusion_beta.data.item()}")
+        elif self.fusion_type == "cross_attention":
+            torch.save(self.image_fusion.state_dict(),
+                      os.path.join(save_directory, "image_fusion_cross_attention.pt"))
+            logger.info("Saved Cross-Attention fusion module")
         
         # SEG Token Embedding (if trainable)
         if hasattr(self, 'seg_token_embedding') and self.seg_token_embedding is not None:
@@ -1614,13 +1664,20 @@ class LISA_Model(nn.Module):
                 model.prompt_beta.data = state['prompt_beta'].to(device)
                 logger.info(f"Loaded prompt_beta: {state['prompt_beta'].item()}")
         
-        # Image Fusion Beta
-        image_fusion_beta_path = load_dir / "image_fusion_beta.pt"
-        if image_fusion_beta_path.exists():
-            state = torch.load(image_fusion_beta_path, map_location=device, weights_only=False)
-            if 'image_fusion_beta' in state:
-                model.image_fusion_beta.data = state['image_fusion_beta'].to(device)
-                logger.info(f"Loaded image_fusion_beta: {state['image_fusion_beta'].item()}")
+        # Image Fusion parameters
+        if model.fusion_type == "sigma_add":
+            image_fusion_beta_path = load_dir / "image_fusion_beta.pt"
+            if image_fusion_beta_path.exists():
+                state = torch.load(image_fusion_beta_path, map_location=device, weights_only=False)
+                if 'image_fusion_beta' in state and hasattr(model, 'image_fusion_beta'):
+                    model.image_fusion_beta.data = state['image_fusion_beta'].to(device)
+                    logger.info(f"Loaded image_fusion_beta: {state['image_fusion_beta'].item()}")
+        elif model.fusion_type == "cross_attention":
+            image_fusion_cross_path = load_dir / "image_fusion_cross_attention.pt"
+            if image_fusion_cross_path.exists():
+                state_dict = torch.load(image_fusion_cross_path, map_location=device, weights_only=False)
+                model.image_fusion.load_state_dict(state_dict)
+                logger.info("Loaded Cross-Attention fusion module")
         
         # SEG Token Embedding
         seg_embedding_path = load_dir / "seg_token_embedding.pt"

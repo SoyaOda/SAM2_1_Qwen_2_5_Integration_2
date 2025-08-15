@@ -7,7 +7,13 @@ from typing import Optional
 
 @dataclass
 class LISAConfig:
-    """Configuration for LISA改 model"""
+    """
+    Configuration for LISA改 (LISA-Kai) model
+    
+    すべての学習パラメータとモデル設定はこのファイルで一元管理されています。
+    minimal_train.pyのコマンドライン引数では変更できません（設計による制約）。
+    パラメータを変更する場合は、このファイルを直接編集してください。
+    """
     
     # Model paths
     qwen_model_name: str = "Qwen/Qwen2.5-VL-3B-Instruct"
@@ -27,21 +33,26 @@ class LISAConfig:
     seg_token: str = "<SEG>"
     
     # ========================================================================
-    # LoRA Configuration
+    # LoRA Configuration - すべてのLoRA設定はここで一元管理
     # ========================================================================
     
     # Qwen2.5-VL LoRA settings
-    lora_r: int = 8
-    lora_alpha: int = 32
-    lora_dropout: float = 0.1
-    lora_target_modules: list = None  # Will be set based on model architecture
+    # これらの値を変更する場合は、このファイルを直接編集してください
+    # minimal_train.pyのコマンドライン引数では変更できません（設計による制約）
+    lora_r: int = 8                    # LoRAのランク（4-16が一般的、大きいほど表現力が高いがパラメータ数増加）
+    lora_alpha: int = 32               # LoRAのスケーリング係数（通常はrの2-4倍、学習初期の安定性に影響）
+    lora_dropout: float = 0.1          # LoRAのドロップアウト率（過学習防止）
+    lora_target_modules: list = None   # 自動設定（lora_visual_enabledに基づいて__post_init__で決定）
+    lora_visual_enabled: bool = False  # Visual ViT blocksへのLoRA適用
+                                       # False: 言語モデルのみ（既存チェックポイントと互換、デフォルト）
+                                       # True: 言語モデル＋Visual ViT（より高性能だが既存チェックポイントと非互換）
     
     # SAM2.1 MaskDecoder LoRA settings
     # NOTE: LoRAは freeze_sam_mask_decoder_base=True の場合のみ適用されます
     #   - freeze_sam_mask_decoder_base=True → sam_lora_r>0 でLoRA適用
     #   - freeze_sam_mask_decoder_base=False → LoRA無視、MaskDecoder直接学習
     sam_lora_r: int = 8  # 0 to disable, 4-8 for enabling LoRA on MaskDecoder
-    sam_lora_alpha: int = 16  # LoRA alpha for MaskDecoder
+    sam_lora_alpha: int = 16  # LoRA alpha for MaskDecoder (通常はlora_alphaの半分程度が推奨)
     sam_lora_dropout: float = 0.1  # LoRA dropout for MaskDecoder
     sam_lora_target_modules: list = None  # Will be set in __post_init__
     
@@ -67,6 +78,20 @@ class LISAConfig:
     freeze_prompt_beta: bool = False        # Embedding fusion weight β (1 param) - False = trainable
     freeze_image_fusion_beta: bool = False  # Image feature fusion weight β (1 param) - False = trainable
     
+    # Fusion configuration
+    # Based on research: Cross-Attention recommended for accuracy (Reasoning Segmentation)
+    # Sigma-Add as fallback for computational constraints
+    #
+    # Recommended settings based on GPU resources:
+    # - GPU 16GB+: fusion_type="cross_attention" (best accuracy)
+    # - GPU 8-16GB: fusion_type="cross_attention" with smaller batch_size
+    # - GPU <8GB: fusion_type="sigma_add" (lightest computation)
+    fusion_type: str = "sigma_add"  # Options: "sigma_add", "cross_attention" 
+    fusion_num_heads: int = 8  # 8 heads optimal for 256-dim (SAM standard)
+    fusion_dropout: float = 0.1  # Transformer/ViT standard for generalization
+    fusion_use_gate: bool = True  # Dynamic mixing improves stability & accuracy
+    debug_fusion: bool = False  # Enable debug logging for fusion operations
+    
     # ---- Always Frozen Components ----
     # Qwen2.5-VL
     freeze_qwen_base: bool = True          # ALWAYS freeze Qwen base model (3.7B params)
@@ -83,9 +108,19 @@ class LISAConfig:
     train_seg_token: bool = None           # Deprecated - use freeze_seg_token=False instead
     train_adapters: bool = None            # Deprecated - use specific freeze_* flags
     
+    # ========================================================================
+    # Training Configuration - 学習パラメータの一元管理
+    # ========================================================================
+    
+    # Learning rates (各コンポーネントの学習率)
+    adapter_lr: float = 1e-3           # アダプター（Image Adapter, Text Projector等）の学習率
+    lora_lr: float = 1e-4              # LoRA（Qwen/SAM）の学習率
+    seg_token_lr: float = 5e-5         # SEGトークン埋め込みの学習率
+    weight_decay: float = 0.01         # Weight decay (AdamW用)
+    
     # Loss weights
-    language_loss_weight: float = 1.0
-    segmentation_loss_weight: float = 1.0
+    language_loss_weight: float = 1.0      # 言語モデリング損失の重み
+    segmentation_loss_weight: float = 1.0  # セグメンテーション損失の重み
     
     # Device settings
     device_map: str = "auto"
@@ -138,13 +173,31 @@ class LISAConfig:
     
     def __post_init__(self):
         if self.lora_target_modules is None:
-            # Default target modules for Qwen2.5-VL attention layers
-            # Note: Qwen2.5-VLは q_proj, k_proj, v_proj を使用
-            self.lora_target_modules = [
+            # Qwen2.5-VL has two parts that can be targeted with LoRA:
+            # 1. Language model layers: standard q,k,v,o,gate,up,down projections
+            # 2. Visual ViT blocks: visual.blocks.*.attn.{qkv,proj} and visual.blocks.*.mlp.{gate,up,down}_proj
+            # 
+            # Language model projections (always included for Qwen SFT)
+            language_modules = [
                 "q_proj",
-                "k_proj",
-                "v_proj"
+                "k_proj", 
+                "v_proj",
+                "o_proj",      # Output projection
+                "up_proj",     # MLP up projection
+                "gate_proj",   # MLP gate projection  
+                "down_proj",   # MLP down projection
             ]
+            
+            # Visual ViT blocks - only included if lora_visual_enabled=True
+            # This matches visual.blocks.{0-31}.attn.{qkv,proj} and visual.blocks.{0-31}.mlp.{gate_proj,up_proj,down_proj}
+            visual_regex = r"(?:^|.*)visual\.blocks\.\d+\.(?:attn\.(?:qkv|proj)|mlp\.(?:up_proj|gate_proj|down_proj))$"
+            
+            if self.lora_visual_enabled:
+                # Include both language and visual components
+                self.lora_target_modules = language_modules + [visual_regex]
+            else:
+                # Language-only (backward compatible with existing checkpoints)
+                self.lora_target_modules = language_modules
         
         if self.sam_lora_target_modules is None:
             # Default target modules for SAM2.1 MaskDecoder attention layers

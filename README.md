@@ -173,6 +173,12 @@ class LISAConfig:
     freeze_seg_token: bool = False       # False = train SEG token
     freeze_sam_mask_decoder_base: bool = True  # True = use SAM LoRA
     
+    # Feature Fusion configuration
+    fusion_type: str = "sigma_add"       # "sigma_add" or "cross_attention"
+    fusion_num_heads: int = 8            # Attention heads for Cross-Attention
+    fusion_dropout: float = 0.1          # Dropout rate for Cross-Attention
+    fusion_use_gate: bool = True         # Enable gating mechanism for Cross-Attention
+    
     # Architecture choices
     use_token_fpn: bool = True   # Use Token-FPN for multi-scale features
 ```
@@ -268,13 +274,54 @@ SAM2_1_Qwen_2_5_Integration_2/
 2. **Language Decoder**: Qwen's LLM handles text generation and reasoning
 3. **Image Feature Adapter**: Transforms Qwen vision features for SAM (D_v → 256)
 4. **Text Prompt Projector**: Projects <SEG> hidden states to SAM prompts (D_l → 256)
-5. **SAM Mask Decoder**: Generates segmentation masks from prompts
+5. **Feature Fusion Module**: Cross-Attention or Sigma-Add fusion between Qwen and SAM features
+6. **SAM Mask Decoder**: Generates segmentation masks from prompts
+
+### Feature Fusion Methods
+
+LISA改 supports two fusion methods for combining Qwen and SAM visual features:
+
+#### 1. Cross-Attention Fusion (Recommended)
+- **Architecture**: Multi-head attention with SAM features as Query, Qwen features as Key/Value
+- **Parameters**: 8 attention heads, 256-dim embeddings, dropout=0.1
+- **Gating Mechanism**: Dynamic mixing between fused and original features
+- **Advantages**: Superior accuracy for reasoning segmentation, spatially-aware fusion
+- **Use Case**: Best for accuracy-critical applications with sufficient GPU resources
+
+#### 2. Sigma-Add Fusion (Lightweight Alternative)
+- **Architecture**: Simple weighted addition with learnable scalar β
+- **Parameters**: Single trainable parameter (β)
+- **Advantages**: Minimal computation overhead, extremely stable
+- **Use Case**: Resource-constrained environments or rapid prototyping
+
+### Fusion Configuration
+
+Configure fusion in `src/config.py`:
+
+```python
+# Fusion configuration
+fusion_type: str = "sigma_add"  # Options: "sigma_add", "cross_attention"
+fusion_num_heads: int = 8       # Number of attention heads for Cross-Attention
+fusion_dropout: float = 0.1     # Dropout rate for Cross-Attention
+fusion_use_gate: bool = True    # Enable gating mechanism for Cross-Attention
+
+# Recommended settings based on GPU resources:
+# - GPU 16GB+: fusion_type="cross_attention" (best accuracy)
+# - GPU 8-16GB: fusion_type="cross_attention" with smaller batch_size
+# - GPU <8GB: fusion_type="sigma_add" (lightest computation)
+```
 
 ### Information Flow
 
 ```
-Image → Qwen ViT → Image Adapter → SAM Features
-                ↓
+Image → Qwen ViT → Image Adapter → Qwen Features (16×16)
+                                          ↓
+                                    Upsample to 64×64
+                                          ↓
+Image → SAM Encoder → SAM Features (64×64)
+                            ↓
+                    [Cross-Attention Fusion]
+                            ↓
 Text → Qwen LLM → <SEG> → Text Projector → SAM Prompt
                                           ↓
                                     SAM Mask Decoder → Segmentation Mask
@@ -327,6 +374,29 @@ python tests/test_adapters.py
 
 # Test full integration (requires models)
 python tests/test_lisa_integration.py
+
+# Test Cross-Attention fusion
+python test_cross_attention_fusion.py
+
+# Advanced fusion tests with visualization
+python test_fusion_advanced.py
+```
+
+### Testing Fusion Methods
+
+Compare different fusion configurations:
+
+```bash
+# Test Cross-Attention with default settings
+python test_cross_attention_fusion.py
+
+# Compare Cross-Attention vs Sigma-Add performance
+python test_fusion_advanced.py
+
+# The tests will generate:
+# - attention_vis.png: Attention weight heatmap
+# - mask_output_*.png: Segmentation results for each fusion type
+# - convergence_comparison.png: Training convergence comparison
 ```
 
 ## Requirements

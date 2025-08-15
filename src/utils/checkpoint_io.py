@@ -133,19 +133,28 @@ def save_qwen_component(checkpoint_dir: str, qwen_model, config) -> None:
         is_peft = False
     
     if is_peft:
-        # Save only LoRA adapter
+        # Save only LoRA adapter with proper base model reference
+        # This ensures adapter_config.json has correct base_model_name_or_path
         qwen_model.save_pretrained(qwen_dir)
         logger.info("Saved Qwen LoRA adapter")
         
-        # Save base model reference
+        # Also save extended metadata including target_modules configuration
         base_info = {
             "base_model": config.qwen_model_name,
             "is_lora": True,
             "lora_r": config.lora_r,
             "lora_alpha": config.lora_alpha,
+            "lora_visual_enabled": config.lora_visual_enabled,
+            "lora_target_modules": config.lora_target_modules,  # Save actual target_modules used
         }
         with open(os.path.join(qwen_dir, "base_model_info.json"), "w") as f:
             json.dump(base_info, f, indent=2)
+        
+        # Log visual LoRA status
+        if config.lora_visual_enabled:
+            logger.info("Visual ViT LoRA was enabled during training")
+        else:
+            logger.info("Visual ViT LoRA was disabled (language-only)")
     else:
         # Check if we should save full model or just reference
         if config.freeze_qwen_base:
@@ -182,6 +191,47 @@ def save_prompt_beta(checkpoint_dir: str, prompt_beta: torch.nn.Parameter) -> No
     save_path = os.path.join(checkpoint_dir, "prompt_beta.pt")
     torch.save({'prompt_beta': prompt_beta.detach().cpu()}, save_path)
     logger.info(f"Saved prompt_beta: {prompt_beta.item():.6f}")
+
+
+def save_image_fusion_beta(checkpoint_dir: str, model) -> None:
+    """Save image fusion beta parameter for Sigma-Add fusion"""
+    if hasattr(model, 'image_fusion_beta') and model.image_fusion_beta is not None:
+        beta_value = torch.sigmoid(model.image_fusion_beta).item()
+        beta_data = {
+            'image_fusion_beta': model.image_fusion_beta.detach().cpu(),
+            'image_fusion_beta_value': beta_value,
+            'fusion_type': model.fusion_type if hasattr(model, 'fusion_type') else 'sigma_add'
+        }
+        save_path = os.path.join(checkpoint_dir, "image_fusion_beta.pt")
+        torch.save(beta_data, save_path)
+        logger.info(f"Saved image_fusion_beta: {beta_value:.6f} (fusion_type: {beta_data['fusion_type']})")
+
+
+def save_cross_attention_fusion(checkpoint_dir: str, model) -> None:
+    """Save Cross-Attention fusion module"""
+    if hasattr(model, 'image_fusion') and model.image_fusion is not None:
+        fusion_type = model.fusion_type if hasattr(model, 'fusion_type') else 'unknown'
+        
+        if fusion_type == 'cross_attention':
+            # Save Cross-Attention fusion module state
+            fusion_state = model.image_fusion.state_dict()
+            fusion_data = {
+                'state_dict': fusion_state,
+                'fusion_type': fusion_type,
+                'config': {
+                    'dim': model.config.sam_image_embedding_dim if hasattr(model, 'config') else 256,
+                    'num_heads': model.config.fusion_num_heads if hasattr(model, 'config') else 8,
+                    'dropout': model.config.fusion_dropout if hasattr(model, 'config') else 0.1,
+                    'use_gate': model.config.fusion_use_gate if hasattr(model, 'config') else True,
+                }
+            }
+            save_path = os.path.join(checkpoint_dir, "image_fusion_cross_attention.pt")
+            torch.save(fusion_data, save_path)
+            
+            # パラメータ数を計算
+            total_params = sum(p.numel() for p in model.image_fusion.parameters())
+            trainable_params = sum(p.numel() for p in model.image_fusion.parameters() if p.requires_grad)
+            logger.info(f"Saved Cross-Attention fusion module: {trainable_params}/{total_params} trainable params")
 
 
 def _gather_sam_lora_weights(sam_mask_decoder) -> Dict[str, torch.Tensor]:
@@ -348,6 +398,8 @@ def save_lisa_checkpoint(
     # 5. Save special parameters
     save_seg_token_embedding(checkpoint_dir, model, processor.tokenizer)
     save_prompt_beta(checkpoint_dir, model.prompt_beta)
+    save_image_fusion_beta(checkpoint_dir, model)  # Save Sigma-Add fusion beta
+    save_cross_attention_fusion(checkpoint_dir, model)  # Save Cross-Attention fusion module
     
     # 6. Save SAM components
     save_sam_lora(checkpoint_dir, model.sam_mask_decoder, config)
@@ -381,7 +433,54 @@ def load_qwen_component(checkpoint_dir: str, base_model=None, device='cuda'):
     """Load Qwen model or apply LoRA adapter"""
     qwen_dir = os.path.join(checkpoint_dir, "qwen")
     
-    # Read base model info
+    # First check for PEFT adapter_config.json (standard PEFT format)
+    adapter_config_path = os.path.join(qwen_dir, "adapter_config.json")
+    if os.path.exists(adapter_config_path):
+        try:
+            from peft import PeftConfig, PeftModel, AutoPeftModelForCausalLM
+            
+            # Try AutoPeftModel first (recommended approach)
+            try:
+                # AutoPeftModel automatically loads the correct base model
+                qwen_model = AutoPeftModelForCausalLM.from_pretrained(
+                    qwen_dir,
+                    device_map=device,
+                    torch_dtype=torch.bfloat16,
+                    trust_remote_code=True  # Required for Qwen2.5-VL
+                )
+                logger.info("Loaded Qwen model with AutoPeftModel (recommended)")
+                return qwen_model
+            except Exception as auto_err:
+                logger.debug(f"AutoPeftModel failed, trying manual loading: {auto_err}")
+                
+                # Fallback to manual loading with PeftConfig
+                peft_config = PeftConfig.from_pretrained(qwen_dir)
+                
+                # Load base model if not provided
+                if base_model is None:
+                    from transformers import Qwen2_5_VLForConditionalGeneration
+                    logger.info(f"Loading base model from adapter config: {peft_config.base_model_name_or_path}")
+                    base_model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
+                        peft_config.base_model_name_or_path,
+                        torch_dtype=torch.bfloat16,
+                        device_map=device,
+                        trust_remote_code=True
+                    )
+                
+                # Load adapter with explicit adapter_name
+                qwen_model = PeftModel.from_pretrained(
+                    base_model,
+                    qwen_dir,
+                    adapter_name="default"  # Explicitly set to avoid missing keys
+                )
+                logger.info("Applied Qwen LoRA adapter with PeftModel")
+                return qwen_model
+                
+        except Exception as e:
+            logger.warning(f"Failed to load PEFT adapter: {e}")
+            # Continue to try other methods
+    
+    # Fallback: Read base model info (backward compatibility)
     base_info_path = os.path.join(qwen_dir, "base_model_info.json")
     if os.path.exists(base_info_path):
         with open(base_info_path, 'r') as f:
@@ -393,22 +492,10 @@ def load_qwen_component(checkpoint_dir: str, base_model=None, device='cuda'):
             base_model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
                 base_info["base_model"],
                 torch_dtype=torch.bfloat16,
-                device_map=device
+                device_map=device,
+                trust_remote_code=True
             )
             logger.info(f"Loaded Qwen base model from {base_info['base_model']}")
-        
-        # Apply LoRA if exists
-        if base_info.get("is_lora", False):
-            adapter_config_path = os.path.join(qwen_dir, "adapter_config.json")
-            if os.path.exists(adapter_config_path):
-                try:
-                    from peft import PeftModel
-                    qwen_model = PeftModel.from_pretrained(base_model, qwen_dir)
-                    logger.info("Applied Qwen LoRA adapter")
-                    return qwen_model
-                except Exception as e:
-                    logger.warning(f"Failed to load PEFT adapter: {e}")
-                    return base_model
     
     # Check if full model saved
     model_path = os.path.join(qwen_dir, "model.safetensors")
@@ -490,6 +577,33 @@ def load_lisa_checkpoint(
         raise FileNotFoundError(f"Config not found: {config_path}")
     config = torch.load(config_path, map_location=device, weights_only=False)
     
+    # 1.5. Check for Visual LoRA metadata and update config BEFORE model initialization
+    base_info_path = checkpoint_dir / "qwen" / "base_model_info.json"
+    if base_info_path.exists():
+        with open(base_info_path, 'r') as f:
+            base_info = json.load(f)
+        
+        # Check if checkpoint has Visual LoRA information
+        if "lora_visual_enabled" in base_info:
+            saved_visual_enabled = base_info["lora_visual_enabled"]
+            # Always use the saved setting to avoid missing keys warning
+            config.lora_visual_enabled = saved_visual_enabled
+            logger.info(f"Using checkpoint's lora_visual_enabled setting: {saved_visual_enabled}")
+            
+            # Also restore the exact target_modules if available
+            if "lora_target_modules" in base_info and base_info["lora_target_modules"]:
+                logger.info(f"Restoring target_modules from checkpoint (Visual LoRA: {saved_visual_enabled})")
+                config.lora_target_modules = base_info["lora_target_modules"]
+            else:
+                # Force config to regenerate target_modules based on lora_visual_enabled
+                config.lora_target_modules = None
+                config.__post_init__()  # Regenerate target_modules
+    else:
+        # For old checkpoints without Visual LoRA metadata, assume False
+        if not hasattr(config, "lora_visual_enabled"):
+            config.lora_visual_enabled = False
+            logger.info("Old checkpoint detected, setting lora_visual_enabled=False")
+    
     # 2. Load processor if not provided
     if processor is None:
         from transformers import AutoProcessor
@@ -523,6 +637,25 @@ def load_lisa_checkpoint(
         beta_data = torch.load(prompt_beta_path, map_location=device, weights_only=False)
         model.prompt_beta.data = beta_data['prompt_beta'].to(device)
         logger.info(f"Loaded prompt_beta: {model.prompt_beta.item():.6f}")
+    
+    # Image fusion beta (for Sigma-Add fusion)
+    image_fusion_beta_path = checkpoint_dir / "image_fusion_beta.pt"
+    if image_fusion_beta_path.exists():
+        beta_data = torch.load(image_fusion_beta_path, map_location=device, weights_only=False)
+        if hasattr(model, 'image_fusion_beta') and model.image_fusion_beta is not None:
+            model.image_fusion_beta.data = beta_data['image_fusion_beta'].to(device)
+            logger.info(f"Loaded image_fusion_beta: {torch.sigmoid(model.image_fusion_beta).item():.6f} (fusion_type: {beta_data.get('fusion_type', 'sigma_add')})")
+    
+    # Cross-Attention fusion module
+    cross_attention_fusion_path = checkpoint_dir / "image_fusion_cross_attention.pt"
+    if cross_attention_fusion_path.exists():
+        fusion_data = torch.load(cross_attention_fusion_path, map_location=device, weights_only=False)
+        if hasattr(model, 'image_fusion') and model.image_fusion is not None:
+            if fusion_data.get('fusion_type') == 'cross_attention':
+                model.image_fusion.load_state_dict(fusion_data['state_dict'], strict=strict)
+                total_params = sum(p.numel() for p in model.image_fusion.parameters())
+                trainable_params = sum(p.numel() for p in model.image_fusion.parameters() if p.requires_grad)
+                logger.info(f"Loaded Cross-Attention fusion module: {trainable_params}/{total_params} trainable params")
     
     # 6. Load SAM components
     apply_sam_lora_weights(model.sam_mask_decoder, str(checkpoint_dir))
