@@ -39,19 +39,21 @@ class LISAConfig:
     # Qwen2.5-VL LoRA settings
     # これらの値を変更する場合は、このファイルを直接編集してください
     # minimal_train.pyのコマンドライン引数では変更できません（設計による制約）
-    lora_r: int = 8                    # LoRAのランク（4-16が一般的、大きいほど表現力が高いがパラメータ数増加）
+    # NOTE: lora_r=0 にするとQwenのLoRAは完全に無効化されます（言語モデル・Visual ViT両方）
+    #       この場合、freeze_qwen_lora設定に関わらずLoRAは適用されません
+    lora_r: int = 8                    # 0 to disable, 4-16 for enabling LoRA on Qwen
     lora_alpha: int = 32               # LoRAのスケーリング係数（通常はrの2-4倍、学習初期の安定性に影響）
     lora_dropout: float = 0.1          # LoRAのドロップアウト率（過学習防止）
     lora_target_modules: list = None   # 自動設定（lora_visual_enabledに基づいて__post_init__で決定）
-    lora_visual_enabled: bool = False  # Visual ViT blocksへのLoRA適用
+    lora_visual_enabled: bool = False  # Visual ViT blocksへのLoRA適用（lora_r>0の場合のみ有効）
                                        # False: 言語モデルのみ（既存チェックポイントと互換、デフォルト）
                                        # True: 言語モデル＋Visual ViT（より高性能だが既存チェックポイントと非互換）
     
     # SAM2.1 MaskDecoder LoRA settings
-    # NOTE: LoRAは freeze_sam_mask_decoder_base=True の場合のみ適用されます
-    #   - freeze_sam_mask_decoder_base=True → sam_lora_r>0 でLoRA適用
-    #   - freeze_sam_mask_decoder_base=False → LoRA無視、MaskDecoder直接学習
-    sam_lora_r: int = 8  # 0 to disable, 4-8 for enabling LoRA on MaskDecoder
+    # NOTE: sam_lora_r=0 にするとSAMのLoRAは完全に無効化されます
+    #       sam_lora_r>0 の場合、freeze_sam_mask_decoder_base=True のときのみLoRAが適用されます
+    #       freeze_sam_mask_decoder_base=False の場合はMaskDecoder全体を直接学習（LoRA無視）
+    sam_lora_r: int = 8  # 0 to disable, 4-8 for enabling LoRA on SAM MaskDecoder
     sam_lora_alpha: int = 16  # LoRA alpha for MaskDecoder (通常はlora_alphaの半分程度が推奨)
     sam_lora_dropout: float = 0.1  # LoRA dropout for MaskDecoder
     sam_lora_target_modules: list = None  # Will be set in __post_init__
