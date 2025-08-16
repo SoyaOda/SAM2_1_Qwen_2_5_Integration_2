@@ -100,7 +100,7 @@ class LISAConfig:
     
     # SAM2.1
     freeze_sam_image_encoder: bool = True  # ALWAYS True - not used (saves 212M params!)
-    freeze_sam_mask_decoder_base: bool = True   # True: LoRA適用（sam_lora_r>0なら）, False: 直接学習（4.2M）
+    freeze_sam_mask_decoder_base: bool = False   # True: LoRA適用（sam_lora_r>0なら）, False: 直接学習（4.2M）
     freeze_sam_prompt_encoder: bool = True # Freeze SAM PromptEncoder
     freeze_sam_memory_attention: bool = True  # ALWAYS True - video only (saves 8.3M params!)
     
@@ -115,9 +115,9 @@ class LISAConfig:
     # ========================================================================
     
     # Learning rates (各コンポーネントの学習率)
-    adapter_lr: float = 1e-3           # アダプター（Image Adapter, Text Projector等）の学習率
-    lora_lr: float = 1e-4              # LoRA（Qwen/SAM）の学習率
-    seg_token_lr: float = 5e-5         # SEGトークン埋め込みの学習率
+    adapter_lr: float = 5e-4           # アダプター（Image Adapter, Text Projector等）の学習率
+    lora_lr: float = 5e-5              # LoRA（Qwen/SAM）の学習率
+    seg_token_lr: float = 1e-5         # SEGトークン埋め込みの学習率
     weight_decay: float = 0.01         # Weight decay (AdamW用)
     
     # Loss weights
