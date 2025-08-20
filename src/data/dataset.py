@@ -23,6 +23,7 @@ from pycocotools import mask
 try:
     from .dataset_cache import DatasetCache
 except ImportError:
+    logger.warning("⚠️ data.dataset_cache not found - using local import")
     from dataset_cache import DatasetCache
 from transformers import AutoProcessor
 from torchvision import transforms
@@ -64,10 +65,10 @@ def get_config():
         return ConfigWrapper(config)
             
     except ImportError as e:
-        print(f"LISAConfigのインポートに失敗: {e}")
+        logger.error(f"⚠️ LISAConfigのインポートに失敗: {e}")
         
     # フォールバック: デフォルト設定
-    print("警告: 設定ファイルが見つかりません。デフォルト設定を使用します。")
+    logger.warning("⚠️ 設定ファイルが見つかりません。デフォルト設定を使用します。")
     class DefaultConfig:
         MODEL_MAX_LENGTH = 2048
         QWEN_IMAGE_SIZE = 448
@@ -203,7 +204,7 @@ def preprocess_qwen_image(image: Image.Image, processor: AutoProcessor, target_s
             image_tensor = processed['pixel_values'].squeeze(0)  # (1, C, H, W) -> (C, H, W)
             return image_tensor
         except Exception as e:
-            print(f"Qwen画像前処理エラー: {e}")
+            logger.warning(f"⚠️ Qwen画像前処理エラー: {e}")
             # フォールバック: 手動前処理
             transform = transforms.Compose([
                 transforms.ToTensor(),
@@ -231,8 +232,8 @@ def preprocess_qwen_image(image: Image.Image, processor: AutoProcessor, target_s
             return image_tensor
             
         except Exception as e:
-            print(f"動的解像度処理エラー: {e}")
-            print("固定解像度モードにフォールバック")
+            logger.warning(f"⚠️ 動的解像度処理エラー: {e}")
+            logger.warning("⚠️ 固定解像度モードにフォールバック")
             # エラー時は固定解像度にフォールバック
             return preprocess_qwen_image(image, processor, target_size=448)
 
@@ -477,7 +478,7 @@ class HybridDataset(torch.utils.data.Dataset):
                         )
                     )
             except Exception as e:
-                print(f"    警告: Semantic Segmentationデータセットの初期化に失敗: {e}")
+                logger.warning(f"    ⚠️ Semantic Segmentationデータセットの初期化に失敗: {e}")
         
         # Referring Segmentation Dataset
         if "refer_seg" in self.datasets:
@@ -529,7 +530,7 @@ class HybridDataset(torch.utils.data.Dataset):
                         )
                     )
             except Exception as e:
-                print(f"    警告: Referring Segmentationデータセットの初期化に失敗: {e}")
+                logger.warning(f"    ⚠️ Referring Segmentationデータセットの初期化に失敗: {e}")
         
         # VQA Dataset
         if "vqa" in self.datasets:
@@ -579,7 +580,7 @@ class HybridDataset(torch.utils.data.Dataset):
                         )
                     )
             except Exception as e:
-                print(f"    警告: VQAデータセットの初期化に失敗: {e}")
+                logger.warning(f"    ⚠️ VQAデータセットの初期化に失敗: {e}")
         
         # Reasoning Segmentation Dataset
         if "reason_seg" in self.datasets:
@@ -634,7 +635,7 @@ class HybridDataset(torch.utils.data.Dataset):
                         )
                     )
             except Exception as e:
-                print(f"    警告: Reasoning Segmentationデータセットの初期化に失敗: {e}")
+                logger.warning(f"    ⚠️ Reasoning Segmentationデータセットの初期化に失敗: {e}")
                 import traceback
                 traceback.print_exc()
         

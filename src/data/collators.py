@@ -5,6 +5,9 @@ Handles batching of mixed data types
 import torch
 from typing import Dict, List, Optional, Union
 from dataclasses import dataclass
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class MultiModalDataCollator:
@@ -374,6 +377,7 @@ class MultiModalDataCollator:
                     mask_labels.append(f['ground_truth_mask'])
                 else:
                     # Create dummy mask with default size
+                    logger.warning(f"⚠️ Ground truth mask missing for sample {len(mask_labels)} - creating dummy")
                     mask_labels.append(torch.zeros(1, 1024, 1024))
             batch['mask_labels'] = torch.stack(mask_labels)
         elif 'mask_labels' in features[0] and features[0]['mask_labels'] is not None:
@@ -383,12 +387,29 @@ class MultiModalDataCollator:
                 if f.get('mask_labels') is not None:
                     mask_labels.append(f['mask_labels'])
                 else:
+                    logger.warning(f"⚠️ Mask labels missing for sample {len(mask_labels)} - creating dummy")
                     mask_labels.append(torch.zeros(1, 1024, 1024))
             batch['mask_labels'] = torch.stack(mask_labels)
         
         # Preserve original images for visualization
         if any('original_image' in f for f in features):
             batch['original_images'] = [f.get('original_image') for f in features]
+        
+        # Handle SAM images - CRITICAL for SAM ImageEncoder
+        if 'sam_images' in features[0] and features[0]['sam_images'] is not None:
+            sam_images = []
+            for f in features:
+                if f.get('sam_images') is not None:
+                    sam_img = f['sam_images']
+                    # Ensure it's 3D (C, H, W)
+                    if sam_img.dim() == 4:  # (1, C, H, W) -> (C, H, W)
+                        sam_img = sam_img.squeeze(0)
+                    sam_images.append(sam_img)
+                else:
+                    # Create dummy SAM image if missing
+                    logger.warning(f"⚠️ SAM image missing for sample {len(sam_images)} - creating dummy")
+                    sam_images.append(torch.zeros(3, 1024, 1024))
+            batch['sam_images'] = torch.stack(sam_images)
         
         return batch
 

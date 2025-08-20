@@ -39,7 +39,7 @@ class DatasetCache:
                 logger.info(f"✅ キャッシュから {dataset_name} を高速読み込み完了")
                 return data
             except Exception as e:
-                logger.warning(f"キャッシュ読み込みエラー: {e}")
+                logger.warning(f"⚠️ キャッシュ読み込みエラー: {e}")
                 # キャッシュが壊れている場合は削除
                 cache_file.unlink(missing_ok=True)
         
@@ -56,7 +56,7 @@ class DatasetCache:
                 pickle.dump(data, f, protocol=pickle.HIGHEST_PROTOCOL)
             logger.info(f"✅ {dataset_name} のキャッシュ保存完了")
         except Exception as e:
-            logger.warning(f"キャッシュ保存エラー: {e}")
+            logger.warning(f"⚠️ キャッシュ保存エラー: {e}")
             # 保存に失敗した場合はファイルを削除
             cache_file.unlink(missing_ok=True)
     

@@ -6,7 +6,7 @@ Token-FPN: Feature Pyramid Network for Vision Transformer (Qwen2.5-VL)
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from typing import Dict, List, Tuple, Optional
+from typing import Dict, List, Tuple, Optional, Union
 import logging
 
 logger = logging.getLogger(__name__)
@@ -131,93 +131,207 @@ class TokenFPN(nn.Module):
     def reshape_tokens_to_2d(
         self, 
         tokens: torch.Tensor, 
-        image_grid_thw: Optional[torch.Tensor] = None
+        image_grid_thw: Optional[torch.Tensor] = None,
+        spatial_merge_size: int = 2
     ) -> torch.Tensor:
         """
         トークンを2D形状に復元（動的解像度対応）
         
+        重要: フックから取得した特徴はPatchMerge前なので、
+        ここではPatchMerge前のグリッドサイズ（H_raw, W_raw）をそのまま使用する
+        
         Args:
-            tokens: [B, N, C] or [N, C] 形状のトークン
-            image_grid_thw: [B, 3] 形状の[T, H_raw, W_raw]情報
+            tokens: [B*N, C] or [N, C] 形状のトークン（フックから取得、PatchMerge前）
+            image_grid_thw: [B, 3] 形状の[T, H_raw, W_raw]情報（PatchMerge前のグリッド）
+            spatial_merge_size: 使用しない（フックの特徴は既にPatchMerge前）
         
         Returns:
             [B, C, H, W] 形状の2D特徴マップ
         """
+        # トークンの次元を確認
         if tokens.dim() == 2:
-            tokens = tokens.unsqueeze(0)  # [N, C] -> [B, N, C]
-        
-        B, N, C = tokens.shape
-        
-        if image_grid_thw is not None:
-            # 動的解像度モード
-            H_raw = image_grid_thw[0, 1].item()
-            W_raw = image_grid_thw[0, 2].item()
+            # [N_total, C] 形状（バッチ全体が連結されている）
+            N_total, C = tokens.shape
             
-            # トークン数の確認
-            expected_tokens = H_raw * W_raw
-            if N != expected_tokens:
-                logger.warning(f"Token count mismatch: got {N}, expected {expected_tokens}")
-                # 最も近い正方形に調整
-                H_raw = W_raw = int(torch.sqrt(torch.tensor(N, dtype=torch.float32)).item())
-        else:
-            # 固定解像度モード（正方形を仮定）
-            H_raw = W_raw = int(torch.sqrt(torch.tensor(N, dtype=torch.float32)).item())
+            if image_grid_thw is not None:
+                B = image_grid_thw.shape[0]
+                
+                # 各画像のトークン数を計算（PatchMerge前のサイズ）
+                token_counts = []
+                grids = []
+                for b in range(B):
+                    T = image_grid_thw[b, 0].item()
+                    H_raw = image_grid_thw[b, 1].item()  # PatchMerge前
+                    W_raw = image_grid_thw[b, 2].item()  # PatchMerge前
+                    
+                    # フックの特徴はPatchMerge前なので、そのままのサイズを使用
+                    n_tokens = T * H_raw * W_raw
+                    token_counts.append(n_tokens)
+                    grids.append((T, H_raw, W_raw))
+                
+                # トークンの総数が一致するか確認
+                expected_total = sum(token_counts)
+                if N_total == expected_total:
+                    # バッチ全体のトークンが連結されている場合
+                    # 各画像ごとに分割して処理
+                    features_2d_list = []
+                    offset = 0
+                    
+                    for b in range(B):
+                        n_tokens = token_counts[b]
+                        tokens_b = tokens[offset:offset + n_tokens]  # [n_tokens, C]
+                        
+                        T, H_raw, W_raw = grids[b]
+                        
+                        if T > 1:
+                            # 動画の場合
+                            tokens_reshaped = tokens_b.view(T, H_raw, W_raw, C)
+                            tokens_spatial = tokens_reshaped.mean(dim=0)  # 時間平均
+                        else:
+                            # 静止画の場合
+                            tokens_spatial = tokens_b.view(H_raw, W_raw, C)
+                        
+                        # [H, W, C] -> [C, H, W]
+                        feat_2d = tokens_spatial.permute(2, 0, 1).contiguous()
+                        features_2d_list.append(feat_2d)
+                        
+                        offset += n_tokens
+                    
+                    # バッチ次元でスタック
+                    return torch.stack(features_2d_list, dim=0)  # [B, C, H, W]
+                    
+                else:
+                    # トークン数が合わない場合のフォールバック
+                    logger.error(
+                        f"Token count mismatch! Total tokens: {N_total}, "
+                        f"Expected: {expected_total} (sum of {token_counts})"
+                    )
+                    # 単一画像として扱う
+                    B = 1
+                    H = W = int(torch.sqrt(torch.tensor(N_total, dtype=torch.float32)).item())
+                    tokens = tokens.view(B, H, W, C).permute(0, 3, 1, 2).contiguous()
+                    return tokens
+            else:
+                # image_grid_thwがない場合は正方形を仮定
+                H = W = int(torch.sqrt(torch.tensor(N_total, dtype=torch.float32)).item())
+                tokens = tokens.view(1, H, W, C).permute(0, 3, 1, 2).contiguous()
+                return tokens
         
-        # [B, N, C] -> [B, H, W, C] -> [B, C, H, W]
-        features_2d = tokens.view(B, H_raw, W_raw, C).permute(0, 3, 1, 2)
+        # 3次元の場合（通常はここには来ない）
+        elif tokens.dim() == 3:
+            B, N, C = tokens.shape
+            
+            if image_grid_thw is not None and B == image_grid_thw.shape[0]:
+                features_2d_list = []
+                
+                for b in range(B):
+                    T = image_grid_thw[b, 0].item()
+                    H_raw = image_grid_thw[b, 1].item()
+                    W_raw = image_grid_thw[b, 2].item()
+                    
+                    expected_tokens = T * H_raw * W_raw
+                    
+                    if N != expected_tokens:
+                        logger.error(
+                            f"Image {b}: Token count mismatch! Got {N} tokens, expected {expected_tokens}"
+                        )
+                        # フォールバック
+                        size = int(torch.sqrt(torch.tensor(N // T, dtype=torch.float32)).item())
+                        H_raw = W_raw = size
+                    
+                    tokens_b = tokens[b]  # [N, C]
+                    
+                    if T > 1:
+                        tokens_reshaped = tokens_b.view(T, H_raw, W_raw, C)
+                        tokens_spatial = tokens_reshaped.mean(dim=0)
+                    else:
+                        tokens_spatial = tokens_b.view(H_raw, W_raw, C)
+                    
+                    feat_2d = tokens_spatial.permute(2, 0, 1).contiguous()
+                    features_2d_list.append(feat_2d)
+                
+                return torch.stack(features_2d_list, dim=0)
+            else:
+                # 固定解像度モード
+                H = W = int(torch.sqrt(torch.tensor(N, dtype=torch.float32)).item())
+                features_2d_list = []
+                for b in range(B):
+                    tokens_b = tokens[b]
+                    tokens_spatial = tokens_b.view(H, W, C)
+                    feat_2d = tokens_spatial.permute(2, 0, 1).contiguous()
+                    features_2d_list.append(feat_2d)
+                return torch.stack(features_2d_list, dim=0)
         
-        return features_2d
+        raise ValueError(f"Unexpected token shape: {tokens.shape}")
     
     def build_fpn_features(
         self, 
-        features_dict: Dict[str, torch.Tensor],
+        intermediate_features: Union[List[torch.Tensor], Dict[str, torch.Tensor]],
         image_grid_thw: Optional[torch.Tensor] = None
     ) -> Dict[str, torch.Tensor]:
         """
-        FPN構造で特徴を融合
+        中間特徴からFPNピラミッドを構築
         
         Args:
-            features_dict: 各層の特徴辞書 {"block_i": [B, N, C]}
-            image_grid_thw: 動的解像度情報
+            intermediate_features: 異なる層からの特徴リストまたは辞書
+            image_grid_thw: [B, 3] 形状のグリッド情報（マージ前）
         
         Returns:
-            FPN特徴辞書 {"P_i": [B, C, H, W]}
+            ピラミッド特徴の辞書 {"P0": ..., "P1": ..., ...}
         """
         fpn_features = {}
         
-        # 1. 各層の特徴を2D化して1x1 convで射影（lateral connections）
-        laterals = []
-        for i, (layer_name, tokens) in enumerate(features_dict.items()):
-            # 2D形状に復元
-            feat_2d = self.reshape_tokens_to_2d(tokens, image_grid_thw)
-            
-            # PatchMerge相当の処理（RAWからの圧縮）
-            feat_2d = self.patch_merge(feat_2d)  # [B, C, H/2, W/2]
-            
-            # 1x1 convで256chに射影
-            lateral = self.lateral_convs[i](feat_2d)
-            laterals.append(lateral)
+        # 辞書型の場合はリストに変換
+        if isinstance(intermediate_features, dict):
+            # block_8, block_16などのキーから特徴を取り出す（フックで登録した名前と一致）
+            feature_list = []
+            for layer_idx in self.layer_indices:
+                block_key = f"block_{layer_idx}"
+                if block_key in intermediate_features:
+                    feat = intermediate_features[block_key]
+                    feature_list.append(feat)
+                else:
+                    logger.warning(f"Feature for {block_key} not found in intermediate_features")
+            intermediate_features = feature_list
         
-        # 2. Top-down pathway（上位層から下位層へ）
-        # 最後の層から開始
-        for i in range(len(laterals) - 1, -1, -1):
-            if i == len(laterals) - 1:
-                # 最上位層はそのまま使用
-                fpn_feat = laterals[i]
-            else:
-                # 上位層をアップサンプルして加算
-                prev_shape = laterals[i].shape[-2:]
-                upsampled = F.interpolate(
-                    fpn_features[f"P{i+1}"], 
-                    size=prev_shape, 
-                    mode='bilinear', 
-                    align_corners=False
-                )
-                fpn_feat = laterals[i] + upsampled
+        # 特徴が取得できていない場合はエラー
+        if not intermediate_features:
+            raise ValueError("No intermediate features found. Check hook registration.")
+        
+        for i, tokens in enumerate(intermediate_features):
+            # tokenがテンソルであることを確認
+            if not isinstance(tokens, torch.Tensor):
+                logger.error(f"Feature {i} is not a tensor: type={type(tokens)}")
+                continue
+                
+            # PatchMerge前のトークンを2D形状に復元
+            # フックから取得した特徴は既にPatchMerge前なので、spatial_merge_sizeは使用しない
+            feat_2d = self.reshape_tokens_to_2d(
+                tokens, 
+                image_grid_thw,
+                spatial_merge_size=2  # 実際には使用されない
+            )
             
-            # 3x3 convでエイリアシング除去
-            fpn_feat = self.fpn_convs[i](fpn_feat)
-            fpn_features[f"P{i}"] = fpn_feat
+            # チャンネル次元を統一
+            B, C, H, W = feat_2d.shape
+            
+            if C != self.out_channels:
+                # lateral convolutionを使用
+                if i < len(self.lateral_convs):
+                    feat_2d = self.lateral_convs[i](feat_2d)
+                else:
+                    # 動的に作成（必要に応じて）
+                    lateral = nn.Conv2d(C, self.out_channels, 1).to(feat_2d.device)
+                    feat_2d = lateral(feat_2d)
+            
+            # FPN convolutionを適用
+            if i < len(self.fpn_convs):
+                feat_2d = self.fpn_convs[i](feat_2d)
+            
+            # ピラミッドレベルを割り当て
+            # 最も解像度の高いものをP0とする
+            level_name = f"P{i}"
+            fpn_features[level_name] = feat_2d
         
         return fpn_features
     

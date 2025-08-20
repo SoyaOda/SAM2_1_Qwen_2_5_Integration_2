@@ -1,11 +1,14 @@
 import json
 import os
 import random
+import logging
 
 import cv2
 import torch
 import torch.nn.functional as F
 from PIL import Image
+
+logger = logging.getLogger(__name__)
 
 # from model.segment_anything.utils.transforms import ResizeLongestSide  # 未使用
 from . import conversation as conversation_lib
@@ -112,7 +115,7 @@ class VQADataset(torch.utils.data.Dataset):
                 self.vqa_data.extend(dataset_data)
                 print(f"VQAデータセット '{dataset_name}': {len(dataset_data)} サンプル")
             except Exception as e:
-                print(f"警告: VQAデータセット '{dataset_name}' の読み込みに失敗: {e}")
+                logger.warning(f"⚠️ VQAデータセット '{dataset_name}' の読み込みに失敗: {e}")
                 continue
 
         if len(self.vqa_data) == 0:

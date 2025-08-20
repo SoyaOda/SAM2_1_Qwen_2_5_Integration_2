@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "o3-query": {
+      "type": "stdio",
+      "command": "/home/soya/o3-query-mcp/venv/bin/python",
+      "args": [
+        "/home/soya/o3-query-mcp/o3_query_server.py"
+      ],
+      "env": {
+        "PYTHONPATH": "/home/soya/o3-query-mcp",
+        "MCP_TIMEOUT": "60000"
+      }
+    }
+  }
+}

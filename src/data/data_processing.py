@@ -1,11 +1,14 @@
 import glob
 import json
 import os
+import logging
 
 import cv2
 import numpy as np
 import torch
 from typing import Dict, List, Any
+
+logger = logging.getLogger(__name__)
 
 
 class DataCollatorForSupervisedDataset:
@@ -91,7 +94,8 @@ def get_mask_from_json(json_path, img):
     try:
         with open(json_path, "r") as r:
             anno = json.loads(r.read())
-    except:
+    except Exception as e:
+        logger.warning(f"⚠️ UTF-8でのJSON読み込み失敗: {e} - cp1252で再試行")
         with open(json_path, "r", encoding="cp1252") as r:
             anno = json.loads(r.read())
 

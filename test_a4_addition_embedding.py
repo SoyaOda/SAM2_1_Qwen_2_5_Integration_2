@@ -196,8 +196,8 @@ def main():
     output_dir = create_standard_output_structure(f"test_outputs/test_a4_{timestamp}")
     logger.info(f"Output directory: {output_dir}")
     
-    # テスト設定を保存
-    save_test_config(output_dir, 'test_a4_addition_embedding', {
+    # テスト設定を保存（最初は基本設定のみ）
+    save_test_config(output_dir, 'test_a4_addition_embedding', None, {
         'test_description': 'Addition approach preserving 100% position information',
         'initial_beta': initial_beta
     })
@@ -250,6 +250,7 @@ def main():
             labels: Optional[torch.Tensor] = None,
             mask_labels: Optional[list] = None,
             image_grid_thw: Optional[torch.Tensor] = None,
+            sam_images: Optional[torch.Tensor] = None,  # SAM画像を追加
         ):
             """加算アプローチを適用したforward"""
             
@@ -268,7 +269,7 @@ def main():
             logits = qwen_outputs.logits
             hidden_states = qwen_outputs.hidden_states[-1]
             
-            # 2. Vision features
+            # 2. Vision features（SAM ImageEncoderを含む）
             vision_features = None
             image_features_sam = None
             sam_high_res_features = None
@@ -279,6 +280,22 @@ def main():
                     vision_features = vision_features.unsqueeze(0)
                 
                 image_features_sam = self.image_adapter(vision_features, image_grid_thw)
+                
+                # **SAM ImageEncoderを呼び出す**
+                if sam_images is not None:
+                    # 標準のLISA forwardメソッドと同じSAM処理を適用
+                    sam_outputs = self(
+                        input_ids=input_ids,
+                        pixel_values=pixel_values,
+                        attention_mask=attention_mask,
+                        labels=labels,
+                        mask_labels=mask_labels,
+                        image_grid_thw=image_grid_thw,
+                        sam_images=sam_images,
+                        return_dict=True
+                    )
+                    # SAM処理済みの結果を使用
+                    return sam_outputs.logits, sam_outputs.mask_logits
                 
                 if self.use_token_fpn:
                     image_features_sam_fpn, sam_high_res_features = self.token_fpn(
@@ -490,6 +507,16 @@ def main():
     trainable_params = [n for n, p in model.named_parameters() if p.requires_grad]
     logger.info(f"Total trainable parameters: {len(trainable_params)} tensors")
     
+    # LISAConfigが設定された後で詳細設定を保存
+    total_params = sum(p.numel() for p in model.parameters())
+    trainable_param_count = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    save_test_config(output_dir, 'test_a4_addition_embedding', config, {
+        'test_description': 'Addition approach preserving 100% position information',
+        'initial_beta': initial_beta,
+        'total_params': total_params,
+        'trainable_params': trainable_param_count
+    })
+    
     # 2. データセット準備（固定サンプル版）
     base_dir = config.dataset_base_dir
     
@@ -547,17 +574,84 @@ def main():
                 if isinstance(v, torch.Tensor):
                     batch[k] = v.to(device)
             
+            # **A1の修正を適用: SAM画像を元画像から生成**
+            # 元画像（Qwen用）からSAM画像を生成
+            if 'pixel_values' in batch and batch['pixel_values'] is not None:
+                # original_imagesがあれば優先的に使用
+                if 'original_images' in batch and batch['original_images'] is not None:
+                    sam_images = []
+                    for i, original_img in enumerate(batch['original_images']):
+                        from PIL import Image
+                        if isinstance(original_img, Image.Image):
+                            # PIL画像の場合
+                            sam_image = original_img.resize((config.sam_image_size, config.sam_image_size), Image.BICUBIC)
+                            sam_array = np.array(sam_image).astype(np.float32) / 255.0
+                            sam_tensor = torch.from_numpy(sam_array).permute(2, 0, 1)  # [H, W, C] -> [C, H, W]
+                            sam_images.append(sam_tensor)
+                        elif isinstance(original_img, torch.Tensor):
+                            # Tensorの場合
+                            img_tensor = original_img
+                            if img_tensor.dim() == 3 and img_tensor.shape[0] == 3:
+                                # [C, H, W]形式
+                                img_np = img_tensor.permute(1, 2, 0).cpu().numpy()
+                                if img_np.max() <= 1.0:
+                                    img_np = (img_np * 255).astype(np.uint8)
+                                pil_image = Image.fromarray(img_np.astype(np.uint8))
+                                sam_image = pil_image.resize((config.sam_image_size, config.sam_image_size), Image.BICUBIC)
+                                sam_array = np.array(sam_image).astype(np.float32) / 255.0
+                                sam_tensor = torch.from_numpy(sam_array).permute(2, 0, 1)
+                                sam_images.append(sam_tensor)
+                    
+                    if sam_images:
+                        sam_images_batch = torch.stack(sam_images).to(device)
+                    else:
+                        sam_images_batch = None
+                else:
+                    # pixel_valuesから生成を試みる（パッチ形式の場合は生成できない）
+                    sam_images = []
+                    for i in range(batch['pixel_values'].shape[0]):
+                        # Qwen用の画像を取得
+                        qwen_image = batch['pixel_values'][i]  # [patches, features]の可能性
+                        
+                        # RGB形式に変換してPIL Imageに
+                        if qwen_image.dim() == 3:
+                            # [C, H, W] -> [H, W, C]の順番で変換
+                            qwen_np = qwen_image.permute(1, 2, 0).cpu().numpy()
+                            # 正規化されている場合は0-255に戻す
+                            if qwen_np.max() <= 1.0:
+                                qwen_np = (qwen_np * 255).astype(np.uint8)
+                            
+                            # PIL Imageに変換
+                            from PIL import Image
+                            pil_image = Image.fromarray(qwen_np.astype(np.uint8))
+                            
+                            # SAM用にリサイズ
+                            sam_image = pil_image.resize((config.sam_image_size, config.sam_image_size), Image.BICUBIC)
+                            
+                            # Tensorに変換
+                            sam_array = np.array(sam_image).astype(np.float32) / 255.0
+                            sam_tensor = torch.from_numpy(sam_array).permute(2, 0, 1)  # [H, W, C] -> [C, H, W]
+                            sam_images.append(sam_tensor)
+                    
+                    if sam_images:
+                        sam_images_batch = torch.stack(sam_images).to(device)
+                    else:
+                        sam_images_batch = None
+            else:
+                sam_images_batch = None
+            
             # 現在のbeta値を取得
             beta_value = torch.sigmoid(model.prompt_beta).item()
             
-            # モデルforward（加算アプローチ適用）
+            # **修正後: SAM画像を含むモデルforward（加算アプローチ適用）**
             logits, mask_logits = model.forward_with_addition(
                 input_ids=batch['input_ids'],
                 pixel_values=batch['pixel_values'],
                 attention_mask=batch['attention_mask'],
                 labels=batch['labels'],
                 mask_labels=batch['mask_labels'],
-                image_grid_thw=batch.get('image_grid_thw', None)
+                image_grid_thw=batch.get('image_grid_thw', None),
+                sam_images=sam_images_batch  # SAM画像を渡す
             )
             
             # 損失計算

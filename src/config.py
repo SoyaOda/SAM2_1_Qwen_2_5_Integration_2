@@ -98,8 +98,14 @@ class LISAConfig:
     # Qwen2.5-VL
     freeze_qwen_base: bool = True          # ALWAYS freeze Qwen base model (3.7B params)
     
-    # SAM2.1
-    freeze_sam_image_encoder: bool = True  # ALWAYS True - not used (saves 212M params!)
+    # SAM2.1 ImageEncoder Configuration - 高品質特徴抽出のための詳細制御
+    freeze_sam_image_encoder: bool = True  # Freeze SAM ImageEncoder parameters (saves 212M params!)
+    sam_encoder_eval_mode: bool = True  # Force encoder to eval() mode (disables Dropout/BN if any)
+    sam_encoder_precision: str = "bf16"  # "fp32" for max quality, "bf16" for speed (SAM2 official)
+    sam_encoder_use_inference_mode: bool = True  # Use torch.inference_mode() in inference (faster than no_grad)
+    sam_encoder_cache_embeddings: bool = False  # Cache image embeddings (future feature)
+    
+    # Other SAM2.1 components
     freeze_sam_mask_decoder_base: bool = True   # True: LoRA適用（sam_lora_r>0なら）, False: 直接学習（4.2M）
     freeze_sam_prompt_encoder: bool = True # Freeze SAM PromptEncoder
     freeze_sam_memory_attention: bool = True  # ALWAYS True - video only (saves 8.3M params!)

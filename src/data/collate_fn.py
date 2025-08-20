@@ -3,7 +3,10 @@
 異なる長さのシーケンスをバッチ処理するためのパディング処理
 """
 import torch
+import logging
 from typing import Dict, List, Any, Optional
+
+logger = logging.getLogger(__name__)
 
 
 def lisa_collate_fn(batch: List[Dict[str, Any]]) -> Dict[str, torch.Tensor]:
@@ -65,7 +68,7 @@ def lisa_collate_fn(batch: List[Dict[str, Any]]) -> Dict[str, torch.Tensor]:
                     collated[key] = torch.stack(values, dim=0)
                 except RuntimeError as e:
                     # サイズが異なる場合のエラー処理
-                    print(f"Warning: Cannot stack {key} due to size mismatch: {e}")
+                    logger.warning(f"⚠️ Cannot stack {key} due to size mismatch: {e}")
                     collated[key] = values  # リストのまま返す
             else:
                 collated[key] = values

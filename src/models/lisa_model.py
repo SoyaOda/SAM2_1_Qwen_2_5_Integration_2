@@ -282,12 +282,24 @@ class LISA_Model(nn.Module):
         
         # ---- SAM2.1 Components (Fine-grained control) ----
         
-        # SAM ImageEncoder - Always freeze as it's not used in forward pass
-        # We use Qwen's vision encoder instead (saves 212M params!)
+        # SAM ImageEncoder - Advanced configuration for high-quality feature extraction
         if config.freeze_sam_image_encoder and hasattr(self, 'sam_image_encoder'):
             for param in self.sam_image_encoder.parameters():
                 param.requires_grad = False
-            logger.info("Froze SAM ImageEncoder (used for feature extraction but not trained - 212M params)")
+            logger.info("Froze SAM ImageEncoder parameters (212M params - gradient updates disabled)")
+        
+        # Force SAM ImageEncoder to eval mode for consistent inference behavior
+        if hasattr(config, 'sam_encoder_eval_mode') and config.sam_encoder_eval_mode:
+            if hasattr(self, 'sam_image_encoder'):
+                self.sam_image_encoder.eval()
+                logger.info("Set SAM ImageEncoder to eval() mode (Dropout/BN disabled for stable features)")
+        
+        # Store SAM encoder configuration for forward pass
+        self.sam_encoder_config = {
+            'precision': getattr(config, 'sam_encoder_precision', 'bf16'),
+            'use_inference_mode': getattr(config, 'sam_encoder_use_inference_mode', True),
+            'cache_embeddings': getattr(config, 'sam_encoder_cache_embeddings', False)
+        }
         
         # SAM MaskDecoder
         if config.freeze_sam_mask_decoder_base:
@@ -637,131 +649,161 @@ class LISA_Model(nn.Module):
     def extract_vision_features(self, pixel_values: torch.Tensor, image_grid_thw: Optional[torch.Tensor] = None) -> torch.Tensor:
         """
         Extract vision features from Qwen's vision encoder
-        Currently returns 2048-dim LLM-projected features for stability.
-        
-        NOTE: Future implementation will support 2560-dim PatchMerge features
-        once transformers library implements return_dict=True properly.
-        (Expected in transformers v4.57+)
         
         Args:
-            pixel_values: Input images [B, N_raw_patches, D_v] for tokenized format
-            image_grid_thw: Grid dimensions for dynamic resolution [B, 3]
-                           Format: [T, H_raw, W_raw] where values are RAW patch counts (REQUIRED)
+            pixel_values: Qwen2.5-VL format - 2D tensor [total_patches, C*P*P*T]
+            image_grid_thw: Grid dimensions [num_images, 3] where 3=[T,H,W] (BEFORE merge)
         
         Returns:
-            Vision features [B, N_compressed_patches, 2048] after LLM projection
-            (Future: will return 2560-dim PatchMerge features)
+            Vision features [B, N_compressed_patches, D] after LLM projection
         """
         # image_grid_thw is REQUIRED for tokenized format
         if image_grid_thw is None:
             raise ValueError("image_grid_thw is required for dynamic resolution support")
         
         # ========================================================================
-        # CURRENT IMPLEMENTATION (2048-dim):
-        # Using get_image_features for stable 2048-dim LLM-projected features
-        # This is the approach used by LISA-v2, InternVL-HD, and Otter-SAM
+        # 正しい実装（O3調査結果に基づく）:
+        # Qwen2.5-VLのpixel_valuesは[total_patches, C*P*P*T]の2D形式
+        # visualエンコーダーは2×2の空間マージを行うため、出力は入力の1/4
         # ========================================================================
         
-        # O3推奨: バッチ処理時のトークン選択を回避するため、各サンプルを個別に処理
-        B = pixel_values.shape[0] if pixel_values.dim() == 3 else 1
+        logger.info(f"[Vision Features] pixel_values shape: {pixel_values.shape}, image_grid_thw shape: {image_grid_thw.shape if image_grid_thw is not None else 'None'}")
         
-        if B == 1:
-            # Single sample - process directly
-            image_embeds = self.qwen.model.get_image_features(pixel_values, image_grid_thw)
+        # Determine actual batch size first
+        actual_batch_size = None
+        
+        # 重要: pixel_valuesが誤った3D形式の場合を検出
+        if pixel_values.dim() == 3:
+            logger.error(f"[Vision Features] ERROR: pixel_values has wrong dimensions! Expected 2D [total_patches, feat_dim], got 3D {pixel_values.shape}")
+            logger.error(f"[Vision Features] This suggests the collator is incorrectly stacking pixel_values instead of concatenating them.")
+            # バッチ次元を除去して2Dに変換（一時的な対処）
+            actual_batch_size = pixel_values.shape[0]
+            if image_grid_thw is not None and actual_batch_size != image_grid_thw.shape[0]:
+                raise ValueError(f"Batch size mismatch: pixel_values batch={actual_batch_size}, image_grid_thw batch={image_grid_thw.shape[0]}")
             
-            # Handle tuple return
-            if isinstance(image_embeds, tuple):
-                image_embeds = image_embeds[0]
-            
-            # Ensure 3D shape [B, N_patches, D]
-            if image_embeds.dim() == 2:
-                image_embeds = image_embeds.unsqueeze(0)  # [N, D] -> [1, N, D]
-            
-            vision_features = image_embeds
-            
+            # 各画像のpixel_valuesを縦に連結して正しい2D形式にする
+            pixel_values_list = []
+            for i in range(actual_batch_size):
+                pixel_values_list.append(pixel_values[i])  # [patches_i, feat_dim]
+            pixel_values = torch.cat(pixel_values_list, dim=0)  # [total_patches, feat_dim]
+            logger.warning(f"[Vision Features] Converted to 2D format: {pixel_values.shape}")
+        
+        # image_grid_thwが3Dの場合は平坦化 (B, num_images, 3) -> (num_images_total, 3)
+        if image_grid_thw is not None and image_grid_thw.dim() == 3:
+            batch_size = image_grid_thw.shape[0]
+            num_images_per_batch = image_grid_thw.shape[1]
+            image_grid_thw_flat = image_grid_thw.reshape(-1, 3)
+            logger.info(f"[Vision Features] Flattened image_grid_thw from ({batch_size}, {num_images_per_batch}, 3) to {image_grid_thw_flat.shape}")
+        elif image_grid_thw is not None:
+            batch_size = image_grid_thw.shape[0]
+            image_grid_thw_flat = image_grid_thw
         else:
-            # Batch processing - process each sample individually to avoid token selection
-            # O3の推奨に従って、各サンプルを個別に処理してから結合
-            all_features = []
-            
-            for i in range(B):
-                # Extract single sample
-                single_pixel_values = pixel_values[i:i+1]  # Keep batch dimension
-                single_grid = image_grid_thw[i:i+1]  # Keep batch dimension
-                
-                # Process single sample
-                single_embeds = self.qwen.model.get_image_features(single_pixel_values, single_grid)
-                
-                # Handle tuple return
-                if isinstance(single_embeds, tuple):
-                    single_embeds = single_embeds[0]
-                
-                # Ensure 3D shape [1, N_patches, D]
-                if single_embeds.dim() == 2:
-                    single_embeds = single_embeds.unsqueeze(0)
-                
-                all_features.append(single_embeds)
-            
-            # Check if all samples have the same number of tokens
-            token_counts = [f.shape[1] for f in all_features]
-            
-            if len(set(token_counts)) == 1:
-                # All samples have the same token count - can stack directly
-                vision_features = torch.cat(all_features, dim=0)  # [B, N_patches, D]
-                logger.debug(f"Batch processing successful: {B} samples, {token_counts[0]} tokens each")
+            # image_grid_thw is None - use batch size from pixel_values
+            batch_size = actual_batch_size if actual_batch_size is not None else 1
+            image_grid_thw_flat = None
+        
+        # PeftModelの場合、base_modelを通じてアクセス
+        if hasattr(self.qwen, 'model'):
+            base_model = self.qwen.model
+        elif hasattr(self.qwen, 'base_model'):
+            base_model = self.qwen.base_model.model
+        else:
+            base_model = self.qwen
+        
+        # spatial_merge_sizeを取得（通常は2）
+        if hasattr(base_model, 'config') and hasattr(base_model.config, 'vision_config'):
+            spatial_merge_size = getattr(base_model.config.vision_config, 'spatial_merge_size', 2)
+        else:
+            spatial_merge_size = 2  # デフォルト値
+        logger.info(f"[Vision Features] spatial_merge_size = {spatial_merge_size}")
+        
+        # マージ前のパッチ数を計算（入力時）
+        input_patch_counts = (image_grid_thw_flat[:, 0] * image_grid_thw_flat[:, 1] * image_grid_thw_flat[:, 2]).tolist()
+        total_input_patches = sum(input_patch_counts)
+        
+        # マージ後のパッチ数を計算（出力時）
+        output_patch_counts = []
+        for t, h, w in image_grid_thw_flat.tolist():
+            # 2×2の空間マージにより、H//2, W//2になる
+            output_patches = int(t * (h // spatial_merge_size) * (w // spatial_merge_size))
+            output_patch_counts.append(output_patches)
+        total_output_patches = sum(output_patch_counts)
+        
+        logger.info(f"[Vision Features] Input patch counts per image: {input_patch_counts}, total: {total_input_patches}")
+        logger.info(f"[Vision Features] Output patch counts per image (after {spatial_merge_size}x{spatial_merge_size} merge): {output_patch_counts}, total: {total_output_patches}")
+        logger.info(f"[Vision Features] Actual pixel_values patches: {pixel_values.shape[0]}")
+        
+        if pixel_values.shape[0] != total_input_patches:
+            logger.error(f"[Vision Features] Input patch count mismatch! Expected {total_input_patches}, got {pixel_values.shape[0]}")
+            raise ValueError(f"Input patch count mismatch: expected {total_input_patches} patches based on grid_thw, but got {pixel_values.shape[0]} in pixel_values")
+        
+        # 0パッチの画像を検出
+        zero_patch_indices = [i for i, count in enumerate(output_patch_counts) if count == 0]
+        if zero_patch_indices:
+            logger.error(f"[Vision Features] Found {len(zero_patch_indices)} images with 0 output patches at indices: {zero_patch_indices}")
+            logger.error(f"[Vision Features] Grid values for 0-patch images: {[image_grid_thw_flat[i].tolist() for i in zero_patch_indices]}")
+            raise ValueError(f"Cannot process images with 0 patches. Check data preprocessing. Indices: {zero_patch_indices}")
+        
+        # バッチ全体を一度に処理（推奨方法）
+        if hasattr(base_model, 'visual'):
+            # Qwen2.5-VLのvisualエンコーダーを直接呼び出す
+            # pixel_valuesは全バッチのパッチが連結された2D形式
+            # image_grid_thwは(num_images_total, 3)
+            all_image_embeds = base_model.visual(
+                hidden_states=pixel_values,
+                grid_thw=image_grid_thw_flat
+            )
+        else:
+            raise AttributeError(f"Cannot find visual encoder. Available attributes: {dir(base_model)[:20]}")
+        
+        # Handle tuple return
+        if isinstance(all_image_embeds, tuple):
+            all_image_embeds = all_image_embeds[0]
+        
+        logger.info(f"[Vision Features] Total embeddings shape: {all_image_embeds.shape}")
+        
+        # 出力パッチ数の検証
+        if all_image_embeds.shape[0] != total_output_patches:
+            logger.error(f"[Vision Features] Output mismatch! Expected {total_output_patches} patches after merge, got {all_image_embeds.shape[0]}")
+            raise ValueError(f"Output patch count mismatch: expected {total_output_patches}, got {all_image_embeds.shape[0]}")
+        
+        # 各画像の特徴を分割（マージ後のパッチ数を使用）
+        per_image_features = []
+        offset = 0
+        for i, num_patches in enumerate(output_patch_counts):
+            image_features = all_image_embeds[offset:offset + num_patches]  # [num_patches, D]
+            per_image_features.append(image_features)
+            offset += num_patches
+            logger.debug(f"[Vision Features] Image {i}: extracted {num_patches} patches")
+        
+        # バッチ形式に整形
+        if batch_size == 1:
+            # 単一画像の場合
+            vision_features = per_image_features[0].unsqueeze(0)  # [1, N_patches, D]
+        else:
+            # 複数画像の場合
+            # すべての画像が同じパッチ数を持つか確認
+            if len(set(output_patch_counts)) == 1:
+                # 同じパッチ数 - スタック可能
+                vision_features = torch.stack(per_image_features, dim=0)  # [B, N_patches, D]
+                logger.info(f"[Vision Features] Stacked {batch_size} images with {output_patch_counts[0]} patches each")
             else:
-                # Variable token counts - need to pad (shouldn't happen with proper collator)
-                logger.warning(f"Variable token counts in batch: {token_counts}")
-                max_tokens = max(token_counts)
+                # 異なるパッチ数 - パディングが必要
+                logger.warning(f"[Vision Features] Variable output patch counts: {output_patch_counts}, applying padding")
+                max_patches = max(output_patch_counts)
                 
                 padded_features = []
-                for i, feat in enumerate(all_features):
-                    if feat.shape[1] < max_tokens:
-                        # Pad with zeros
-                        pad_len = max_tokens - feat.shape[1]
-                        padding = torch.zeros(1, pad_len, feat.shape[2], 
-                                            dtype=feat.dtype, device=feat.device)
-                        feat = torch.cat([feat, padding], dim=1)
-                    padded_features.append(feat)
+                for features in per_image_features:
+                    if features.shape[0] < max_patches:
+                        # ゼロパディング
+                        padding = torch.zeros(max_patches - features.shape[0], features.shape[1],
+                                            dtype=features.dtype, device=features.device)
+                        features = torch.cat([features, padding], dim=0)
+                    padded_features.append(features)
                 
-                vision_features = torch.cat(padded_features, dim=0)
+                vision_features = torch.stack(padded_features, dim=0)  # [B, N_patches, D]
         
-        # Debug output
-        logger.debug(f"extract_vision_features output: {vision_features.shape}")
-        
-        # ========================================================================
-        # FUTURE IMPLEMENTATION (2560-dim):
-        # Once transformers implements return_dict=True properly (v4.57+),
-        # uncomment the following code to use 2560-dim PatchMerge features:
-        # ========================================================================
-        """
-        # Enable hidden states output
-        if hasattr(self.qwen.model, 'vision_tower'):
-            vision_module = self.qwen.model.vision_tower
-        elif hasattr(self.qwen.model, 'visual'):
-            vision_module = self.qwen.model.visual
-        else:
-            raise ValueError("Cannot find vision module in model")
-        
-        vision_module.config.output_hidden_states = True
-        
-        # Get PatchMerge features (2560-dim for Qwen2.5-VL-3B)
-        vision_outputs = vision_module(
-            hidden_states=pixel_values,  # Note: first arg is 'hidden_states' not 'pixel_values'
-            grid_thw=image_grid_thw,
-            output_hidden_states=True,
-            return_dict=True  # Currently not working in transformers 4.56
-        )
-        
-        if hasattr(vision_outputs, 'hidden_states') and vision_outputs.hidden_states:
-            # hidden_states[-1] is PatchMerge output (2560-dim)
-            vision_features = vision_outputs.hidden_states[-1]
-        else:
-            # Fallback if hidden_states become available but wrong format
-            vision_features = image_embeds
-        """
-        # ========================================================================
-        
+        logger.info(f"[Vision Features] Final shape: {vision_features.shape}")
         return vision_features
 
     
@@ -829,238 +871,272 @@ class LISA_Model(nn.Module):
         attention_mask: Optional[torch.Tensor] = None,
         labels: Optional[torch.Tensor] = None,
         mask_labels: Optional[List[torch.Tensor]] = None,
+        sam_images: Optional[torch.Tensor] = None,
         image_grid_thw: Optional[torch.Tensor] = None,
-        sam_images: Optional[torch.Tensor] = None,  # SAM用の高解像度画像
-        return_dict: bool = True,
+        return_dict: bool = True
     ) -> Union[LISAModelOutput, Tuple]:
         """
-        Forward pass of LISA model
+        Forward pass with SAM2.1 integration for LISA改 model
         
         Args:
-            input_ids: Input token IDs [B, seq_len]
-            pixel_values: Input images [B, C, H, W]
-            attention_mask: Attention mask [B, seq_len]
-            labels: Language modeling labels [B, seq_len]
+            input_ids: Text input token IDs
+            pixel_values: Image inputs (2D patch or 3D image format)
+            attention_mask: Attention mask for text
+            labels: Target token IDs for training
             mask_labels: Ground truth masks for training
-            return_dict: Whether to return LISAModelOutput
-        
-        Returns:
-            Model outputs including language logits and mask predictions
+            sam_images: SAM-formatted images (1024x1024)
+            image_grid_thw: Grid dimensions for dynamic resolution
+            return_dict: Whether to return LISAModelOutput or tuple
         """
-        logger.debug(f"[FORWARD START] input_ids shape: {input_ids.shape}, seg_token_id: {self.seg_token_id}")
-        B = input_ids.size(0)
+        B = input_ids.shape[0]
         
-        # Update SEG token embedding in the frozen embedding layer before forward pass
-        if hasattr(self, 'seg_token_embedding') and self.seg_token_embedding is not None:
-            with torch.no_grad():
-                self.qwen.get_input_embeddings().weight[self.seg_token_id] = self.seg_token_embedding.data
+        # Log batch composition for debugging
+        logger.debug(f"[FORWARD] Batch composition:")
+        logger.debug(f"  input_ids: {input_ids.shape}")
+        logger.debug(f"  pixel_values: {pixel_values.shape if pixel_values is not None else 'None'}")
+        logger.debug(f"  sam_images: {sam_images.shape if sam_images is not None else 'None'}")
+        logger.debug(f"  mask_labels: {len(mask_labels) if mask_labels is not None else 'None'}")
+        logger.debug(f"  image_grid_thw: {image_grid_thw.shape if image_grid_thw is not None else 'None'}")
         
-        # 1. Run Qwen model for vision-language understanding
-        qwen_outputs = self.qwen(
-            input_ids=input_ids,
-            pixel_values=pixel_values,
-            attention_mask=attention_mask,
-            image_grid_thw=image_grid_thw,
-            output_hidden_states=True,
-            return_dict=True
-        )
+        # Determine if this is a segmentation task or VQA task
+        # Segmentation tasks have SEG tokens in input_ids or labels
+        is_segmentation_task = False
+        if self.seg_token_id is not None:
+            if labels is not None:
+                # Training: check labels for SEG tokens
+                is_segmentation_task = any((labels[i] == self.seg_token_id).any() for i in range(B))
+            else:
+                # Inference: check input_ids for SEG tokens
+                is_segmentation_task = any((input_ids[i] == self.seg_token_id).any() for i in range(B))
         
-        # Extract outputs
-        logits = qwen_outputs.logits  # [B, seq_len, vocab_size]
-        hidden_states = qwen_outputs.hidden_states[-1]  # Last layer [B, seq_len, D_l]
+        logger.debug(f"[FORWARD] Task type: {'Segmentation' if is_segmentation_task else 'VQA'}")
         
-        # 2. Extract vision features if images are provided
-        vision_features = None
-        image_features_sam = None
-        sam_high_res_features = None
-        sam_image_embeddings = None
+        # 1. Extract features from both vision encoders (always needed for LISA改)
+        # 1.1 Extract features from Qwen vision encoder
+        vision_features = self.extract_vision_features(pixel_values, image_grid_thw)
         
-        # 2.1 Extract Qwen vision features
-        if pixel_values is not None:
-            # Get vision features from Qwen
-            vision_features = self.extract_vision_features(pixel_values, image_grid_thw)
-            
-            # Debug: Check vision features shape
-            if len(vision_features.shape) == 2:
-                # If 2D, add batch dimension
-                vision_features = vision_features.unsqueeze(0)
-            
-            # Transform to SAM format using adapter
-            image_features_sam = self.image_adapter(vision_features, image_grid_thw)  # [B, 256, H, W]
-        
-        # 2.2 Extract SAM vision features if sam_images provided
+        # 1.2 Extract features from SAM vision encoder 
+        sam_image_features = None  # Features from SAM ImageEncoder
         if sam_images is not None:
-            logger.debug(f"[SAM ViT] Processing SAM images with shape: {sam_images.shape}")
-            # SAM2.1のImageEncoderに高解像度画像を入力し、特徴マップを取得
-            # 期待される入力: [B, 3, 1024, 1024]
-            # 期待される出力: [B, 256, 64, 64]
-            with torch.no_grad():  # SAM ImageEncoderは凍結されている
-                # SAM ImageEncoderを通して特徴抽出
-                # 注: SAM2のimage_encoderは直接呼び出すと backbone_out を返す
-                backbone_out = self.sam_image_encoder(sam_images)
+            logger.debug(f"[FORWARD] Processing SAM images: {sam_images.shape}")
+            with torch.no_grad():
+                # Ensure SAM encoder is in eval mode for stability
+                self.sam_image_encoder.eval()
                 
-                # SAM2の_prepare_backbone_features相当の処理が必要
-                # backbone_outは通常dict形式でキー'vision_features'と'vision_pos_enc'を含む
+                # Convert to appropriate dtype
+                sam_encoder_dtype = next(self.sam_image_encoder.parameters()).dtype
+                sam_images_converted = sam_images.to(dtype=sam_encoder_dtype)
+                
+                # Extract features using SAM encoder
+                backbone_out = self.sam_image_encoder(sam_images_converted)
+                
+                # Handle different output formats
                 if isinstance(backbone_out, dict):
-                    sam_image_embeddings = backbone_out.get('vision_features', backbone_out.get('image_embeddings'))
-                    # 位置埋め込みも取得できる（必要なら）
-                    # sam_pos_embeddings = backbone_out.get('vision_pos_enc', None)
+                    sam_image_features = backbone_out.get('vision_features', backbone_out.get('image_embeddings'))
                 else:
-                    # 直接テンソルが返る場合
-                    sam_image_embeddings = backbone_out
+                    sam_image_features = backbone_out
                 
-                logger.debug(f"[SAM ViT] Extracted SAM embeddings shape: {sam_image_embeddings.shape if sam_image_embeddings is not None else 'None'}")
+                logger.debug(f"[FORWARD] SAM ImageEncoder features extracted: {sam_image_features.shape}")
         
-        # 2.3 Fuse Qwen and SAM features
-        if sam_image_embeddings is not None and image_features_sam is not None:
-            if self.debug_fusion:
-                logger.debug(f"[FUSION] Fusing Qwen features {image_features_sam.shape} with SAM features {sam_image_embeddings.shape}")
-            
-            # 空間解像度を合わせる
-            # SAM特徴は通常64x64、Qwen特徴は可変
-            if image_features_sam.shape[-2:] != sam_image_embeddings.shape[-2:]:
-                # Qwen特徴をSAM特徴と同じ解像度にリサイズ
-                image_features_sam_resized = F.interpolate(
-                    image_features_sam,
-                    size=sam_image_embeddings.shape[-2:],
-                    mode='bilinear',
-                    align_corners=False
-                )
-                if self.debug_fusion:
-                    logger.debug(f"[FUSION] Resized Qwen features to {image_features_sam_resized.shape}")
-            else:
-                image_features_sam_resized = image_features_sam
-            
-            # Apply fusion based on fusion_type
-            if self.fusion_type == "cross_attention":
-                # Cross-attention fusion
-                if self.debug_fusion:
-                    logger.debug(f"[FUSION] Using Cross-Attention fusion")
-                fused_image_embeddings = self.image_fusion(
-                    sam_features=sam_image_embeddings,
-                    qwen_features=image_features_sam_resized
-                )
-                if self.debug_fusion:
-                    logger.debug(f"[FUSION] Cross-attention output shape: {fused_image_embeddings.shape}")
-            else:
-                # Sigma-add fusion (backward compatibility)
-                beta_scaled = torch.sigmoid(self.image_fusion_beta)
-                if self.debug_fusion:
-                    logger.debug(f"[FUSION] Using Sigma-Add fusion, beta={self.image_fusion_beta.item():.4f}, scaled={beta_scaled.item():.4f}")
-                fused_image_embeddings = self.image_fusion(
-                    sam_features=sam_image_embeddings,
-                    qwen_features=image_features_sam_resized
-                )
-            
-            if self.debug_fusion:
-                logger.debug(f"[FUSION] Created fused embeddings with shape: {fused_image_embeddings.shape}")
-            
-            # 融合後の特徴を使用
-            image_features_sam = fused_image_embeddings
-        elif sam_image_embeddings is not None:
-            # SAM特徴のみ使用
-            logger.debug("[FUSION] Using only SAM features (no Qwen features)")
-            image_features_sam = sam_image_embeddings
-        # else: Qwen特徴のみ使用（既存のimage_features_samをそのまま使用）
+        # Check if segmentation task requires SAM features
+        if is_segmentation_task and sam_image_features is None:
+            logger.warning("⚠️ SAM images are None for segmentation task! This may impact mask quality.")
+            logger.warning("SAM ImageEncoder cannot function without SAM images.")
         
-        # 2.4 Generate high-resolution features from (potentially fused) features
-        if image_features_sam is not None:
-            logger.debug(f"[HIGH RES] Generating high-res features from embeddings shape: {image_features_sam.shape}")
-            logger.debug(f"[HIGH RES] use_token_fpn = {self.use_token_fpn}")
-            
-            if self.use_token_fpn:
-                # Token-FPNを使用してマルチスケール特徴を生成
-                # 注: 融合後の特徴に対してToken-FPNを適用
-                if sam_image_embeddings is not None:
-                    # 融合後の特徴から高解像度特徴を再生成
-                    # Token-FPNのアップサンプラを直接使用
-                    sam_dtype = next(self.sam_mask_decoder.parameters()).dtype
-                    device = image_features_sam.device
-                    
-                    # 融合特徴から高解像度特徴を生成
-                    # Token-FPNは既にQwen特徴用に初期化されているため、
-                    # 融合特徴に対しても適用可能
-                    feat_s1 = self.token_fpn.upsample_s1(image_features_sam.to(dtype=sam_dtype))  # stride-8 [B,256,128,128]
-                    feat_s0 = self.token_fpn.upsample_s0(image_features_sam.to(dtype=sam_dtype))  # stride-4 [B,256,256,256]
-                    sam_high_res_features = [feat_s0, feat_s1]
-                    logger.debug(f"[HIGH RES] Generated fused high-res features: s0={feat_s0.shape}, s1={feat_s1.shape}")
-                else:
-                    # 融合なしの場合は通常のToken-FPN処理
-                    image_features_sam_fpn, sam_high_res_features = self.token_fpn(
+        # 2. Convert Qwen vision features to SAM-compatible format (256 channels)
+        image_features_sam = None
+        if vision_features is not None:
+            # Apply image adapter to get 256-channel features
+            image_features_sam = self.image_adapter(vision_features, image_grid_thw)  # [B, 256, H, W]
+            logger.debug(f"[FORWARD] Qwen features after image_adapter: {image_features_sam.shape}")
+        
+        # 3. Fuse SAM ImageEncoder features with Qwen features
+        if sam_image_features is not None and image_features_sam is not None:
+            if self.fusion_type == "sigma_add":
+                # Apply sigma-add fusion as per sam_vit_sigma_add_fusion20250814.md
+                # Both features should be at 256 channels
+                # sam_image_features: [B, 256, 64, 64] from SAM encoder
+                # image_features_sam: [B, 256, H, W] from Qwen after image_adapter
+                
+                B_sam, C_sam, H_sam, W_sam = sam_image_features.shape
+                B_qwen, C_qwen, H_qwen, W_qwen = image_features_sam.shape
+                
+                logger.debug(f"[FUSION] SAM encoder features: {sam_image_features.shape}, Qwen adapter features: {image_features_sam.shape}")
+                
+                # Align spatial dimensions (resize Qwen features to match SAM)
+                if (H_qwen, W_qwen) != (H_sam, W_sam):
+                    image_features_sam_resized = F.interpolate(
                         image_features_sam,
-                        image_grid_thw=image_grid_thw,
-                        use_hooks=True  # フックから中間特徴を使用
+                        size=(H_sam, W_sam),
+                        mode='bilinear',
+                        align_corners=False
                     )
-                    # FPNから得た特徴をSAM用に使用
-                    image_features_sam = image_features_sam_fpn
-            else:
-                # 従来のHighResFeatureGeneratorを使用
-                # 融合後の特徴に対して適用
-                sam_high_res_features = self.high_res_generator(image_features_sam)
-                logger.debug(f"[HIGH RES] Generated high-res features using HighResFeatureGenerator")
+                    logger.debug(f"[FUSION] Resized Qwen features from ({H_qwen}, {W_qwen}) to ({H_sam}, {W_sam})")
+                else:
+                    image_features_sam_resized = image_features_sam
+                
+                # Apply sigma-add fusion: sam_features + sigmoid(beta) * qwen_features
+                beta_scaled = torch.sigmoid(self.image_fusion_beta)
+                image_features_sam = sam_image_features + beta_scaled * image_features_sam_resized
+                
+                logger.info(f"[FUSION] Applied sigma-add fusion with beta={beta_scaled.item():.3f}")
+            
+            elif self.fusion_type == "cross_attention":
+                # Use the CrossAttentionFusion module
+                # Align spatial dimensions first
+                B_sam, C_sam, H_sam, W_sam = sam_image_features.shape
+                B_qwen, C_qwen, H_qwen, W_qwen = image_features_sam.shape
+                
+                if (H_qwen, W_qwen) != (H_sam, W_sam):
+                    image_features_sam = F.interpolate(
+                        image_features_sam,
+                        size=(H_sam, W_sam),
+                        mode='bilinear',
+                        align_corners=False
+                    )
+                
+                # Apply cross-attention fusion via HybridFusionModule
+                image_features_sam = self.image_fusion(sam_image_features, image_features_sam)
+                logger.info(f"[FUSION] Applied cross-attention fusion")
+        elif sam_image_features is not None:
+            # Only SAM features available
+            image_features_sam = sam_image_features
+            logger.debug("[FUSION] Using only SAM encoder features (no Qwen features)")
+        # else: image_features_sam stays as Qwen-only features
         
-        # 3. Find SEG token positions and generate masks
+        # 4. Language modeling through Qwen
+        # Pass through Qwen model with proper inputs based on format
+        if pixel_values is not None and pixel_values.dim() == 2:
+            # 2D format with image_grid_thw (apply_chat_template format)
+            outputs = self.qwen(
+                input_ids=input_ids,
+                pixel_values=pixel_values,
+                image_grid_thw=image_grid_thw,
+                attention_mask=attention_mask,
+                labels=labels,
+                return_dict=True,
+                output_hidden_states=True
+            )
+        elif pixel_values is not None and pixel_values.dim() == 3:
+            # 3D format (batch of images) - still need image_grid_thw for Qwen2.5-VL
+            outputs = self.qwen(
+                input_ids=input_ids,
+                pixel_values=pixel_values,
+                image_grid_thw=image_grid_thw,  # Pass grid info for 3D format too
+                attention_mask=attention_mask,
+                labels=labels,
+                return_dict=True,
+                output_hidden_states=True
+            )
+        else:
+            # No pixel_values or other format
+            outputs = self.qwen(
+                input_ids=input_ids,
+                pixel_values=pixel_values,
+                attention_mask=attention_mask,
+                labels=labels,
+                return_dict=True,
+                output_hidden_states=True
+            )
+        
+        logits = outputs.logits
+        hidden_states = outputs.hidden_states[-1] if outputs.hidden_states else None
+        
+        # 5. Generate high-resolution features for SAM2.1 mask decoder
+        sam_high_res_features = None
+        if image_features_sam is not None and is_segmentation_task:
+            if self.use_token_fpn:
+                # Use Token-FPN for multi-scale features
+                image_features_sam, sam_high_res_features = self.token_fpn(
+                    image_features_sam, image_grid_thw, use_hooks=True
+                )
+                logger.debug(f"[FORWARD] Features after Token-FPN: {image_features_sam.shape}")
+            else:
+                # Use HighResFeatureGenerator
+                sam_high_res_features = self.high_res_generator(image_features_sam)
+                logger.debug(f"[FORWARD] Generated high-res features using HighResFeatureGenerator")
+        
+        
+        # 7. Find SEG token positions and generate masks (only for segmentation tasks)
         mask_logits = []
         seg_positions = []
         
-        # Check if seg_token_id is set
-        if self.seg_token_id is None:
-            logger.warning("[FORWARD] seg_token_id is None!")
-            return LISAModelOutput(logits=logits, mask_logits=mask_logits, seg_token_positions=seg_positions)
-        
-        # Determine SEG positions based on labels (training) or generated tokens (inference)
-        if labels is not None:
-            # Training: find SEG tokens in labels
-            for i in range(B):
-                seg_pos = (labels[i] == self.seg_token_id).nonzero(as_tuple=True)[0]
-                if len(seg_pos) > 0:
-                    seg_positions.append(seg_pos.tolist())
-                else:
-                    seg_positions.append([])
-        else:
-                        # Inference: find SEG tokens in input_ids
-            for i in range(B):
-                seg_pos = (input_ids[i] == self.seg_token_id).nonzero(as_tuple=True)[0]
-                logger.debug(f"[SEG SEARCH] Batch {i}: Found {len(seg_pos)} SEG tokens at positions {seg_pos.tolist() if len(seg_pos) > 0 else []}")
-                if len(seg_pos) > 0:
-                    seg_positions.append(seg_pos.tolist())
-                else:
-                    seg_positions.append([])
-        
-                        # 4. Generate masks for each SEG position using proper SAM2.1 implementation
-        logger.debug(f"[MASK GEN] Total seg_positions: {seg_positions}")
-        logger.debug(f"[MASK GEN] Total batches: {B}")
-        for i in range(B):
-            sample_masks = []
+        if is_segmentation_task:
+            # Check if seg_token_id is set
+            if self.seg_token_id is None:
+                logger.error("[FORWARD] seg_token_id is None for segmentation task!")
+                raise ValueError("seg_token_id must be set for segmentation tasks")
             
-            # Debug: Log seg_positions for this batch
-            logger.debug(f"[MASK GEN] Batch {i}: seg_positions = {seg_positions[i]}")
-            logger.debug(f"[MASK GEN] image_features_sam shape: {image_features_sam.shape if image_features_sam is not None else 'None'}")
+            # Verify SAM features are available
+            if image_features_sam is None:
+                logger.error("[FORWARD] SAM features not available for segmentation task!")
+                raise ValueError("SAM vision features are required for segmentation tasks")
             
-            if len(seg_positions[i]) > 0 and image_features_sam is not None and i < image_features_sam.shape[0]:
-                # Extract hidden states at SEG positions
-                seg_hidden_states = hidden_states[i, seg_positions[i]]  # [num_segs, D_l]
-                
-                # Project to prompt embeddings
-                if len(seg_positions[i]) == 1:
-                    prompt_embeds = self.text_prompt_proj(seg_hidden_states)  # [256]
-                else:
-                    prompt_embeds = self.text_prompt_proj(seg_hidden_states)  # [num_segs, 256]
-                
-                                # Generate mask for each SEG token
-                logger.debug(f"[MASK GEN] Batch {i}: Processing {len(seg_positions[i])} SEG tokens")
-                for j, prompt_embed in enumerate(prompt_embeds if len(seg_positions[i]) > 1 else [prompt_embeds]):
-                    logger.debug(f"[MASK GEN] Batch {i}, SEG {j}: Starting mask generation")
-                    try:
-                        # Get positional encoding from SAM prompt encoder
-                        image_pe = self.sam_prompt_encoder.get_dense_pe()
+            # Determine SEG positions based on labels (training) or generated tokens (inference)
+            if labels is not None:
+                # Training: find SEG tokens in labels
+                for i in range(B):
+                    seg_pos = (labels[i] == self.seg_token_id).nonzero(as_tuple=True)[0]
+                    if len(seg_pos) > 0:
+                        seg_positions.append(seg_pos.tolist())
                         
-                        # Ensure PE matches image embeddings size
+                        # Training with segmentation: warn if mask_labels missing
+                        if mask_labels is None or i >= len(mask_labels) or mask_labels[i] is None:
+                            logger.warning(f"[FORWARD] Training segmentation task but mask_labels missing for batch {i}")
+                    else:
+                        seg_positions.append([])
+            else:
+                # Inference: find SEG tokens in input_ids
+                for i in range(B):
+                    seg_pos = (input_ids[i] == self.seg_token_id).nonzero(as_tuple=True)[0]
+                    logger.debug(f"[SEG SEARCH] Batch {i}: Found {len(seg_pos)} SEG tokens at positions {seg_pos.tolist() if len(seg_pos) > 0 else []}")
+                    if len(seg_pos) > 0:
+                        seg_positions.append(seg_pos.tolist())
+                    else:
+                        seg_positions.append([])
+            
+            # 4. Generate masks for each SEG position using proper SAM2.1 implementation
+            logger.debug(f"[MASK GEN] Total seg_positions: {seg_positions}")
+            logger.debug(f"[MASK GEN] Total batches: {B}")
+            for i in range(B):
+                sample_masks = []
+                
+                # Debug: Log seg_positions for this batch
+                logger.debug(f"[MASK GEN] Batch {i}: seg_positions = {seg_positions[i]}")
+                logger.debug(f"[MASK GEN] image_features_sam shape: {image_features_sam.shape if image_features_sam is not None else 'None'}")
+                
+                for j, seg_idx in enumerate(seg_positions[i]):
+                    logger.debug(f"[MASK GEN] Processing batch {i}, SEG token {j} at position {seg_idx}")
+                    try:
+                        # Extract text embedding at SEG position
+                        text_embed = hidden_states[i, seg_idx]  # [hidden_dim]
+                        
+                        # Project to SAM prompt space
+                        # Project from Qwen hidden_dim (3584) to SAM prompt_embed_dim (256)
+                        prompt_embed = self.text_prompt_proj(text_embed)  # [256]
+                        
+                        # Get position encoding for SAM
+                        if not hasattr(self, '_pe_cache'):
+                            self._pe_cache = {}
+                        
+                        pe_key = image_features_sam[i:i+1].shape[-2:]
+                        if pe_key not in self._pe_cache:
+                            self._pe_cache[pe_key] = self.sam_prompt_encoder.get_dense_pe().to(image_features_sam.device)
+                        image_pe = self._pe_cache[pe_key]
+                        
+                        # Handle different image_pe shapes
+                        if image_pe.dim() == 3:  # Missing batch dimension
+                            image_pe = image_pe.unsqueeze(0)
+                        elif image_pe.shape[0] != 1:
+                            # Ensure batch dimension is 1
+                            image_pe = image_pe[:1]
+                        
+                        # Check spatial dimensions
                         if image_pe.shape[-2:] != image_features_sam[i:i+1].shape[-2:]:
-                            h_feat, w_feat = image_features_sam[i:i+1].shape[-2:]
+                            # Interpolate position encoding to match image features
                             image_pe = F.interpolate(
                                 image_pe,
-                                size=(h_feat, w_feat),
+                                size=image_features_sam[i:i+1].shape[-2:],
                                 mode='bilinear',
                                 align_corners=False
                             )
@@ -1210,8 +1286,13 @@ class LISA_Model(nn.Module):
                             orig_h, orig_w = pixel_values.shape[-2:]
                             dummy_mask = torch.zeros(1, orig_h, orig_w, device=pixel_values.device, dtype=torch.float32)
                             sample_masks.append(dummy_mask)
-            
-            mask_logits.append(sample_masks if len(sample_masks) > 0 else None)
+                
+                mask_logits.append(sample_masks if len(sample_masks) > 0 else None)
+        else:
+            # VQA task: No mask generation needed
+            logger.debug("[FORWARD] VQA task - skipping mask generation")
+            mask_logits = None
+            seg_positions = None
         
         if return_dict:
             return LISAModelOutput(

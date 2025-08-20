@@ -27,6 +27,7 @@ def test_sam_vit_fusion():
         torch_dtype=torch.float32,
         device_map="cuda" if torch.cuda.is_available() else "cpu",
         freeze_image_fusion_beta=False,  # Keep trainable for testing
+        fusion_type="sigma_add",  # Explicitly set to sigma_add fusion
     )
     
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -54,8 +55,9 @@ def test_sam_vit_fusion():
     # Set tokenizer in model
     model.set_tokenizer(processor.tokenizer, seg_token=config.seg_token)
     
-    # Check image_fusion_beta parameter
-    print(f"\nimage_fusion_beta initial value: {model.image_fusion_beta.item():.4f}")
+    # Check fusion configuration
+    print(f"\nFusion type: {model.fusion_type}")
+    print(f"image_fusion_beta initial value: {model.image_fusion_beta.item():.4f}")
     print(f"image_fusion_beta requires_grad: {model.image_fusion_beta.requires_grad}")
     
     # 3. Create dummy inputs

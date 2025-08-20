@@ -3,9 +3,12 @@ import json
 import os
 import random
 import sys
+import logging
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 from src.utils.coordinate_transform import CoordinateTransform
 from collections import defaultdict
+
+logger = logging.getLogger(__name__)
 
 import cv2
 import numpy as np
@@ -324,9 +327,9 @@ class SemSegDataset(torch.utils.data.Dataset):
                     self.data2classes[ds] = classes
                     valid_datasets.append(ds)
                 else:
-                    print(f"警告: データセット {ds} に有効なデータがありません")
+                    logger.warning(f"⚠️ データセット {ds} に有効なデータがありません")
             except Exception as e:
-                print(f"データセット {ds} の初期化でエラー: {e}")
+                logger.warning(f"⚠️ データセット {ds} の初期化でエラー: {e}")
                 continue
 
         if len(valid_datasets) == 0:

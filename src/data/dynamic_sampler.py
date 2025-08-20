@@ -78,7 +78,7 @@ class DynamicResolutionBatchSampler(Sampler):
                         break
                         
             except Exception as e:
-                logger.debug(f"Failed to analyze sample {idx}: {e}")
+                logger.warning(f"⚠️ Failed to analyze sample {idx}: {e}")
                 continue
         
         # Extrapolate to full dataset

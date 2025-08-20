@@ -202,8 +202,8 @@ def main():
     output_dir = create_standard_output_structure(f"test_outputs/test_a2_{timestamp}")
     logger.info(f"Output directory: {output_dir}")
     
-    # テスト設定を保存
-    save_test_config(output_dir, 'test_a2_unfreeze_sam', {
+    # テスト設定を保存（最初は基本設定のみ）
+    save_test_config(output_dir, 'test_a2_unfreeze_sam', None, {
         'test_description': 'SAM unfrozen with LLM embedding replacement'
     })
     
@@ -249,6 +249,21 @@ def main():
     model = LISA_Model(config)
     model.set_tokenizer(tokenizer)
     
+    # **SAM ImageEncoderの存在確認（デバッグ追加）**
+    has_sam_encoder = hasattr(model, 'sam_image_encoder') and model.sam_image_encoder is not None
+    print(f"🔍 **SAM ImageEncoder exists: {has_sam_encoder}**")
+    
+    if has_sam_encoder:
+        sam_encoder_params = sum(p.numel() for p in model.sam_image_encoder.parameters())
+        print(f"🔍 SAM ImageEncoder parameters: {sam_encoder_params:,}")
+    else:
+        print("🔍 ❌ **SAM ImageEncoder NOT FOUND!**")
+        print("モデルの属性一覧:")
+        for attr in dir(model):
+            if 'sam' in attr.lower():
+                print(f"  - {attr}: {getattr(model, attr, 'None')}")
+        exit(1)
+    
     # パラメータ統計の詳細表示
     from src.utils.model_utils import display_parameter_statistics
     display_parameter_statistics(model, logger_name=__name__)
@@ -284,6 +299,16 @@ def main():
     # SAM関連のパラメータが学習可能になっているか確認
     sam_trainable = [n for n in trainable_params if 'sam' in n.lower()]
     logger.info(f"SAM trainable parameters: {len(sam_trainable)} tensors")
+    
+    # LISAConfigが設定された後で詳細設定を保存
+    total_params = sum(p.numel() for p in model.parameters())
+    trainable_param_count = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    save_test_config(output_dir, 'test_a2_unfreeze_sam', config, {
+        'test_description': 'SAM unfrozen with LLM embedding replacement',
+        'total_params': total_params,
+        'trainable_params': trainable_param_count,
+        'sam_trainable_tensors': len(sam_trainable)
+    })
     
     # 2. データセット準備（固定サンプル版）
     base_dir = config.dataset_base_dir
@@ -341,15 +366,112 @@ def main():
                 if isinstance(v, torch.Tensor):
                     batch[k] = v.to(device)
             
-            # モデルforward実行
+            # **A1の修正を適用: SAM画像を元画像から生成**
+            # 元画像（Qwen用）からSAM画像を生成
+            if 'pixel_values' in batch and batch['pixel_values'] is not None:
+                print(f"🔍 pixel_values shape: {batch['pixel_values'].shape}")
+                print(f"🔍 pixel_values dim: {batch['pixel_values'].dim()}")
+                
+                # original_imagesがあれば優先的に使用
+                if 'original_images' in batch and batch['original_images'] is not None:
+                    print(f"🔍 Using original_images for SAM image generation")
+                    sam_images = []
+                    for i, original_img in enumerate(batch['original_images']):
+                        from PIL import Image
+                        if isinstance(original_img, Image.Image):
+                            # PIL画像の場合
+                            sam_image = original_img.resize((config.sam_image_size, config.sam_image_size), Image.BICUBIC)
+                            sam_array = np.array(sam_image).astype(np.float32) / 255.0
+                            sam_tensor = torch.from_numpy(sam_array).permute(2, 0, 1)  # [H, W, C] -> [C, H, W]
+                            sam_images.append(sam_tensor)
+                            print(f"🔍 Generated SAM image {i} from PIL Image")
+                        elif isinstance(original_img, torch.Tensor):
+                            # Tensorの場合
+                            img_tensor = original_img
+                            if img_tensor.dim() == 3 and img_tensor.shape[0] == 3:
+                                # [C, H, W]形式
+                                img_np = img_tensor.permute(1, 2, 0).cpu().numpy()
+                                if img_np.max() <= 1.0:
+                                    img_np = (img_np * 255).astype(np.uint8)
+                                pil_image = Image.fromarray(img_np.astype(np.uint8))
+                                sam_image = pil_image.resize((config.sam_image_size, config.sam_image_size), Image.BICUBIC)
+                                sam_array = np.array(sam_image).astype(np.float32) / 255.0
+                                sam_tensor = torch.from_numpy(sam_array).permute(2, 0, 1)
+                                sam_images.append(sam_tensor)
+                                print(f"🔍 Generated SAM image {i} from Tensor")
+                    
+                    if sam_images:
+                        sam_images_batch = torch.stack(sam_images).to(device)
+                        print(f"🔍 Successfully created sam_images_batch: {sam_images_batch.shape}")
+                    else:
+                        sam_images_batch = None
+                        print(f"🔍 ❌ Failed to create SAM images from original_images")
+                else:
+                    # pixel_valuesから生成を試みる（パッチ形式の場合は生成できない）
+                    print(f"🔍 ⚠️ No original_images found, cannot generate SAM images from patches")
+                    sam_images_batch = None
+                    
+                    # デバッグ用：バッチの全キーを表示
+                    print(f"🔍 Available batch keys: {list(batch.keys())}")
+                    
+                    sam_images = []
+                    for i in range(batch['pixel_values'].shape[0]):
+                        # Qwen用の画像を取得
+                        qwen_image = batch['pixel_values'][i]  # [patches, features]の可能性
+                        
+                        print(f"🔍 qwen_image shape: {qwen_image.shape}, dim: {qwen_image.dim()}")
+                        
+                        # RGB形式に変換してPIL Imageに
+                        if qwen_image.dim() == 3:
+                            # [C, H, W] -> [H, W, C]の順番で変換
+                            qwen_np = qwen_image.permute(1, 2, 0).cpu().numpy()
+                            # 正規化されている場合は0-255に戻す
+                            if qwen_np.max() <= 1.0:
+                                qwen_np = (qwen_np * 255).astype(np.uint8)
+                            
+                            # PIL Imageに変換
+                            from PIL import Image
+                            pil_image = Image.fromarray(qwen_np.astype(np.uint8))
+                            
+                            # SAM用にリサイズ
+                            sam_image = pil_image.resize((config.sam_image_size, config.sam_image_size), Image.BICUBIC)
+                            
+                            # Tensorに変換
+                            sam_array = np.array(sam_image).astype(np.float32) / 255.0
+                            sam_tensor = torch.from_numpy(sam_array).permute(2, 0, 1)  # [H, W, C] -> [C, H, W]
+                            sam_images.append(sam_tensor)
+                    
+                    if sam_images:
+                        sam_images_batch = torch.stack(sam_images).to(device)
+                    else:
+                        sam_images_batch = None
+            else:
+                sam_images_batch = None
+            
+            # **修正後のLISA_Modelのforwardメソッドを使用**
+            # これにより修正されたSAM ImageEncoderが実際に呼ばれる
+            # 学習時は勾配計算を有効にする（no_grad()は使わない）
+            
+            # **SAM画像の確認（デバッグ）**
+            if sam_images_batch is not None:
+                print(f"🔍 Step {step}: SAM images batch shape: {sam_images_batch.shape}, device: {sam_images_batch.device}")
+            else:
+                print(f"🔍 Step {step}: ❌ sam_images_batch is None!")
+            
+            print(f"🔍 Step {step}: About to call model.forward with sam_images...")
+            
             outputs = model(
                 input_ids=batch['input_ids'],
                 pixel_values=batch['pixel_values'],
                 attention_mask=batch['attention_mask'],
                 labels=batch['labels'],
                 mask_labels=batch['mask_labels'],
-                image_grid_thw=batch.get('image_grid_thw', None)
+                image_grid_thw=batch.get('image_grid_thw', None),
+                sam_images=sam_images_batch,  # SAM画像を渡す
+                return_dict=True
             )
+            
+            print(f"🔍 Step {step}: model.forward completed")
             
             # 損失計算
             # Languageモデリング損失

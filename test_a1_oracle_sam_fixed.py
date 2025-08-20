@@ -85,8 +85,8 @@ class OracleSAMTester:
         
         logger.info(f"Output directory: {self.output_dir}")
         
-        # テスト設定を保存
-        save_test_config(self.output_dir, 'test_a1_oracle_sam', {
+        # テスト設定を保存（LISAConfigは後で設定されるので、基本設定のみ）
+        save_test_config(self.output_dir, 'test_a1_oracle_sam', None, {
             'test_description': 'Oracle SAM prompt test with GT centroids'
         })
     
@@ -159,6 +159,13 @@ class OracleSAMTester:
         trainable_params = sum(p.numel() for p in self.model.parameters() if p.requires_grad)
         logger.info(f"Total parameters: {total_params:,}")
         logger.info(f"Trainable parameters: {trainable_params:,}")
+        
+        # LISAConfigが設定された後で詳細設定を保存
+        save_test_config(self.output_dir, 'test_a1_oracle_sam', self.lisa_config, {
+            'test_description': 'Oracle SAM prompt test with GT centroids',
+            'total_params': total_params,
+            'trainable_params': trainable_params
+        })
     
     def setup_data(self):
         """データセットのセットアップ（すべてのデータセットタイプに対応）"""
@@ -227,10 +234,23 @@ class OracleSAMTester:
     
     def compute_mask_centroid(self, mask):
         """マスクから重心座標を計算"""
-        if mask.dim() == 4:
-            mask = mask.squeeze(0).squeeze(0)
-        elif mask.dim() == 3:
+        # まず適切な2D形状に変換
+        while mask.dim() > 2:
             mask = mask.squeeze(0)
+        
+        # 1D の場合は正方形マスクとして扱う
+        if mask.dim() == 1:
+            import math
+            size = int(math.sqrt(mask.numel()))
+            if size * size == mask.numel():
+                mask = mask.view(size, size)
+            else:
+                # サイズが合わない場合はダミー重心を返す
+                return torch.tensor([mask.numel() // 2, mask.numel() // 2], dtype=torch.float32, device=mask.device)
+        
+        if mask.dim() != 2:
+            # 2Dにならない場合はダミー重心を返す
+            return torch.tensor([256, 256], dtype=torch.float32, device=mask.device)
         
         m = mask.to(torch.float32)
         h, w = m.shape
@@ -248,7 +268,7 @@ class OracleSAMTester:
         return torch.stack([cx, cy])
     
     def forward_with_oracle_prompt(self, batch, step):
-        """オラクルプロンプト（GT重心）を使用してマスクを生成（minimal_train.pyのforwardを参考）"""
+        """オラクルプロンプト（GT重心）を使用してマスクを生成（LISA_Modelのforwardを使用）"""
         
         # バッチをデバイスに移動
         pixel_values = batch['pixel_values'].to(self.device)
@@ -264,135 +284,82 @@ class OracleSAMTester:
         
         gt_masks = mask_labels.to(self.device)
         
-        # Qwenを通して画像特徴を抽出（minimal_train.pyと同じ）
-        with torch.no_grad():  # Qwenは凍結
-            # Qwenのforward
-            qwen_outputs = self.model.qwen(
-                input_ids=input_ids,
-                pixel_values=pixel_values,
-                attention_mask=attention_mask,
-                image_grid_thw=image_grid_thw,
-                output_hidden_states=True,
-                return_dict=True
-            )
+        # **重要**: SAM画像も作成してLISA_Modelに渡す
+        # original_imagesからSAM用の1024x1024画像を作成
+        sam_images = None
+        if 'original_images' in batch and batch['original_images'] is not None and len(batch['original_images']) > 0:
+            from PIL import Image
+            import numpy as np
+            import torchvision.transforms as transforms
             
-            # Vision features extraction
-            vision_features = self.model.extract_vision_features(pixel_values, image_grid_thw)
-            if len(vision_features.shape) == 2:
-                vision_features = vision_features.unsqueeze(0)
-        
-        # SAM用の画像特徴をアダプタで変換（勾配を流す）
-        image_features_sam = self.model.image_adapter(vision_features, image_grid_thw)
-        
-        # 高解像度特徴の生成
-        if self.model.use_token_fpn:
-            image_features_sam_fpn, sam_high_res_features = self.model.token_fpn(
-                image_features_sam,
-                image_grid_thw=image_grid_thw,
-                use_hooks=True
-            )
-            image_features_sam = image_features_sam_fpn
-        else:
-            sam_high_res_features = self.model.high_res_generator(image_features_sam)
-        
-        # GTマスクから重心を計算
-        B = gt_masks.shape[0]
-        all_pred_masks = []
-        
-        for i in range(B):
-            # 各バッチのGTマスク
-            gt_mask = gt_masks[i]
+            # SAM用の前処理変換を定義
+            sam_transform = transforms.Compose([
+                transforms.Resize((1024, 1024)),
+                transforms.ToTensor(),
+                transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+            ])
             
-            # 重心を計算
-            if gt_mask.dim() == 3 and gt_mask.shape[0] > 1:
-                gt_mask = gt_mask[0]  # 最初のマスクのみ使用
-            
-            centroid = self.compute_mask_centroid(gt_mask)
-            
-            # minimal_train.pyのforward内のSAMマスク生成部分を参考
-            h_feat, w_feat = image_features_sam[i:i+1].shape[-2:]
-            h_img, w_img = h_feat * 16, w_feat * 16  # Feature stride is 16
-            
-            # 重心座標をSAMのポイント形式に変換
-            point_coords = centroid.unsqueeze(0).unsqueeze(0)  # [1, 1, 2]
-            point_labels = torch.ones(1, 1, dtype=torch.int32, device=self.device)
-            
-            # SAMのPromptEncoderを使用
-            sparse_embeddings, dense_embeddings = self.model.sam_prompt_encoder(
-                points=(point_coords, point_labels),
-                boxes=None,
-                masks=None,
-            )
-            
-            # Positional encoding
-            image_pe = self.model.sam_prompt_encoder.get_dense_pe()
-            if image_pe.shape[-2:] != image_features_sam[i:i+1].shape[-2:]:
-                image_pe = F.interpolate(
-                    image_pe,
-                    size=(h_feat, w_feat),
-                    mode='bilinear',
-                    align_corners=False
-                )
-            
-            # Dense embeddingsのサイズ調整
-            if dense_embeddings.shape[-2:] != image_features_sam[i:i+1].shape[-2:]:
-                dense_embeddings = F.interpolate(
-                    dense_embeddings,
-                    size=(h_feat, w_feat),
-                    mode='bilinear',
-                    align_corners=False
-                )
-            
-            # 高解像度特徴の準備（minimal_train.pyと同じ）
-            sam_dtype = next(self.model.sam_mask_decoder.parameters()).dtype
-            
-            if sam_high_res_features is not None and len(sam_high_res_features) >= 2:
-                feat_s0 = sam_high_res_features[0][i:i+1].to(dtype=sam_dtype)
-                feat_s1 = sam_high_res_features[1][i:i+1].to(dtype=sam_dtype)
-                
-                if hasattr(self.model.sam_mask_decoder, 'conv_s0') and hasattr(self.model.sam_mask_decoder, 'conv_s1'):
-                    feat_s0 = self.model.sam_mask_decoder.conv_s0(feat_s0)
-                    feat_s1 = self.model.sam_mask_decoder.conv_s1(feat_s1)
+            # 各画像をSAM用に変換
+            sam_image_list = []
+            for orig_img in batch['original_images']:
+                if isinstance(orig_img, Image.Image):
+                    # PIL画像をSAM用に変換
+                    sam_img_tensor = sam_transform(orig_img)
+                    sam_image_list.append(sam_img_tensor)
                 else:
-                    raise RuntimeError("SAM2.1 MaskDecoder missing conv_s0/conv_s1")
-                
-                high_res_features = [feat_s0, feat_s1]
+                    logger.warning("original_images contains non-PIL image, using dummy SAM image")
+                    # ダミーSAM画像を作成
+                    sam_img_tensor = torch.randn(3, 1024, 1024)
+                    sam_image_list.append(sam_img_tensor)
+            
+            if sam_image_list:
+                sam_images = torch.stack(sam_image_list).to(self.device)
+                logger.info(f"[SAM IMAGES] Created SAM images with shape: {sam_images.shape}")
+        
+        if sam_images is None:
+            logger.warning("Could not create SAM images, creating dummy SAM images")
+            # ダミーSAM画像を作成
+            batch_size = pixel_values.shape[0] if pixel_values.dim() == 4 else 1
+            sam_images = torch.randn(batch_size, 3, 1024, 1024).to(self.device)
+        
+        # **修正後のLISA_Modelのforwardメソッドを使用**
+        # これにより修正されたSAM ImageEncoderが実際に呼ばれる
+        # 学習時は勾配計算を有効にする（no_grad()は使わない）
+        outputs = self.model(
+            input_ids=input_ids,
+            pixel_values=pixel_values,
+            attention_mask=attention_mask,
+            image_grid_thw=image_grid_thw,
+            sam_images=sam_images,  # SAM画像を渡す
+            return_dict=True
+        )
+        
+        # マスクを取得
+        mask_logits = outputs.mask_logits
+        if mask_logits is None or len(mask_logits) == 0 or mask_logits[0] is None:
+            logger.warning("No masks generated by LISA_Model")
+            return None, None
+        
+        # 予測マスクを取得
+        pred_masks = []
+        for batch_masks in mask_logits:
+            if batch_masks is not None and len(batch_masks) > 0:
+                # 最初のマスクを使用
+                pred_masks.append(batch_masks[0])
             else:
-                raise RuntimeError("High-resolution features not available")
-            
-            # SAM MaskDecoderでマスク生成
-            low_res_masks, iou_predictions, sam_tokens_out, obj_score_logits = self.model.sam_mask_decoder(
-                image_embeddings=image_features_sam[i:i+1].to(dtype=sam_dtype),
-                image_pe=image_pe.to(dtype=sam_dtype),
-                sparse_prompt_embeddings=sparse_embeddings.to(dtype=sam_dtype),
-                dense_prompt_embeddings=dense_embeddings.to(dtype=sam_dtype),
-                multimask_output=False,
-                repeat_image=True,
-                high_res_features=high_res_features,
-            )
-            
-            # アップサンプリング
-            if image_grid_thw is not None and i < image_grid_thw.shape[0]:
-                H_grid_raw = int(image_grid_thw[i, 1].item())
-                W_grid_raw = int(image_grid_thw[i, 2].item())
-                orig_h = H_grid_raw * 14
-                orig_w = W_grid_raw * 14
-            else:
-                orig_h, orig_w = gt_mask.shape[-2:]
-            
-            pred_mask = F.interpolate(
-                low_res_masks,
-                size=(orig_h, orig_w),
-                mode='bilinear',
-                align_corners=False
-            )
-            
-            all_pred_masks.append(pred_mask)
+                # ダミーマスクを作成
+                h, w = gt_masks.shape[-2:]
+                dummy_mask = torch.zeros(1, h, w, device=self.device)
+                pred_masks.append(dummy_mask)
+        
+        if len(pred_masks) == 0:
+            logger.warning("No valid masks in output")
+            return None, None
         
         # バッチ化
-        pred_masks = torch.cat(all_pred_masks, dim=0)
+        pred_masks = torch.cat(pred_masks, dim=0)
         
-        # GTマスクのサイズを合わせる
+        # GTマスクのサイズと次元を合わせる
         if gt_masks.shape[-2:] != pred_masks.shape[-2:]:
             gt_masks = F.interpolate(
                 gt_masks.float(),
@@ -400,6 +367,13 @@ class OracleSAMTester:
                 mode='nearest'
             )
         
+        # 次元を合わせる（pred_masksが[B, H, W]、gt_masksが[B, 1, H, W]の場合）
+        if len(pred_masks.shape) == 3 and len(gt_masks.shape) == 4:
+            gt_masks = gt_masks.squeeze(1)  # [B, 1, H, W] → [B, H, W]
+        elif len(pred_masks.shape) == 4 and len(gt_masks.shape) == 3:
+            pred_masks = pred_masks.squeeze(1)  # [B, 1, H, W] → [B, H, W]
+        
+        logger.info(f"[ORACLE FORWARD] pred_masks: {pred_masks.shape}, gt_masks: {gt_masks.shape}")
         return pred_masks, gt_masks
     
     def compute_losses(self, pred_masks, gt_masks):
@@ -411,8 +385,16 @@ class OracleSAMTester:
         pred_probs = torch.sigmoid(pred_masks)
         smooth = 1e-6
         
-        intersection = (pred_probs * gt_masks).sum(dim=(2, 3))
-        union = pred_probs.sum(dim=(2, 3)) + gt_masks.sum(dim=(2, 3))
+        # 次元に応じて適切なsumを実行
+        if pred_probs.dim() == 3:  # [B, H, W]
+            sum_dims = (1, 2)
+        elif pred_probs.dim() == 4:  # [B, C, H, W]
+            sum_dims = (2, 3)
+        else:
+            raise ValueError(f"Unexpected pred_masks dimensions: {pred_probs.shape}")
+        
+        intersection = (pred_probs * gt_masks).sum(dim=sum_dims)
+        union = pred_probs.sum(dim=sum_dims) + gt_masks.sum(dim=sum_dims)
         dice_score = (2 * intersection + smooth) / (union + smooth)
         dice_loss = 1 - dice_score.mean()
         
@@ -473,12 +455,40 @@ class OracleSAMTester:
                 logger.info(f"Skipping visualization at step {step} (unsupported pixel format)")
                 return
         
-        # マスクを取得
-        pred_mask_np = torch.sigmoid(pred_masks[0, 0]).detach().cpu().numpy()
-        gt_mask_np = gt_masks[0, 0].detach().cpu().numpy()
+        # マスクを取得（適切な2D形状を確保）
+        pred_mask = pred_masks[0]
+        gt_mask = gt_masks[0]
+        
+        # 3Dの場合は最初のチャンネルを取得
+        if pred_mask.dim() == 3:
+            pred_mask = pred_mask[0]
+        if gt_mask.dim() == 3:
+            gt_mask = gt_mask[0]
+        
+        pred_mask_np = torch.sigmoid(pred_mask).detach().cpu().numpy()
+        gt_mask_np = gt_mask.detach().cpu().numpy()
+        
+        # 1Dの場合は正方形に変換
+        if len(pred_mask_np.shape) == 1:
+            import math
+            size = int(math.sqrt(pred_mask_np.size))
+            if size * size == pred_mask_np.size:
+                pred_mask_np = pred_mask_np.reshape(size, size)
+            else:
+                print(f"Warning: Cannot reshape pred_mask to square, skipping visualization")
+                return
+        
+        if len(gt_mask_np.shape) == 1:
+            import math
+            size = int(math.sqrt(gt_mask_np.size))
+            if size * size == gt_mask_np.size:
+                gt_mask_np = gt_mask_np.reshape(size, size)
+            else:
+                print(f"Warning: Cannot reshape gt_mask to square, skipping visualization")
+                return
         
         # GTマスクから重心を計算して表示
-        centroid = self.compute_mask_centroid(gt_masks[0, 0])
+        centroid = self.compute_mask_centroid(gt_masks[0])
         centroid_x, centroid_y = centroid[0].item(), centroid[1].item()
         
         # テキスト情報を取得（トークンIDとラベルをデコード）

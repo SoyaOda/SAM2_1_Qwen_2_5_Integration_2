@@ -534,7 +534,7 @@ class MinimalTrainer:
         logger.info(f"アライメント対象パラメータ数: {len(align_params)}")
         
         if not align_params:
-            logger.warning("アライメント対象のパラメータがありません")
+            logger.warning("⚠️ アライメント対象のパラメータがありません - スキップします")
             return
         
         logger.info("AdamWオプティマイザを作成中...")
@@ -729,6 +729,16 @@ class MinimalTrainer:
         seg_loss = 0.0
         seg_count = 0
         
+        # セグメンテーションタスクかどうかを判定
+        is_segmentation_task = False
+        if hasattr(self.model, 'seg_token_id') and self.model.seg_token_id is not None:
+            # labelsにSEGトークンが含まれているかチェック
+            is_segmentation_task = any((labels[i] == self.model.seg_token_id).any() for i in range(labels.shape[0]))
+        
+        if is_segmentation_task and outputs.mask_logits is None:
+            # セグメンテーションタスクなのにmask_logitsがない場合は警告
+            logger.warning("⚠️ Segmentation task detected but mask_logits is None! This indicates a problem with mask generation.")
+        
         if outputs.mask_logits is not None:
             for batch_idx, batch_masks in enumerate(outputs.mask_logits):
                 if batch_masks is not None and len(batch_masks) > 0:
@@ -879,6 +889,28 @@ class MinimalTrainer:
             # image_grid_thwがある場合は追加
             if 'image_grid_thw' in batch:
                 forward_kwargs['image_grid_thw'] = batch['image_grid_thw']
+                # デバッグ: 0パッチの画像を検出
+                if batch['image_grid_thw'].dim() > 0:
+                    grid_values = batch['image_grid_thw']
+                    if grid_values.dim() == 3:
+                        grid_values = grid_values.reshape(-1, 3)
+                    patch_counts = (grid_values[:, 0] * grid_values[:, 1] * grid_values[:, 2]).tolist()
+                    if any(c == 0 for c in patch_counts):
+                        logger.warning(f"[TRAIN] Found 0-patch images in batch {batch_idx}")
+                        logger.warning(f"[TRAIN] Grid values: {grid_values.tolist()}")
+                        logger.warning(f"[TRAIN] Patch counts: {patch_counts}")
+                        # バッチ内のサンプル情報を出力（可能な場合）
+                        if 'dataset_type' in batch:
+                            logger.warning(f"[TRAIN] Dataset types in batch: {batch.get('dataset_type', 'unknown')}")
+            
+            # SAM画像は必須（フォールバック削除）
+            if 'sam_images' not in batch:
+                logger.error("❌ SAM images not found in batch! This is critical for mask quality.")
+                logger.error(f"Available batch keys: {list(batch.keys())}")
+                raise ValueError("SAM images are required but not found in batch. Check MultiModalDataCollator.")
+            
+            forward_kwargs['sam_images'] = batch['sam_images']
+            logger.debug(f"[TRAIN] SAM images shape in batch: {batch['sam_images'].shape}")
             
             outputs = self.model(**forward_kwargs)
             
@@ -1014,15 +1046,16 @@ class MinimalTrainer:
                     if image_np.max() <= 1.0:
                         image_np = (image_np * 255).astype(np.uint8)
                 else:
-                    logger.debug(f"Skipping visualization at step {step} (unsupported image format)")
+                    logger.warning(f"⚠️ Skipping visualization at step {step} (unsupported image format)")
                     return
             else:
                 # pixel_valuesから復元を試みる
+                logger.warning("⚠️ original_images not found in batch - falling back to pixel_values")
                 pixel_values = batch['pixel_values'][0].cpu()
                 
                 # パッチ形式の場合はスキップ
                 if pixel_values.dim() == 2:
-                    logger.debug(f"Skipping visualization at step {step} (patch format, no original_images)")
+                    logger.warning(f"⚠️ Skipping visualization at step {step} (patch format, no original_images)")
                     return
                 
                 # 3D形式の場合
@@ -1033,7 +1066,7 @@ class MinimalTrainer:
                     image = torch.clamp(image, 0, 1)
                     image_np = image.permute(1, 2, 0).numpy()
                 else:
-                    logger.debug(f"Skipping visualization at step {step} (unsupported pixel format)")
+                    logger.warning(f"⚠️ Skipping visualization at step {step} (unsupported pixel format)")
                     return
             
             # マスクを取得（バッチの最初のサンプル）
@@ -1100,6 +1133,7 @@ class MinimalTrainer:
                 unmasked_count = (labels != -100).sum().item()
                 
             except Exception as e:
+                logger.warning(f"⚠️ Text decoding error in visualization: {e}")
                 user_text = f"[Decoding Error: {e}]"
                 assistant_text = ""
                 masked_count = 0
@@ -1215,7 +1249,7 @@ class MinimalTrainer:
             logger.info(f"💾 Saved visualization to {save_path} (Dice: {dice:.4f}, IoU: {iou:.4f})")
             
         except Exception as e:
-            logger.warning(f"Failed to save visualization at step {step}: {e}")
+            logger.warning(f"⚠️ Failed to save visualization at step {step}: {e}")
     
     def save_checkpoint(self, name="best"):
         """チェックポイントの保存（新しいcheckpoint_io使用）"""
@@ -1255,7 +1289,7 @@ class MinimalTrainer:
             try:
                 self.run_inference_evaluation(save_path, name)
             except Exception as e:
-                logger.warning(f"推論評価の実行に失敗: {e}")
+                logger.warning(f"⚠️ 推論評価の実行に失敗: {e}")
     
     def run_inference_evaluation(self, checkpoint_path, checkpoint_name):
         """チェックポイント保存時に推論評価を実行
@@ -1322,7 +1356,7 @@ class MinimalTrainer:
                         logger.info(f"  ✓ {img_data['name']}: mean={result_info['mask_mean']:.3f}, positive={result_info['positive_pixels']}/{result_info['total_pixels']}")
                         
                 except Exception as e:
-                    logger.warning(f"  ✗ {img_data['name']}: 推論失敗 - {e}")
+                    logger.warning(f"  ⚠️ {img_data['name']}: 推論失敗 - {e}")
                     continue
         
         # 結果をJSONで保存
@@ -1391,7 +1425,7 @@ class MinimalTrainer:
                 })
                 
             except Exception as e:
-                logger.warning(f"画像 {img_info['name']} の取得に失敗: {e}")
+                logger.warning(f"⚠️ 画像 {img_info['name']} の取得に失敗: {e}")
                 continue
         
         return downloaded_images
@@ -1427,6 +1461,7 @@ class MinimalTrainer:
             image_inputs, video_inputs = process_vision_info(messages)
         except ImportError:
             # フォールバック
+            logger.warning("⚠️ process_vision_info not available - using fallback")
             image_inputs = [image]
             video_inputs = []
         
@@ -1452,7 +1487,10 @@ class MinimalTrainer:
         # SAM用の高解像度画像を準備
         sam_image = np.array(image.resize((1024, 1024)))
         sam_image_tensor = torch.from_numpy(sam_image).permute(2, 0, 1).float() / 255.0
-        sam_image_tensor = sam_image_tensor.unsqueeze(0).to(self.device)
+        
+        # モデルのdtypeに合わせる（BFloat16対応）
+        model_dtype = next(self.model.parameters()).dtype
+        sam_image_tensor = sam_image_tensor.unsqueeze(0).to(device=self.device, dtype=model_dtype)
         
         # モデルのforward
         outputs = self.model(
