@@ -110,27 +110,29 @@ def setup_seg_token(tokenizer, seg_token="<SEG>"):
 def preprocess_sam_image(image: Image.Image, target_size: Optional[int] = None) -> torch.Tensor:
     """
     SAM用画像前処理：1024x1024にリサイズ・パディング・正規化
+    SAM標準の右下パディング（left-top anchor）を使用
     """
     if target_size is None:
         target_size = getattr(config, 'SAM_IMAGE_SIZE', 1024)
     
-    # 1. 最長辺を1024にリサイズ
+    # 1. 最長辺を1024にリサイズ（アスペクト比維持）
     w, h = image.size
-    if max(w, h) != target_size:
-        if w > h:
-            new_w, new_h = target_size, int(h * target_size / w)
-        else:
-            new_w, new_h = int(w * target_size / h), target_size
+    scale = float(target_size) / max(w, h)
+    new_w = int(round(w * scale))
+    new_h = int(round(h * scale))
+    
+    if (new_w, new_h) != (w, h):
         image = image.resize((new_w, new_h), Image.LANCZOS)
     
-    # 2. 1024x1024にパディング
+    # 2. 1024x1024にパディング（右下のみ、SAM標準）
     w, h = image.size
-    pad_w = (target_size - w) // 2
-    pad_h = (target_size - h) // 2
+    # SAM標準: 右端・下端にのみパディング（左上原点固定）
+    pad_w = target_size - w  # 右側に全てパディング
+    pad_h = target_size - h  # 下側に全てパディング
     
     # パディング用の新しい画像を作成
     padded_image = Image.new('RGB', (target_size, target_size), (0, 0, 0))
-    padded_image.paste(image, (pad_w, pad_h))
+    padded_image.paste(image, (0, 0))  # 左上に配置（SAM標準）
     
     # 3. テンソル化と正規化
     transform = transforms.Compose([

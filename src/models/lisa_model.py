@@ -1173,6 +1173,9 @@ class LISA_Model(nn.Module):
                             high_res_features=high_res_features,  # Pass 256-channel features - SAM will apply conv_s0/s1
                         )
                         
+                        # Debug: Check mask shape
+                        logger.info(f"[SAM Decoder] low_res_masks shape: {low_res_masks.shape}")
+                        
                         # Upscale mask to original image size
                         # For dynamic resolution, determine target size from grid_thw
                         if image_grid_thw is not None and i < image_grid_thw.shape[0]:
@@ -1190,12 +1193,18 @@ class LISA_Model(nn.Module):
                             orig_h = h_feat * 16
                             orig_w = w_feat * 16
                         
+                        # Check if we need to select a single mask from multi-mask output
+                        if low_res_masks.shape[1] > 1:
+                            logger.warning(f"[SAM Decoder] Multiple masks in output: {low_res_masks.shape}, using first mask")
+                            low_res_masks = low_res_masks[:, 0:1, :, :]  # Select first mask only
+                        
                         mask_logit = F.interpolate(
                             low_res_masks,
                             size=(orig_h, orig_w),
                             mode='bilinear',
                             align_corners=False
                         )
+                        logger.info(f"[SAM Decoder] Upsampled mask shape: {mask_logit.shape}")
                         sample_masks.append(mask_logit.squeeze(0))  # Remove batch dim
                             
                     except Exception as e:
