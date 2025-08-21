@@ -639,7 +639,8 @@ class LISA_Model(nn.Module):
         
         if B == 1:
             # Single sample - process directly
-            image_embeds = self.qwen.model.get_image_features(pixel_values, image_grid_thw)
+            # Qwen2.5-VLではmodel.modelの下にget_image_featuresがある
+            image_embeds = self.qwen.model.model.get_image_features(pixel_values, image_grid_thw)
             
             # Handle tuple return
             if isinstance(image_embeds, tuple):
@@ -662,7 +663,8 @@ class LISA_Model(nn.Module):
                 single_grid = image_grid_thw[i:i+1]  # Keep batch dimension
                 
                 # Process single sample
-                single_embeds = self.qwen.model.get_image_features(single_pixel_values, single_grid)
+                # Qwen2.5-VLではmodel.modelの下にget_image_featuresがある
+                single_embeds = self.qwen.model.model.get_image_features(single_pixel_values, single_grid)
                 
                 # Handle tuple return
                 if isinstance(single_embeds, tuple):
@@ -733,6 +735,9 @@ class LISA_Model(nn.Module):
             vision_features = image_embeds
         """
         # ========================================================================
+        
+        # Note: Qwen2.5-VL uses spatial_merge_size=2, so token count is reduced by 1/4
+        # e.g., [1, 28, 28] -> [1, 14, 14] after 2x2 merge
         
         return vision_features
 
@@ -867,13 +872,20 @@ class LISA_Model(nn.Module):
             # 期待される入力: [B, 3, 1024, 1024]
             # 期待される出力: [B, 256, 64, 64]
             with torch.no_grad():  # SAM ImageEncoderは凍結されている
+                # SAM ImageEncoderのdtypeに合わせる（通常はFloat32）
+                sam_encoder_dtype = next(self.sam_image_encoder.parameters()).dtype
+                sam_images_typed = sam_images.to(dtype=sam_encoder_dtype)
+                
                 # SAM ImageEncoderを通して特徴抽出
                 # 注: SAM2のimage_encoderは直接呼び出すと backbone_out を返す
-                backbone_out = self.sam_image_encoder(sam_images)
+                logger.info(f"[SAM ViT] Input to SAM encoder: shape={sam_images_typed.shape}, dtype={sam_images_typed.dtype}")
+                backbone_out = self.sam_image_encoder(sam_images_typed)
+                logger.info(f"[SAM ViT] SAM encoder output type: {type(backbone_out)}")
                 
                 # SAM2の_prepare_backbone_features相当の処理が必要
                 # backbone_outは通常dict形式でキー'vision_features'と'vision_pos_enc'を含む
                 if isinstance(backbone_out, dict):
+                    logger.info(f"[SAM ViT] backbone_out keys: {backbone_out.keys()}")
                     sam_image_embeddings = backbone_out.get('vision_features', backbone_out.get('image_embeddings'))
                     # 位置埋め込みも取得できる（必要なら）
                     # sam_pos_embeddings = backbone_out.get('vision_pos_enc', None)
@@ -881,11 +893,16 @@ class LISA_Model(nn.Module):
                     # 直接テンソルが返る場合
                     sam_image_embeddings = backbone_out
                 
-                logger.debug(f"[SAM ViT] Extracted SAM embeddings shape: {sam_image_embeddings.shape if sam_image_embeddings is not None else 'None'}")
+                # モデルのdtypeに合わせる（BFloat16など）
+                if sam_image_embeddings is not None:
+                    model_dtype = next(self.parameters()).dtype
+                    sam_image_embeddings = sam_image_embeddings.to(dtype=model_dtype)
+                
+                logger.info(f"[SAM ViT] Extracted SAM embeddings shape: {sam_image_embeddings.shape if sam_image_embeddings is not None else 'None'}, dtype: {sam_image_embeddings.dtype if sam_image_embeddings is not None else 'None'}")
         
         # 2.3 Fuse Qwen and SAM features
         if sam_image_embeddings is not None and image_features_sam is not None:
-            logger.debug(f"[FUSION] Fusing Qwen features {image_features_sam.shape} with SAM features {sam_image_embeddings.shape}")
+            logger.info(f"[FUSION] Fusing Qwen features {image_features_sam.shape} with SAM features {sam_image_embeddings.shape}")
             
             # 空間解像度を合わせる
             # SAM特徴は通常64x64、Qwen特徴は可変
@@ -900,6 +917,9 @@ class LISA_Model(nn.Module):
                 logger.debug(f"[FUSION] Resized Qwen features to {image_features_sam_resized.shape}")
             else:
                 image_features_sam_resized = image_features_sam
+            
+            # データ型を統一（SAM特徴のdtypeに合わせる）
+            image_features_sam_resized = image_features_sam_resized.to(dtype=sam_image_embeddings.dtype)
             
             # β係数を0〜1に正規化
             beta_scaled = torch.sigmoid(self.image_fusion_beta)
@@ -929,14 +949,15 @@ class LISA_Model(nn.Module):
                 if sam_image_embeddings is not None:
                     # 融合後の特徴から高解像度特徴を再生成
                     # Token-FPNのアップサンプラを直接使用
-                    sam_dtype = next(self.sam_mask_decoder.parameters()).dtype
+                    # Token-FPNのdtypeに合わせる（BFloat16など）
+                    fpn_dtype = next(self.token_fpn.parameters()).dtype
                     device = image_features_sam.device
                     
                     # 融合特徴から高解像度特徴を生成
                     # Token-FPNは既にQwen特徴用に初期化されているため、
                     # 融合特徴に対しても適用可能
-                    feat_s1 = self.token_fpn.upsample_s1(image_features_sam.to(dtype=sam_dtype))  # stride-8 [B,256,128,128]
-                    feat_s0 = self.token_fpn.upsample_s0(image_features_sam.to(dtype=sam_dtype))  # stride-4 [B,256,256,256]
+                    feat_s1 = self.token_fpn.upsample_s1(image_features_sam.to(dtype=fpn_dtype))  # stride-8 [B,256,128,128]
+                    feat_s0 = self.token_fpn.upsample_s0(image_features_sam.to(dtype=fpn_dtype))  # stride-4 [B,256,256,256]
                     sam_high_res_features = [feat_s0, feat_s1]
                     logger.debug(f"[HIGH RES] Generated fused high-res features: s0={feat_s0.shape}, s1={feat_s1.shape}")
                 else:
@@ -1157,14 +1178,9 @@ class LISA_Model(nn.Module):
                         logger.error(f"SAM2.1 mask generation failed with error: {e}")
                         import traceback
                         traceback.print_exc()
-                        print(f"Warning: SAM2.1 mask generation failed with error: {e}")
-                        import traceback
-                        print(f"Traceback: {traceback.format_exc()}")
-                        # Fall back to dummy mask if SAM fails
-                        if pixel_values is not None:
-                            orig_h, orig_w = pixel_values.shape[-2:]
-                            dummy_mask = torch.zeros(1, orig_h, orig_w, device=pixel_values.device, dtype=torch.float32)
-                            sample_masks.append(dummy_mask)
+                        # MD仕様書に従い、エラー時は適切に例外を再発生させる
+                        # フォールバック処理でエラーを隠蔽しない
+                        raise RuntimeError(f"SAM2.1 mask generation failed: {e}") from e
             
             mask_logits.append(sample_masks if len(sample_masks) > 0 else None)
         
