@@ -634,135 +634,36 @@ class LISA_Model(nn.Module):
             'applied_to': lora_applied
         }
     
-    def extract_vision_features(self, pixel_values: torch.Tensor, image_grid_thw: Optional[torch.Tensor] = None) -> torch.Tensor:
+    def extract_vision_features(self, pixel_values: torch.Tensor, image_grid_thw: torch.Tensor) -> torch.Tensor:
         """
-        Extract vision features from Qwen's vision encoder
-        Currently returns 2048-dim LLM-projected features for stability.
-        
-        NOTE: Future implementation will support 2560-dim PatchMerge features
-        once transformers library implements return_dict=True properly.
-        (Expected in transformers v4.57+)
+        Extract vision features from Qwen2.5-VL model
         
         Args:
-            pixel_values: Input images [B, N_raw_patches, D_v] for tokenized format
-            image_grid_thw: Grid dimensions for dynamic resolution [B, 3]
-                           Format: [T, H_raw, W_raw] where values are RAW patch counts (REQUIRED)
+            pixel_values: Image tensor [B, Patches, PatchDim] or [B, C, H, W]
+            image_grid_thw: Grid dimensions [B, 3] containing (T, H, W)
         
         Returns:
-            Vision features [B, N_compressed_patches, 2048] after LLM projection
-            (Future: will return 2560-dim PatchMerge features)
+            Vision features tensor
         """
-        # image_grid_thw is REQUIRED for tokenized format
-        if image_grid_thw is None:
-            raise ValueError("image_grid_thw is required for dynamic resolution support")
+        B = pixel_values.shape[0]
         
-        # ========================================================================
-        # CURRENT IMPLEMENTATION (2048-dim):
-        # Using get_image_features for stable 2048-dim LLM-projected features
-        # This is the approach used by LISA-v2, InternVL-HD, and Otter-SAM
-        # ========================================================================
-        
-        # O3推奨: バッチ処理時のトークン選択を回避するため、各サンプルを個別に処理
-        B = pixel_values.shape[0] if pixel_values.dim() == 3 else 1
-        
-        if B == 1:
-            # Single sample - process directly
-            image_embeds = self.qwen.model.get_image_features(pixel_values, image_grid_thw)
-            
-            # Handle tuple return
-            if isinstance(image_embeds, tuple):
-                image_embeds = image_embeds[0]
-            
-            # Ensure 3D shape [B, N_patches, D]
-            if image_embeds.dim() == 2:
-                image_embeds = image_embeds.unsqueeze(0)  # [N, D] -> [1, N, D]
-            
-            vision_features = image_embeds
-            
+        if pixel_values.dim() == 3:
+            # Flattened patches format [B, Patches, Dim]
+            # 正しいメソッドアクセス: model.model.get_image_features
+            image_embeds = self.qwen.model.model.get_image_features(pixel_values, image_grid_thw)
         else:
-            # Batch processing - process each sample individually to avoid token selection
-            # O3の推奨に従って、各サンプルを個別に処理してから結合
-            all_features = []
-            
+            # Standard 4D format [B, C, H, W]
+            # Process each image individually
+            all_embeds = []
             for i in range(B):
-                # Extract single sample
-                single_pixel_values = pixel_values[i:i+1]  # Keep batch dimension
-                single_grid = image_grid_thw[i:i+1]  # Keep batch dimension
-                
-                # Process single sample
-                single_embeds = self.qwen.model.get_image_features(single_pixel_values, single_grid)
-                
-                # Handle tuple return
-                if isinstance(single_embeds, tuple):
-                    single_embeds = single_embeds[0]
-                
-                # Ensure 3D shape [1, N_patches, D]
-                if single_embeds.dim() == 2:
-                    single_embeds = single_embeds.unsqueeze(0)
-                
-                all_features.append(single_embeds)
-            
-            # Check if all samples have the same number of tokens
-            token_counts = [f.shape[1] for f in all_features]
-            
-            if len(set(token_counts)) == 1:
-                # All samples have the same token count - can stack directly
-                vision_features = torch.cat(all_features, dim=0)  # [B, N_patches, D]
-                logger.debug(f"Batch processing successful: {B} samples, {token_counts[0]} tokens each")
-            else:
-                # Variable token counts - need to pad (shouldn't happen with proper collator)
-                logger.warning(f"Variable token counts in batch: {token_counts}")
-                max_tokens = max(token_counts)
-                
-                padded_features = []
-                for i, feat in enumerate(all_features):
-                    if feat.shape[1] < max_tokens:
-                        # Pad with zeros
-                        pad_len = max_tokens - feat.shape[1]
-                        padding = torch.zeros(1, pad_len, feat.shape[2], 
-                                            dtype=feat.dtype, device=feat.device)
-                        feat = torch.cat([feat, padding], dim=1)
-                    padded_features.append(feat)
-                
-                vision_features = torch.cat(padded_features, dim=0)
+                single_pixel_values = pixel_values[i:i+1]
+                single_grid = image_grid_thw[i:i+1] if image_grid_thw is not None else None
+                # 正しいメソッドアクセス: model.model.get_image_features
+                single_embeds = self.qwen.model.model.get_image_features(single_pixel_values, single_grid)
+                all_embeds.append(single_embeds)
+            image_embeds = torch.cat(all_embeds, dim=0)
         
-        # Debug output
-        logger.debug(f"extract_vision_features output: {vision_features.shape}")
-        
-        # ========================================================================
-        # FUTURE IMPLEMENTATION (2560-dim):
-        # Once transformers implements return_dict=True properly (v4.57+),
-        # uncomment the following code to use 2560-dim PatchMerge features:
-        # ========================================================================
-        """
-        # Enable hidden states output
-        if hasattr(self.qwen.model, 'vision_tower'):
-            vision_module = self.qwen.model.vision_tower
-        elif hasattr(self.qwen.model, 'visual'):
-            vision_module = self.qwen.model.visual
-        else:
-            raise ValueError("Cannot find vision module in model")
-        
-        vision_module.config.output_hidden_states = True
-        
-        # Get PatchMerge features (2560-dim for Qwen2.5-VL-3B)
-        vision_outputs = vision_module(
-            hidden_states=pixel_values,  # Note: first arg is 'hidden_states' not 'pixel_values'
-            grid_thw=image_grid_thw,
-            output_hidden_states=True,
-            return_dict=True  # Currently not working in transformers 4.56
-        )
-        
-        if hasattr(vision_outputs, 'hidden_states') and vision_outputs.hidden_states:
-            # hidden_states[-1] is PatchMerge output (2560-dim)
-            vision_features = vision_outputs.hidden_states[-1]
-        else:
-            # Fallback if hidden_states become available but wrong format
-            vision_features = image_embeds
-        """
-        # ========================================================================
-        
-        return vision_features
+        return image_embeds
 
     
     def extract_sam_features(self, pixel_values: torch.Tensor) -> Tuple[torch.Tensor, List[torch.Tensor]]:
