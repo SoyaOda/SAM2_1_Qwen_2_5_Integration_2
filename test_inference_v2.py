@@ -376,9 +376,14 @@ class InferenceRunnerV2:
         if n_seg_tokens == 0:
             logger.warning("No SEG token found in input_ids! Check tokenization.")
         
-        # SAM用の高解像度画像を準備
+        # SAM用の高解像度画像を準備（学習時と同じ前処理を適用）
         sam_image = np.array(image.resize((1024, 1024)))
         sam_image_tensor = torch.from_numpy(sam_image).permute(2, 0, 1).float() / 255.0
+        
+        # ImageNet正規化を適用（学習時と統一）
+        sam_mean = torch.tensor([0.485, 0.456, 0.406]).view(3, 1, 1)
+        sam_std = torch.tensor([0.229, 0.224, 0.225]).view(3, 1, 1)
+        sam_image_tensor = (sam_image_tensor - sam_mean) / sam_std
         sam_image_tensor = sam_image_tensor.unsqueeze(0).to(self.device)
         
         # 4) モデルのforward（推論モード）

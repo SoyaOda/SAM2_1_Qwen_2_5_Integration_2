@@ -928,10 +928,16 @@ class MinimalTrainer:
         progress_bar = tqdm(self.train_loader, desc=f"Epoch {epoch+1}/{self.config.num_epochs}")
         
         for batch_idx, batch in enumerate(progress_bar):
+            # デバッグ: デバイス移動前のsam_images確認
+            print(f"🚀[TRAIN] BEFORE device move - sam_images: {batch['sam_images'].shape if 'sam_images' in batch and batch['sam_images'] is not None else 'None/Missing'}")
+            
             # デバイスに移動
             batch = {k: v.to(self.device) if torch.is_tensor(v) else v for k, v in batch.items()}
             
-            # デバッグ: トークン数を確認
+            # デバッグ: デバイス移動後のsam_images確認
+            print(f"🚀[TRAIN] AFTER device move - sam_images: {batch['sam_images'].shape if 'sam_images' in batch and batch['sam_images'] is not None else 'None/Missing'}")
+            
+            # デバッグ: トークン数とsam_imagesを確認
             if batch_idx == 0 or self.config.debug:
                 img_tokens = batch['pixel_values'].shape[1] if batch['pixel_values'].dim() == 3 else 0
                 txt_tokens = batch['input_ids'].shape[1]
@@ -940,6 +946,18 @@ class MinimalTrainer:
                 if batch['pixel_values'].dim() == 3:
                     logger.debug(f"pixel_values shape: {batch['pixel_values'].shape}")
                 logger.debug(f"input_ids shape: {batch['input_ids'].shape}")
+                
+                # SAM画像のチェック
+                if 'sam_images' in batch:
+                    if batch['sam_images'] is not None:
+                        print(f"🔍[TRAIN] sam_images shape: {batch['sam_images'].shape}")
+                        logger.debug(f"sam_images shape: {batch['sam_images'].shape}")
+                    else:
+                        print(f"🔍[TRAIN] sam_images is None in batch")
+                        logger.debug("sam_images is None in batch")
+                else:
+                    print(f"🔍[TRAIN] sam_images key missing from batch")
+                    logger.debug("sam_images key missing from batch")
                 if 'image_grid_thw' in batch and batch['image_grid_thw'] is not None:
                     logger.debug(f"image_grid_thw: {batch['image_grid_thw']}")
                 
@@ -972,6 +990,13 @@ class MinimalTrainer:
             # image_grid_thwがある場合は追加
             if 'image_grid_thw' in batch:
                 forward_kwargs['image_grid_thw'] = batch['image_grid_thw']
+            
+            # sam_imagesがある場合は追加
+            if 'sam_images' in batch and batch['sam_images'] is not None:
+                forward_kwargs['sam_images'] = batch['sam_images']
+                print(f"🎯[TRAIN] Added sam_images to forward_kwargs: {batch['sam_images'].shape}")
+            else:
+                print(f"🎯[TRAIN] sam_images missing from batch or None")
             
             outputs = self.model(**forward_kwargs)
             
@@ -1207,10 +1232,17 @@ class MinimalTrainer:
             ax3.set_title('Predicted Mask', fontsize=12, fontweight='bold')
             ax3.axis('off')
             
-            # 下段: オーバーレイ比較
+            # 下段: オーバーレイ比較 (SAM2公式準拠の補間を使用)
             ax4 = plt.subplot(2, 3, 4)
             ax4.imshow(image_np)
-            gt_mask_resized = cv2.resize(gt_mask_np, (image_np.shape[1], image_np.shape[0]), interpolation=cv2.INTER_NEAREST)
+            # PyTorch F.interpolateを使用（SAM2公式と同じ方法）
+            gt_mask_tensor = torch.from_numpy(gt_mask_np).unsqueeze(0).unsqueeze(0).float()
+            gt_mask_resized_tensor = torch.nn.functional.interpolate(
+                gt_mask_tensor, 
+                size=(image_np.shape[0], image_np.shape[1]), 
+                mode='nearest'
+            )
+            gt_mask_resized = gt_mask_resized_tensor.squeeze().numpy()
             mask_overlay = np.zeros_like(image_np)
             mask_overlay[:, :, 0] = gt_mask_resized * 255
             ax4.imshow(mask_overlay, alpha=0.3)
@@ -1219,11 +1251,19 @@ class MinimalTrainer:
             
             ax5 = plt.subplot(2, 3, 5)
             ax5.imshow(image_np)
-            pred_mask_resized = cv2.resize(pred_mask_np, (image_np.shape[1], image_np.shape[0]), interpolation=cv2.INTER_LINEAR)
+            # PyTorch F.interpolateを使用（SAM2公式: bilinear, align_corners=False）
+            pred_mask_tensor = torch.from_numpy(pred_mask_np).unsqueeze(0).unsqueeze(0).float()
+            pred_mask_resized_tensor = torch.nn.functional.interpolate(
+                pred_mask_tensor, 
+                size=(image_np.shape[0], image_np.shape[1]), 
+                mode='bilinear', 
+                align_corners=False
+            )
+            pred_mask_resized = pred_mask_resized_tensor.squeeze().numpy()
             pred_overlay = np.zeros_like(image_np)
             pred_overlay[:, :, 1] = pred_mask_resized * 255
             ax5.imshow(pred_overlay, alpha=0.3)
-            ax5.set_title('Image + Pred Mask', fontsize=12, fontweight='bold')
+            ax5.set_title('Image + Pred Mask (SAM2公式補間)', fontsize=12, fontweight='bold')
             ax5.axis('off')
             
             # メトリクス表示
@@ -1522,7 +1562,7 @@ class MinimalTrainer:
                 padding=True,
                 return_tensors="pt",
                 max_length=8192
-            ).to(self.device)
+            )
         else:
             inputs = self.processor(
                 text=[text_prompt],
@@ -1530,12 +1570,30 @@ class MinimalTrainer:
                 padding=True,
                 return_tensors="pt",
                 max_length=8192
-            ).to(self.device)
+            )
         
-        # SAM用の高解像度画像を準備
+        # モデルのdtypeに合わせる（各テンソルを個別に処理）
+        model_dtype = next(self.model.parameters()).dtype
+        inputs = inputs.to(self.device)
+        
+        # pixel_valuesがある場合はdtypeも変換
+        if hasattr(inputs, 'pixel_values') and inputs.pixel_values is not None:
+            inputs.pixel_values = inputs.pixel_values.to(dtype=model_dtype)
+        
+        # image_grid_thwがある場合もdtypeを変換（Float32のままだとエラーになる）
+        if hasattr(inputs, 'image_grid_thw') and inputs.image_grid_thw is not None:
+            # image_grid_thwは整数値なのでFloat32のままでOK（dtypeは変換不要）
+            pass
+        
+        # SAM用の高解像度画像を準備（学習時と同じ前処理を適用）
         sam_image = np.array(image.resize((1024, 1024)))
         sam_image_tensor = torch.from_numpy(sam_image).permute(2, 0, 1).float() / 255.0
-        sam_image_tensor = sam_image_tensor.unsqueeze(0).to(self.device)
+        
+        # ImageNet正規化を適用（学習時と統一）
+        sam_mean = torch.tensor([0.485, 0.456, 0.406]).view(3, 1, 1)
+        sam_std = torch.tensor([0.229, 0.224, 0.225]).view(3, 1, 1)
+        sam_image_tensor = (sam_image_tensor - sam_mean) / sam_std
+        sam_image_tensor = sam_image_tensor.unsqueeze(0).to(device=self.device, dtype=model_dtype)
         
         # モデルのforward
         outputs = self.model(

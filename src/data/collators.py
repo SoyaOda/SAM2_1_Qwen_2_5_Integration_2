@@ -386,6 +386,33 @@ class MultiModalDataCollator:
                     mask_labels.append(torch.zeros(1, 1024, 1024))
             batch['mask_labels'] = torch.stack(mask_labels)
         
+        # Handle SAM images for high-resolution processing
+        print(f"🔧[COLLATOR] Processing {len(features)} features")
+        for i, f in enumerate(features):
+            if 'sam_images' in f:
+                print(f"🔧[COLLATOR] Feature {i}: sam_images present, shape={f['sam_images'].shape if f['sam_images'] is not None else 'None'}")
+            else:
+                print(f"🔧[COLLATOR] Feature {i}: sam_images key missing")
+        
+        if 'sam_images' in features[0] and features[0]['sam_images'] is not None:
+            sam_images_list = []
+            for i, f in enumerate(features):
+                sam_img = f.get('sam_images')
+                if sam_img is not None:
+                    print(f"🔧[COLLATOR] Adding sam_image {i}: {sam_img.shape}")
+                    sam_images_list.append(sam_img)
+                else:
+                    print(f"🔧[COLLATOR] Creating dummy sam_image for feature {i}")
+                    # Create dummy SAM image if missing
+                    sam_images_list.append(torch.zeros(3, 1024, 1024))
+            batch['sam_images'] = torch.stack(sam_images_list)
+            print(f"🔧[COLLATOR] Final sam_images batch shape: {batch['sam_images'].shape}")
+        else:
+            print(f"🔧[COLLATOR] No sam_images in batch - first feature has sam_images: {'sam_images' in features[0]}")
+            if 'sam_images' in features[0]:
+                print(f"🔧[COLLATOR] First feature sam_images value: {features[0]['sam_images']}")
+            batch['sam_images'] = None
+        
         # Preserve original images for visualization
         if any('original_image' in f for f in features):
             batch['original_images'] = [f.get('original_image') for f in features]

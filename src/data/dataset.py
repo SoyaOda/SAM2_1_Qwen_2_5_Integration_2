@@ -109,39 +109,25 @@ def setup_seg_token(tokenizer, seg_token="<SEG>"):
 
 def preprocess_sam_image(image: Image.Image, target_size: Optional[int] = None) -> torch.Tensor:
     """
-    SAM用画像前処理：1024x1024にリサイズ・パディング・正規化
+    SAM2公式仕様準拠の画像前処理：1024x1024に直接リサイズ・正規化
+    パディングは行わない（SAM2は正方形リサイズを前提）
     """
     if target_size is None:
         target_size = getattr(config, 'SAM_IMAGE_SIZE', 1024)
     
-    # 1. 最長辺を1024にリサイズ
-    w, h = image.size
-    if max(w, h) != target_size:
-        if w > h:
-            new_w, new_h = target_size, int(h * target_size / w)
-        else:
-            new_w, new_h = int(w * target_size / h), target_size
-        image = image.resize((new_w, new_h), Image.LANCZOS)
+    # SAM2公式: 直接正方形リサイズ（パディング不要）
+    image = image.resize((target_size, target_size), Image.LANCZOS)
     
-    # 2. 1024x1024にパディング
-    w, h = image.size
-    pad_w = (target_size - w) // 2
-    pad_h = (target_size - h) // 2
-    
-    # パディング用の新しい画像を作成
-    padded_image = Image.new('RGB', (target_size, target_size), (0, 0, 0))
-    padded_image.paste(image, (pad_w, pad_h))
-    
-    # 3. テンソル化と正規化
+    # SAM2公式: ImageNet正規化
     transform = transforms.Compose([
         transforms.ToTensor(),
         transforms.Normalize(
-            mean=[0.485, 0.456, 0.406],  # SAM2.1の正しい正規化値
+            mean=[0.485, 0.456, 0.406],  # SAM2.1公式正規化値
             std=[0.229, 0.224, 0.225]
         )
     ])
     
-    return transform(padded_image)
+    return transform(image)
 
 def preprocess_qwen_image(image: Image.Image, processor: AutoProcessor, target_size: Optional[int] = None) -> torch.Tensor:
     """
@@ -1007,6 +993,9 @@ class HybridDataset(torch.utils.data.Dataset):
             except Exception as e:
                 # エラー時はデフォルト値を使用
                 logger.debug(f"品質スコア計算エラー: {e}")
+        
+        # デバッグ: データセットから返すデータの確認
+        print(f"📊[DATASET] Returning sample with sam_images shape: {image_sam.shape if image_sam is not None else 'None'}")
         
         # 返り値の構築（仕様書準拠、オリジナルLISAとの互換性を保持）
         # collate_fnが期待するキー名に統一
