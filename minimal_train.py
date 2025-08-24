@@ -15,6 +15,7 @@ from datetime import datetime
 import json
 from tqdm import tqdm
 import numpy as np
+import random
 import wandb
 import argparse
 import matplotlib.pyplot as plt
@@ -30,6 +31,7 @@ from src.utils import prepare_tokenizer_for_lisa
 from src.data.dataset import HybridDataset
 from src.data.collators import MultiModalDataCollator
 from transformers import AutoProcessor, get_linear_schedule_with_warmup
+from sam2.utils.transforms import SAM2Transforms
 
 # ロギング設定
 logging.basicConfig(
@@ -46,14 +48,37 @@ class MinimalTrainer:
     def __init__(self, config):
         self.config = config
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.best_loss = float('inf')
-        self.global_step = 0
         
-        # 可視化設定
-        self.visualize = getattr(config, 'visualize', False)
+        # HuggingFaceハブのタイムアウト設定
+        from huggingface_hub import constants
+        constants.HF_HUB_DISABLE_TELEMETRY = True
+        
+        # 出力ディレクトリ設定
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        self.output_dir = Path(f"outputs/minimal_train_{timestamp}")
+        self.output_dir.mkdir(parents=True, exist_ok=True)
+        
+        # 各種パスの設定
+        self.checkpoint_dir = self.output_dir / "checkpoints"
+        self.checkpoint_dir.mkdir(exist_ok=True)
+        
+        # 可視化設定 - デフォルトをTrueに変更（no_visualizeフラグで無効化）
+        self.visualize = not getattr(config, 'no_visualize', False)
         self.visualize_steps = getattr(config, 'visualize_steps', 5)
         
-        # Loss履歴を記録
+        # 推論評価設定
+        self.run_inference_eval = getattr(config, 'run_inference_eval', False)
+        self.inference_eval_samples = getattr(config, 'inference_eval_samples', 3)
+        
+        # 学習パラメータ
+        self.num_epochs = config.num_epochs
+        self.batch_size = config.batch_size
+        self.gradient_accumulation_steps = config.gradient_accumulation_steps
+        self.save_steps = config.save_steps
+        self.global_step = 0
+        self.best_loss = float('inf')  # ベスト損失の初期化
+        
+        # 損失履歴
         self.loss_history = {
             'steps': [],
             'total_loss': [],
@@ -62,24 +87,55 @@ class MinimalTrainer:
             'learning_rate': []
         }
         
-        # 保存ディレクトリの設定
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        self.output_dir = Path(f"outputs/minimal_train_{timestamp}")
-        self.output_dir.mkdir(parents=True, exist_ok=True)
-        
-        # チェックポイントディレクトリ
-        self.checkpoint_dir = self.output_dir / "checkpoints"
-        self.checkpoint_dir.mkdir(exist_ok=True)
-        
-        # 可視化ディレクトリ（可視化が有効な場合のみ）
+        # 可視化ディレクトリ
         if self.visualize:
-            self.vis_dir = self.output_dir / 'visualizations'
+            self.vis_dir = self.output_dir / "visualizations"
             self.vis_dir.mkdir(exist_ok=True)
             logger.info(f"可視化を有効化: {self.visualize_steps}ステップごとに保存")
         
-        # 設定を保存
-        with open(self.output_dir / "config.json", 'w') as f:
-            json.dump(vars(config), f, indent=2)
+        # シード固定（再現性のため）
+        self.seed = getattr(config, 'seed', 43)
+        self.set_seed(self.seed)
+        logger.info(f"ランダムシードを固定: {self.seed}")
+        
+        # SAM2公式Transformsの初期化（可視化用）
+        self.sam_transforms = SAM2Transforms(
+            resolution=1024,
+            mask_threshold=0.0,
+            max_hole_area=0.0,
+            max_sprinkle_area=0.0
+        )
+        
+        # デバッグモード
+        self.debug = getattr(config, 'debug', False)
+        if self.debug:
+            logger.setLevel(logging.DEBUG)
+            logger.info("デバッグモードを有効化")
+
+    def set_seed(self, seed):
+        """全ての乱数生成器のシードを固定
+        
+        Args:
+            seed: 乱数シード値
+        """
+        import random
+        random.seed(seed)
+        np.random.seed(seed)
+        torch.manual_seed(seed)
+        torch.cuda.manual_seed(seed)
+        torch.cuda.manual_seed_all(seed)
+        
+        # CUDNNの動作を決定的にする（再現性優先、速度は若干低下）
+        torch.backends.cudnn.deterministic = True
+        torch.backends.cudnn.benchmark = False
+        
+        # DataLoaderのワーカーの乱数も固定
+        def worker_init_fn(worker_id):
+            worker_seed = seed + worker_id
+            np.random.seed(worker_seed)
+            random.seed(worker_seed)
+        
+        self.worker_init_fn = worker_init_fn
     
     def display_parameter_statistics(self):
         """パラメータ統計の詳細表示"""
@@ -297,7 +353,8 @@ class MinimalTrainer:
             shuffle=True,
             collate_fn=self.collator,
             num_workers=0,  # Set to 0 for debugging to avoid duplicate messages
-            pin_memory=True
+            pin_memory=True,
+            worker_init_fn=self.worker_init_fn if hasattr(self, 'worker_init_fn') else None
         )
         
         logger.info(f"データセットサイズ: {len(self.train_dataset)}")
@@ -928,14 +985,8 @@ class MinimalTrainer:
         progress_bar = tqdm(self.train_loader, desc=f"Epoch {epoch+1}/{self.config.num_epochs}")
         
         for batch_idx, batch in enumerate(progress_bar):
-            # デバッグ: デバイス移動前のsam_images確認
-            print(f"🚀[TRAIN] BEFORE device move - sam_images: {batch['sam_images'].shape if 'sam_images' in batch and batch['sam_images'] is not None else 'None/Missing'}")
-            
             # デバイスに移動
             batch = {k: v.to(self.device) if torch.is_tensor(v) else v for k, v in batch.items()}
-            
-            # デバッグ: デバイス移動後のsam_images確認
-            print(f"🚀[TRAIN] AFTER device move - sam_images: {batch['sam_images'].shape if 'sam_images' in batch and batch['sam_images'] is not None else 'None/Missing'}")
             
             # デバッグ: トークン数とsam_imagesを確認
             if batch_idx == 0 or self.config.debug:
@@ -950,13 +1001,10 @@ class MinimalTrainer:
                 # SAM画像のチェック
                 if 'sam_images' in batch:
                     if batch['sam_images'] is not None:
-                        print(f"🔍[TRAIN] sam_images shape: {batch['sam_images'].shape}")
                         logger.debug(f"sam_images shape: {batch['sam_images'].shape}")
                     else:
-                        print(f"🔍[TRAIN] sam_images is None in batch")
                         logger.debug("sam_images is None in batch")
                 else:
-                    print(f"🔍[TRAIN] sam_images key missing from batch")
                     logger.debug("sam_images key missing from batch")
                 if 'image_grid_thw' in batch and batch['image_grid_thw'] is not None:
                     logger.debug(f"image_grid_thw: {batch['image_grid_thw']}")
@@ -984,8 +1032,18 @@ class MinimalTrainer:
                 'pixel_values': batch['pixel_values'],
                 'attention_mask': batch['attention_mask'],
                 'labels': batch['labels'],
-                'mask_labels': [batch['mask_labels'][i] for i in range(batch['mask_labels'].size(0))]
             }
+            
+            # mask_labelsの処理（テンソルまたはリストに対応）
+            if 'mask_labels' in batch and batch['mask_labels'] is not None:
+                if torch.is_tensor(batch['mask_labels']):
+                    # テンソルの場合はリストに変換
+                    forward_kwargs['mask_labels'] = [batch['mask_labels'][i] for i in range(batch['mask_labels'].size(0))]
+                else:
+                    # すでにリストの場合はそのまま使用
+                    forward_kwargs['mask_labels'] = batch['mask_labels']
+            else:
+                forward_kwargs['mask_labels'] = None
             
             # image_grid_thwがある場合は追加
             if 'image_grid_thw' in batch:
@@ -994,9 +1052,6 @@ class MinimalTrainer:
             # sam_imagesがある場合は追加
             if 'sam_images' in batch and batch['sam_images'] is not None:
                 forward_kwargs['sam_images'] = batch['sam_images']
-                print(f"🎯[TRAIN] Added sam_images to forward_kwargs: {batch['sam_images'].shape}")
-            else:
-                print(f"🎯[TRAIN] sam_images missing from batch or None")
             
             outputs = self.model(**forward_kwargs)
             
@@ -1065,7 +1120,10 @@ class MinimalTrainer:
             
             # 定期的な可視化を保存
             if 'mask_labels' in batch and batch['mask_labels'] is not None:
+                logger.debug(f"Calling save_visualization at step {self.global_step}")
                 self.save_visualization(batch, outputs, self.global_step)
+            else:
+                logger.debug(f"Skipping save_visualization at step {self.global_step}: mask_labels not found or None")
             
             # 定期的なチェックポイント保存
             if self.global_step % self.config.save_steps == 0:
@@ -1084,261 +1142,264 @@ class MinimalTrainer:
         return avg_loss
     
     def save_visualization(self, batch, outputs, step):
-        """訓練中の予測を可視化（バッチの最初のサンプルのみ）"""
-        # 可視化が無効の場合はスキップ
-        if not self.visualize:
-            return
-            
-        # 指定されたステップ間隔で可視化
-        if step % self.visualize_steps != 0:
-            return
-        
-        # マスクがない場合はスキップ
-        if outputs.mask_logits is None or len(outputs.mask_logits) == 0:
-            return
-            
-        if outputs.mask_logits[0] is None:
-            return
-        
+        """可視化の保存（postprocess対応）"""
         try:
-            import cv2
-            from PIL import Image
-            import numpy as np
-            import json
+            # 可視化が無効な場合はスキップ（visualize_stepsが0以下なら無効）
+            if self.visualize_steps <= 0:
+                logger.debug(f"Visualization disabled at step {step}")
+                return
             
-            # original_imagesがcollatorから渡されている場合はそれを使用
-            if 'original_images' in batch and batch['original_images'] is not None and len(batch['original_images']) > 0:
-                original_img = batch['original_images'][0]
-                if isinstance(original_img, Image.Image):
-                    image_np = np.array(original_img)
-                elif isinstance(original_img, torch.Tensor):
-                    img_tensor = original_img
-                    if img_tensor.dim() == 4:
-                        img_tensor = img_tensor[0]
-                    if img_tensor.shape[0] == 3:
-                        image_np = img_tensor.permute(1, 2, 0).cpu().numpy()
-                    else:
-                        image_np = img_tensor.cpu().numpy()
-                    if image_np.max() <= 1.0:
-                        image_np = (image_np * 255).astype(np.uint8)
-                else:
-                    logger.debug(f"Skipping visualization at step {step} (unsupported image format)")
-                    return
-            else:
-                # pixel_valuesから復元を試みる
-                pixel_values = batch['pixel_values'][0].cpu()
-                
-                # パッチ形式の場合はスキップ
-                if pixel_values.dim() == 2:
-                    logger.debug(f"Skipping visualization at step {step} (patch format, no original_images)")
-                    return
-                
-                # 3D形式の場合
-                if pixel_values.dim() == 3:
-                    mean = torch.tensor([0.48145466, 0.4578275, 0.40821073]).view(3, 1, 1)
-                    std = torch.tensor([0.26862954, 0.26130258, 0.27577711]).view(3, 1, 1)
-                    image = pixel_values * std + mean
-                    image = torch.clamp(image, 0, 1)
-                    image_np = image.permute(1, 2, 0).numpy()
-                else:
-                    logger.debug(f"Skipping visualization at step {step} (unsupported pixel format)")
-                    return
+            # 保存頻度のチェック（visualize_stepsの間隔で保存）
+            if step % max(1, self.visualize_steps) != 0:
+                logger.debug(f"Skipping visualization at step {step} (not a visualization step)")
+                return
             
-            # マスクを取得（バッチの最初のサンプル）
-            pred_mask = outputs.mask_logits[0]
+            # マスクを持つサンプルを探す
+            valid_idx = None
+            if hasattr(outputs, 'mask_logits') and outputs.mask_logits is not None:
+                for i in range(len(outputs.mask_logits)):
+                    if outputs.mask_logits[i] is not None:
+                        # 有効なマスクを持つ最初のサンプルを使用
+                        valid_idx = i
+                        break
+            
+            # マスク出力がない場合はスキップ
+            if valid_idx is None:
+                logger.debug(f"No valid mask outputs found at step {step}")
+                return
+            
+            # SAM imagesがない場合はスキップ
+            if 'sam_images' not in batch or batch['sam_images'] is None:
+                logger.debug(f"No sam_images in batch at step {step}")
+                return
+            
+            # 可視化を安全に作成
+            logger.debug(f"Creating visualization at step {step} for sample {valid_idx}")
+            
+            # SAM画像の正しいdenormalize処理
+            sam_image = batch['sam_images'][valid_idx]  # [C, H, W]
+            
+            # ImageNet正規化の逆操作
+            def denormalize_sam_image(img_tensor):
+                """SAM2のImageNet正規化を逆操作してRGB画像に戻す"""
+                if img_tensor.dim() == 4:
+                    img_tensor = img_tensor[0]
+                # ImageNet mean/std
+                mean = torch.tensor([0.485, 0.456, 0.406], device=img_tensor.device).view(3, 1, 1)
+                std = torch.tensor([0.229, 0.224, 0.225], device=img_tensor.device).view(3, 1, 1)
+                # 逆正規化: x = x * std + mean
+                img = (img_tensor * std + mean).clamp(0, 1)
+                # [0, 1] -> [0, 255]
+                img = (img * 255.0).round().to(torch.uint8)
+                # CHW -> HWC
+                img = img.permute(1, 2, 0).cpu().numpy()
+                return img
+            
+            image_np = denormalize_sam_image(sam_image)
+            
+            # orig_hwを取得（リスト形式に対応）
+            orig_hw = None
+            if 'orig_hw' in batch and batch['orig_hw'] is not None:
+                if isinstance(batch['orig_hw'], list) and len(batch['orig_hw']) > valid_idx:
+                    orig_hw = batch['orig_hw'][valid_idx]
+                    # リストの場合はタプルに変換
+                    if isinstance(orig_hw, list):
+                        orig_hw = tuple(orig_hw)
+                    logger.debug(f"Using orig_hw from batch: {orig_hw}")
+                elif torch.is_tensor(batch['orig_hw']):
+                    # テンソルの場合
+                    orig_hw = tuple(batch['orig_hw'][valid_idx].tolist())
+                    logger.debug(f"Using orig_hw from tensor: {orig_hw}")
+            
+            # orig_hwが正しく取得できない場合はエラー
+            if orig_hw is None or not isinstance(orig_hw, (list, tuple)) or len(orig_hw) != 2:
+                raise ValueError(f"Invalid or missing orig_hw at step {step}: {orig_hw}")
+            
+            # マスクを取得（選択したサンプル）
+            pred_mask = outputs.mask_logits[valid_idx]
             if isinstance(pred_mask, list):
                 pred_mask = pred_mask[0]
             
-            # 予測マスクをシグモイドで確率に変換
-            pred_mask_np = torch.sigmoid(pred_mask).detach().cpu().numpy()
-            if pred_mask_np.ndim > 2:
-                pred_mask_np = pred_mask_np.squeeze()
+            # pred_maskの形状を[B, C, H, W]に整形（postprocess_masksは4次元を期待）
+            if pred_mask.dim() == 2:
+                pred_mask = pred_mask.unsqueeze(0).unsqueeze(0)  # [H, W] -> [1, 1, H, W]
+            elif pred_mask.dim() == 3:
+                if pred_mask.shape[0] == 1:
+                    pred_mask = pred_mask.unsqueeze(0)  # [1, H, W] -> [1, 1, H, W]
+                else:
+                    pred_mask = pred_mask.unsqueeze(1)  # [B, H, W] -> [B, 1, H, W]
+            elif pred_mask.dim() == 4:
+                # すでに[B, C, H, W]形式
+                pass
+            else:
+                raise ValueError(f"Unexpected pred_mask dimensions: {pred_mask.dim()}")
+            
+            # デバッグ: 形状を確認
+            logger.debug(f"pred_mask shape before postprocess: {pred_mask.shape}, orig_hw: {orig_hw}")
+            
+            # postprocess_masksで元画像サイズに復元
+            pred_mask_processed = self.sam_transforms.postprocess_masks(
+                pred_mask.float(),
+                orig_hw
+            )
+            
+            # シグモイドで確率に変換してnumpyに
+            pred_mask_np = torch.sigmoid(pred_mask_processed).squeeze().detach().cpu().numpy()
             
             # GTマスクを取得
-            gt_mask = batch['mask_labels'][0]
-            gt_mask_np = gt_mask.detach().cpu().numpy()
-            if gt_mask_np.ndim > 2:
-                gt_mask_np = gt_mask_np[0] if gt_mask_np.shape[0] > 0 else gt_mask_np.squeeze()
-            
-            # テキスト情報を取得
-            input_ids = batch['input_ids'][0]
-            labels = batch.get('labels', torch.full_like(input_ids, -100))[0]
-            
-            # テキストをデコード
-            try:
-                full_text = self.tokenizer.decode(input_ids, skip_special_tokens=False)
-                
-                # ユーザー入力とアシスタント応答を分離
-                user_start_marker = "<|im_start|>user"
-                assistant_start_marker = "<|im_start|>assistant"
-                assistant_end_marker = "<|im_end|>"
-                
-                user_text = ""
-                assistant_text = ""
-                
-                if user_start_marker in full_text:
-                    user_start = full_text.index(user_start_marker) + len(user_start_marker)
-                    if assistant_start_marker in full_text:
-                        user_end = full_text.index(assistant_start_marker)
-                        user_text = full_text[user_start:user_end].strip()
-                
-                if assistant_start_marker in full_text:
-                    assistant_start = full_text.index(assistant_start_marker) + len(assistant_start_marker)
-                    remaining_text = full_text[assistant_start:]
-                    if assistant_end_marker in remaining_text:
-                        assistant_end = remaining_text.index(assistant_end_marker)
-                        assistant_text = remaining_text[:assistant_end].strip()
+            gt_mask = None
+            if 'mask_labels' in batch and batch['mask_labels'] is not None:
+                if torch.is_tensor(batch['mask_labels']):
+                    # mask_labelsがテンソルの場合
+                    if batch['mask_labels'].dim() >= 3:  # [B, ...]の形式
+                        gt_mask = batch['mask_labels'][valid_idx]
                     else:
-                        assistant_text = remaining_text.strip()
+                        logger.warning(f"Unexpected mask_labels shape: {batch['mask_labels'].shape}")
+                elif isinstance(batch['mask_labels'], list):
+                    # リストの場合
+                    if len(batch['mask_labels']) > valid_idx:
+                        gt_mask = batch['mask_labels'][valid_idx]
+            
+            if gt_mask is not None:
+                # GTマスクも同様にpostprocess_masksで元サイズに復元
+                if gt_mask.dim() == 2:
+                    gt_mask = gt_mask.unsqueeze(0).unsqueeze(0)  # [H, W] -> [1, 1, H, W]
+                elif gt_mask.dim() == 3:
+                    if gt_mask.shape[0] > 1:
+                        gt_mask = gt_mask[0:1].unsqueeze(1)  # [N, H, W] -> [1, 1, H, W]
+                    else:
+                        gt_mask = gt_mask.unsqueeze(1)  # [1, H, W] -> [1, 1, H, W]
+                elif gt_mask.dim() == 4:
+                    if gt_mask.shape[0] > 1:
+                        gt_mask = gt_mask[0:1]  # 最初のマスクのみ使用
                 
-                # <|im_end|>を削除
-                user_text = user_text.replace("<|im_end|>", "").strip()
+                gt_mask_processed = self.sam_transforms.postprocess_masks(
+                    gt_mask.float(),
+                    orig_hw
+                )
                 
-                # vision部分を簡潔に表示
-                if "<|vision_start|>" in user_text and "<|vision_end|>" in user_text:
-                    vision_start = user_text.index("<|vision_start|>")
-                    vision_end = user_text.index("<|vision_end|>") + len("<|vision_end|>")
-                    vision_content = user_text[vision_start:vision_end]
-                    image_pad_count = vision_content.count("<|image_pad|>")
-                    simplified_vision = f"<|vision_start|>[{image_pad_count} image patches]<|vision_end|>"
-                    user_text = user_text[:vision_start] + simplified_vision + user_text[vision_end:]
-                
-                # ラベルマスキング情報
-                masked_count = (labels == -100).sum().item()
-                unmasked_count = (labels != -100).sum().item()
-                
-            except Exception as e:
-                user_text = f"[Decoding Error: {e}]"
-                assistant_text = ""
-                masked_count = 0
-                unmasked_count = 0
-            
-            # 可視化
-            fig = plt.figure(figsize=(20, 10))
-            
-            # 上段: 画像、GTマスク、予測マスク
-            ax1 = plt.subplot(2, 3, 1)
-            ax1.imshow(image_np)
-            ax1.set_title(f'Input Image (Step {step})', fontsize=12, fontweight='bold')
-            ax1.axis('off')
-            
-            ax2 = plt.subplot(2, 3, 2)
-            ax2.imshow(gt_mask_np, cmap='gray')
-            ax2.set_title('GT Mask', fontsize=12, fontweight='bold')
-            ax2.axis('off')
-            
-            ax3 = plt.subplot(2, 3, 3)
-            ax3.imshow(pred_mask_np, cmap='gray', vmin=0, vmax=1)
-            ax3.set_title('Predicted Mask', fontsize=12, fontweight='bold')
-            ax3.axis('off')
-            
-            # 下段: オーバーレイ比較 (SAM2公式準拠の補間を使用)
-            ax4 = plt.subplot(2, 3, 4)
-            ax4.imshow(image_np)
-            # PyTorch F.interpolateを使用（SAM2公式と同じ方法）
-            gt_mask_tensor = torch.from_numpy(gt_mask_np).unsqueeze(0).unsqueeze(0).float()
-            gt_mask_resized_tensor = torch.nn.functional.interpolate(
-                gt_mask_tensor, 
-                size=(image_np.shape[0], image_np.shape[1]), 
-                mode='nearest'
-            )
-            gt_mask_resized = gt_mask_resized_tensor.squeeze().numpy()
-            mask_overlay = np.zeros_like(image_np)
-            mask_overlay[:, :, 0] = gt_mask_resized * 255
-            ax4.imshow(mask_overlay, alpha=0.3)
-            ax4.set_title('Image + GT Mask', fontsize=12, fontweight='bold')
-            ax4.axis('off')
-            
-            ax5 = plt.subplot(2, 3, 5)
-            ax5.imshow(image_np)
-            # PyTorch F.interpolateを使用（SAM2公式: bilinear, align_corners=False）
-            pred_mask_tensor = torch.from_numpy(pred_mask_np).unsqueeze(0).unsqueeze(0).float()
-            pred_mask_resized_tensor = torch.nn.functional.interpolate(
-                pred_mask_tensor, 
-                size=(image_np.shape[0], image_np.shape[1]), 
-                mode='bilinear', 
-                align_corners=False
-            )
-            pred_mask_resized = pred_mask_resized_tensor.squeeze().numpy()
-            pred_overlay = np.zeros_like(image_np)
-            pred_overlay[:, :, 1] = pred_mask_resized * 255
-            ax5.imshow(pred_overlay, alpha=0.3)
-            ax5.set_title('Image + Pred Mask (SAM2公式補間)', fontsize=12, fontweight='bold')
-            ax5.axis('off')
-            
-            # メトリクス表示
-            ax6 = plt.subplot(2, 3, 6)
-            ax6.axis('off')
-            
-            # Dice scoreとIoUを計算
-            pred_binary = (pred_mask_resized > 0.5).astype(np.float32)
-            gt_binary = (gt_mask_resized > 0.5).astype(np.float32)
-            intersection = (pred_binary * gt_binary).sum()
-            union = pred_binary.sum() + gt_binary.sum() - intersection
-            iou = intersection / (union + 1e-6)
-            dice = 2 * intersection / (pred_binary.sum() + gt_binary.sum() + 1e-6)
-            
-            # 損失情報も追加
-            lm_loss = outputs.loss.item() if hasattr(outputs, 'loss') else 0.0
-            
-            info_text = f"Step: {step}\n"
-            info_text += f"Dice Score: {dice:.4f}\n"
-            info_text += f"IoU: {iou:.4f}\n"
-            info_text += f"LM Loss: {lm_loss:.4f}\n"
-            info_text += f"Mask Size: {gt_mask_np.shape}\n"
-            info_text += f"Image Size: {image_np.shape[:2]}\n"
-            info_text += f"Label Masking: {masked_count} masked, {unmasked_count} unmasked\n\n"
-            if len(user_text) > 200:
-                info_text += f"User: {user_text[:200]}...\n\n"
+                gt_mask_np = gt_mask_processed.squeeze().detach().cpu().numpy()
             else:
-                info_text += f"User: {user_text}\n\n"
-            if len(assistant_text) > 100:
-                info_text += f"Assistant: {assistant_text[:100]}..."
-            else:
-                info_text += f"Assistant: {assistant_text}"
-            ax6.text(0.05, 0.95, info_text, transform=ax6.transAxes, 
-                    fontsize=9, verticalalignment='top', 
-                    bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5),
-                    wrap=True, family='monospace')
-            ax6.set_title('Metrics & Text', fontsize=12, fontweight='bold')
+                # GTマスクがない場合はダミーを作成
+                gt_mask_np = np.zeros_like(pred_mask_np)
+                logger.debug("No GT mask available, using zeros")
             
-            plt.suptitle(f'Training Visualization - Step {step}', fontsize=14, fontweight='bold')
+            # 元画像を取得（可能な場合）
+            original_image = None
+            if 'original_images' in batch and batch['original_images'] is not None:
+                if isinstance(batch['original_images'], list) and len(batch['original_images']) > valid_idx:
+                    original_image = batch['original_images'][valid_idx]
+                    if hasattr(original_image, 'size'):
+                        # PIL画像の場合
+                        original_image_np = np.array(original_image.convert('RGB'))
+                    else:
+                        original_image_np = original_image
+                else:
+                    original_image_np = None
+            else:
+                original_image_np = None
+            
+            # IoU計算（二値化後）- 公式推奨の閾値 > 0.0を使用
+            pred_binary = (pred_mask_np > 0.0).astype(float)
+            gt_binary = (gt_mask_np > 0.5).astype(float)
+            
+            intersection = np.sum(pred_binary * gt_binary)
+            union = np.sum(pred_binary) + np.sum(gt_binary) - intersection
+            iou = intersection / (union + 1e-7)
+            
+            # Dice係数計算
+            dice = 2 * intersection / (np.sum(pred_binary) + np.sum(gt_binary) + 1e-7)
+            
+            # 可視化の作成
+            fig, axes = plt.subplots(2, 3, figsize=(15, 10))
+            
+            # 上段: 個別表示
+            # 元画像があれば表示、なければSAM入力画像を表示
+            if original_image_np is not None:
+                axes[0, 0].imshow(original_image_np)
+                axes[0, 0].set_title(f'Original Image\nshape: {original_image_np.shape}', fontsize=10)
+            else:
+                axes[0, 0].imshow(image_np)
+                axes[0, 0].set_title(f'SAM Input (1024x1024, stretched)\nshape: {image_np.shape}', fontsize=10)
+            axes[0, 0].axis('off')
+            
+            # 予測マスク（元サイズ）
+            axes[0, 1].imshow(pred_mask_np, cmap='jet', vmin=0, vmax=1)
+            axes[0, 1].set_title(f'Predicted Mask\nshape: {pred_mask_np.shape}', fontsize=10)
+            axes[0, 1].axis('off')
+            
+            # GTマスク（元サイズ）
+            axes[0, 2].imshow(gt_mask_np, cmap='jet', vmin=0, vmax=1)
+            axes[0, 2].set_title(f'GT Mask\nshape: {gt_mask_np.shape}', fontsize=10)
+            axes[0, 2].axis('off')
+            
+            # 下段: オーバーレイ比較（元画像サイズで）
+            # オーバーレイ用の画像を選択
+            if original_image_np is not None and pred_mask_np.shape[:2] == original_image_np.shape[:2]:
+                overlay_base = original_image_np
+            else:
+                # 元画像がない場合は、SAM画像を元サイズにリサイズ
+                from scipy.ndimage import zoom
+                if orig_hw != (1024, 1024):
+                    zoom_h = orig_hw[0] / image_np.shape[0]
+                    zoom_w = orig_hw[1] / image_np.shape[1]
+                    overlay_base = zoom(image_np, (zoom_h, zoom_w, 1), order=1)
+                else:
+                    overlay_base = image_np
+            
+            # 予測マスクのオーバーレイ
+            axes[1, 0].imshow(overlay_base)
+            pred_colored = np.zeros_like(overlay_base)
+            pred_colored[:, :, 0] = pred_binary * 255  # 赤色で表示
+            axes[1, 0].imshow(pred_colored, alpha=0.3)
+            axes[1, 0].set_title('Prediction Overlay', fontsize=10)
+            axes[1, 0].axis('off')
+            
+            # GTマスクのオーバーレイ
+            axes[1, 1].imshow(overlay_base)
+            gt_colored = np.zeros_like(overlay_base)
+            gt_colored[:, :, 1] = gt_binary * 255  # 緑色で表示
+            axes[1, 1].imshow(gt_colored, alpha=0.3)
+            axes[1, 1].set_title('GT Overlay', fontsize=10)
+            axes[1, 1].axis('off')
+            
+            # 比較（予測=赤、GT=緑、重なり=黄）
+            axes[1, 2].imshow(overlay_base)
+            compare_colored = np.zeros_like(overlay_base)
+            compare_colored[:, :, 0] = pred_binary * 255  # 赤
+            compare_colored[:, :, 1] = gt_binary * 255    # 緑
+            axes[1, 2].imshow(compare_colored, alpha=0.3)
+            axes[1, 2].set_title(f'Comparison (IoU: {iou:.3f}, Dice: {dice:.3f})', fontsize=10)
+            axes[1, 2].axis('off')
+            
+            # メタ情報を追加
+            info_text = f"Step: {step} | IoU: {iou:.3f} | Dice: {dice:.3f}\n"
+            info_text += f"Pred shape: {pred_mask_np.shape} | GT shape: {gt_mask_np.shape}\n"
+            info_text += f"Orig HW: {orig_hw} | SAM: 1024x1024 (stretched)"
+            fig.suptitle(info_text, fontsize=12, y=0.98)
+            
             plt.tight_layout()
             
-            # 可視化ディレクトリを使用（既に作成済み）
-            save_path = self.vis_dir / f'step_{step:06d}.png'
-            plt.savefig(save_path, dpi=100, bbox_inches='tight')
+            # ファイル名を生成して保存
+            vis_path = self.vis_dir / f"step_{step:06d}.png"
+            plt.savefig(vis_path, dpi=100, bbox_inches='tight')
             plt.close()
             
-            # JSON形式でも情報を保存
-            vis_info = {
-                'step': int(step),
-                'metrics': {
-                    'dice_score': float(dice),
-                    'iou': float(iou),
-                    'lm_loss': float(lm_loss),
-                },
-                'text': {
-                    'user': user_text,
-                    'assistant': assistant_text,
-                    'masked_tokens': int(masked_count),
-                    'unmasked_tokens': int(unmasked_count),
-                },
-                'shapes': {
-                    'gt_mask': list(gt_mask_np.shape),
-                    'pred_mask': list(pred_mask_np.shape),
-                    'image': list(image_np.shape),
-                }
-            }
+            logger.info(f"Saved visualization to {vis_path} (IoU: {iou:.3f}, Dice: {dice:.3f})")
             
-            json_path = self.vis_dir / f'step_{step:06d}.json'
-            with open(json_path, 'w') as f:
-                json.dump(vis_info, f, indent=2, ensure_ascii=False)
-            
-            logger.info(f"💾 Saved visualization to {save_path} (Dice: {dice:.4f}, IoU: {iou:.4f})")
+            # WandBにログ
+            if self.config.use_wandb:
+                import wandb
+                wandb.log({
+                    "visualization": wandb.Image(str(vis_path)),
+                    "val_iou": iou,
+                    "val_dice": dice,
+                }, step=step)
             
         except Exception as e:
-            logger.warning(f"Failed to save visualization at step {step}: {e}")
+            logger.error(f"Failed to create visualization at step {step}: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
     
     def save_checkpoint(self, name="best"):
         """チェックポイントの保存（新しいcheckpoint_io使用）"""
@@ -1585,14 +1646,11 @@ class MinimalTrainer:
             # image_grid_thwは整数値なのでFloat32のままでOK（dtypeは変換不要）
             pass
         
-        # SAM用の高解像度画像を準備（学習時と同じ前処理を適用）
-        sam_image = np.array(image.resize((1024, 1024)))
-        sam_image_tensor = torch.from_numpy(sam_image).permute(2, 0, 1).float() / 255.0
+        # 元画像サイズを保存（SAM2公式postprocess_masksで必要）
+        orig_hw = (image.height, image.width)
         
-        # ImageNet正規化を適用（学習時と統一）
-        sam_mean = torch.tensor([0.485, 0.456, 0.406]).view(3, 1, 1)
-        sam_std = torch.tensor([0.229, 0.224, 0.225]).view(3, 1, 1)
-        sam_image_tensor = (sam_image_tensor - sam_mean) / sam_std
+        # SAM用の高解像度画像を準備（SAM2公式Transformsを使用）
+        sam_image_tensor = self.sam_transforms(image)
         sam_image_tensor = sam_image_tensor.unsqueeze(0).to(device=self.device, dtype=model_dtype)
         
         # モデルのforward
@@ -1609,13 +1667,30 @@ class MinimalTrainer:
         # マスクを取得
         pred_mask = None
         if hasattr(outputs, 'pred_masks') and outputs.pred_masks is not None:
-            pred_mask = outputs.pred_masks[0].cpu().numpy()
+            # SAM2公式postprocess_masksを使用してマスクを元サイズに復元
+            pred_mask_tensor = outputs.pred_masks[0:1]  # [1, C, H, W]形式を保持
+            pred_mask_processed = self.sam_transforms.postprocess_masks(
+                pred_mask_tensor.float(),
+                orig_hw
+            )
+            pred_mask = pred_mask_processed[0].cpu().numpy()
         elif hasattr(outputs, 'mask_logits') and outputs.mask_logits is not None:
             if len(outputs.mask_logits) > 0 and outputs.mask_logits[0] is not None:
                 mask_logit = outputs.mask_logits[0]
                 if isinstance(mask_logit, list):
                     mask_logit = mask_logit[0]
-                pred_mask = torch.sigmoid(mask_logit).detach().cpu().numpy()
+                # mask_logitをバッチ形式に変換
+                if mask_logit.dim() == 2:
+                    mask_logit = mask_logit.unsqueeze(0).unsqueeze(0)  # [1, 1, H, W]
+                elif mask_logit.dim() == 3:
+                    mask_logit = mask_logit.unsqueeze(0)  # [1, C, H, W]
+                
+                # SAM2公式postprocess_masksを使用
+                mask_logit_processed = self.sam_transforms.postprocess_masks(
+                    mask_logit.float(),
+                    orig_hw
+                )
+                pred_mask = torch.sigmoid(mask_logit_processed[0]).detach().cpu().numpy()
                 if pred_mask.ndim > 2:
                     pred_mask = pred_mask.squeeze()
         
@@ -1832,14 +1907,18 @@ def main():
                        help='各データセットから読み込む最大サンプル数（開発時用）')
     
     # 可視化設定
-    parser.add_argument('--visualize', action='store_true',
-                       help='訓練中の可視化を有効化')
+    parser.add_argument('--no_visualize', action='store_true',
+                       help='訓練中の可視化を無効化（デフォルトは有効）')
     parser.add_argument('--visualize_steps', type=int, default=5,
                        help='可視化の間隔（ステップ数）')
     parser.add_argument('--run_inference_eval', action='store_true',
                        help='チェックポイント保存時に推論評価を実行')
     parser.add_argument('--inference_eval_samples', type=int, default=3,
                        help='推論評価で使用するサンプル数（最大3）')
+    
+    # シード設定
+    parser.add_argument('--seed', type=int, default=42,
+                       help='ランダムシード（再現性のため）')
     
     args = parser.parse_args()
     
