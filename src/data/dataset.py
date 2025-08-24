@@ -756,8 +756,15 @@ class HybridDataset(torch.utils.data.Dataset):
                 - original_image: 可視化用の元画像（PIL形式）
                 - orig_hw: SAM後処理用の元画像サイズ
         """
-        # サンプルを取得
-        sample = self._get_sample(idx)
+        # データセットをサンプリング比率に従って選択
+        dataset_idx = np.random.choice(len(self.all_datasets), p=self.sample_rate)
+        selected_dataset = self.all_datasets[dataset_idx]
+        
+        # 選択されたデータセットからランダムにサンプルを取得（idxを無視）
+        # オリジナルLISA方式：常にランダムサンプリング
+        dataset_size = len(selected_dataset)
+        sample_idx = np.random.randint(0, dataset_size)
+        sample = selected_dataset[sample_idx]
         
         # データソースタイプの判定（仕様書第3章.2.1）
         # オリジナルLISAとの互換性：10要素タプル形式の場合
