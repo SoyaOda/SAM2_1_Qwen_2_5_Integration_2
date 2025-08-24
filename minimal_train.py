@@ -868,7 +868,7 @@ class MinimalTrainer:
         self._restore_training_freeze_settings()
     
     def compute_loss(self, outputs, labels, mask_labels):
-        """損失計算（1会話1マスクに最適化）"""
+        """損失計算（1会話1マスクに最適化） - SAM座標系（1024x1024）で統一"""
         # 言語モデリング損失
         vocab_size = outputs.logits.size(-1)
         lm_loss = nn.functional.cross_entropy(
@@ -881,6 +881,9 @@ class MinimalTrainer:
         seg_loss = 0.0
         seg_count = 0
         
+        # SAM座標系のサイズ（1024x1024）
+        sam_size = 1024
+        
         if outputs.mask_logits is not None:
             for batch_idx, batch_masks in enumerate(outputs.mask_logits):
                 if batch_masks is not None and len(batch_masks) > 0:
@@ -890,61 +893,80 @@ class MinimalTrainer:
                     pred_mask = batch_masks[0] if isinstance(batch_masks, list) else batch_masks
                     
                     # デバッグ情報
-                    logger.debug(f"pred_mask shape: {pred_mask.shape}")
+                    logger.debug(f"pred_mask shape before upsampling: {pred_mask.shape}")
                     logger.debug(f"gt_mask shape: {gt_mask.shape}")
                     
-                    # マスクの次元を確認して適切に処理
-                    # pred_maskとgt_maskの形状を合わせる
+                    # 予測マスクをSAM座標系（1024x1024）にアップサンプル（bilinear）
                     if pred_mask.dim() == 2:
-                        pred_h, pred_w = pred_mask.shape
+                        pred_mask_4d = pred_mask.unsqueeze(0).unsqueeze(0)
+                    elif pred_mask.dim() == 3:
+                        pred_mask_4d = pred_mask.unsqueeze(0)
                     else:
-                        pred_h, pred_w = pred_mask.shape[-2:]
-                        
-                    if gt_mask.dim() == 2:
-                        gt_h, gt_w = gt_mask.shape
-                    else:
-                        gt_h, gt_w = gt_mask.shape[-2:]
+                        pred_mask_4d = pred_mask
                     
-                    # サイズが異なる場合のみリサイズ（修正後は同じサイズのはず）
-                    if (pred_h, pred_w) != (gt_h, gt_w):
-                        logger.debug(f"Warning: Mask size mismatch - pred: {(pred_h, pred_w)}, gt: {(gt_h, gt_w)}. This should not happen after fixes.")
-                        
-                        # フォールバック: gt_maskをpred_maskのサイズに合わせる
-                        if gt_mask.dim() == 2:
-                            gt_mask_4d = gt_mask.unsqueeze(0).unsqueeze(0)
-                        elif gt_mask.dim() == 3:
-                            if gt_mask.shape[0] > 1:
-                                gt_mask = gt_mask[0]
-                            gt_mask_4d = gt_mask.unsqueeze(0) if gt_mask.dim() == 3 else gt_mask.unsqueeze(0).unsqueeze(0)
+                    # bilinearでアップサンプル（logitsなので）
+                    pred_mask_sam = nn.functional.interpolate(
+                        pred_mask_4d.float(),
+                        size=(sam_size, sam_size),
+                        mode='bilinear',
+                        align_corners=False
+                    )
+                    # 適切な形状に戻す (B, C, H, W) -> (H, W)
+                    pred_mask_sam = pred_mask_sam.squeeze(0).squeeze(0)
+                    
+                    # GTマスクの形状を確認と調整
+                    if gt_mask.dim() == 3:
+                        # (N, H, W) or (1, H, W) -> 最初のマスクを使用
+                        if gt_mask.shape[0] > 1:
+                            gt_mask_sam = gt_mask[0]
                         else:
-                            gt_mask_4d = gt_mask
-                        
-                        gt_mask_resized = nn.functional.interpolate(
-                            gt_mask_4d.float(),
-                            size=(pred_h, pred_w),
-                            mode='nearest'
-                        ).squeeze(0).squeeze(0)
+                            gt_mask_sam = gt_mask.squeeze(0)
+                    elif gt_mask.dim() == 2:
+                        # (H, W) -> そのまま使用
+                        gt_mask_sam = gt_mask
                     else:
-                        # サイズが同じ場合（期待される動作）
-                        gt_mask_resized = gt_mask
-                        # 複数マスクの場合は最初のマスクのみを使用
-                        if gt_mask_resized.dim() == 3 and gt_mask_resized.shape[0] > 1:
-                            gt_mask_resized = gt_mask_resized[0]
+                        # 予期しない形状
+                        logger.warning(f"Unexpected GT mask shape: {gt_mask.shape}")
+                        gt_mask_sam = gt_mask.view(sam_size, sam_size)
                     
-                    # pred_maskも適切な形状に
-                    if pred_mask.dim() > 2:
-                        pred_mask = pred_mask.squeeze(0)
+                    # GTマスクが1024x1024でない場合はリサイズ
+                    if gt_mask_sam.shape != (sam_size, sam_size):
+                        logger.debug(f"GT mask resizing from {gt_mask_sam.shape} to {(sam_size, sam_size)}")
+                        if gt_mask_sam.dim() == 2:
+                            gt_mask_4d = gt_mask_sam.unsqueeze(0).unsqueeze(0)
+                        else:
+                            gt_mask_4d = gt_mask_sam.unsqueeze(0)
+                        
+                        # GTは離散値なのでnearest-exactを試み、サポートされていなければnearestを使用
+                        try:
+                            gt_mask_resized = nn.functional.interpolate(
+                                gt_mask_4d.float(),
+                                size=(sam_size, sam_size),
+                                mode='nearest-exact'
+                            )
+                        except:
+                            # nearest-exactがサポートされていない場合のフォールバック
+                            gt_mask_resized = nn.functional.interpolate(
+                                gt_mask_4d.float(),
+                                size=(sam_size, sam_size),
+                                mode='nearest'
+                            )
+                        gt_mask_sam = gt_mask_resized.squeeze(0).squeeze(0)
                     
-                    # BCE損失
+                    # 最終的な形状確認
+                    assert pred_mask_sam.shape == (sam_size, sam_size), f"pred_mask_sam shape: {pred_mask_sam.shape}"
+                    assert gt_mask_sam.shape == (sam_size, sam_size), f"gt_mask_sam shape: {gt_mask_sam.shape}"
+                    
+                    # BCE損失（SAM座標系で計算）
                     bce_loss = nn.functional.binary_cross_entropy_with_logits(
-                        pred_mask,
-                        gt_mask_resized.float()
+                        pred_mask_sam,
+                        gt_mask_sam.float()
                     )
                     
-                    # Dice損失
-                    pred_sigmoid = torch.sigmoid(pred_mask)
-                    intersection = (pred_sigmoid * gt_mask_resized).sum()
-                    dice = 2 * intersection / (pred_sigmoid.sum() + gt_mask_resized.sum() + 1e-8)
+                    # Dice損失（SAM座標系で計算）
+                    pred_sigmoid = torch.sigmoid(pred_mask_sam)
+                    intersection = (pred_sigmoid * gt_mask_sam).sum()
+                    dice = 2 * intersection / (pred_sigmoid.sum() + gt_mask_sam.sum() + 1e-8)
                     dice_loss = 1 - dice
                     
                     seg_loss += bce_loss + dice_loss
@@ -1131,7 +1153,7 @@ class MinimalTrainer:
         return avg_loss
     
     def save_visualization(self, batch, outputs, step):
-        """可視化の保存（postprocess対応、座標系を正しく統一）"""
+        """可視化の保存（SAM公式postprocess準拠）"""
         try:
             # 可視化が無効な場合はスキップ（visualize_stepsが0以下なら無効）
             if self.visualize_steps <= 0:
@@ -1213,6 +1235,14 @@ class MinimalTrainer:
             
             orig_h, orig_w = orig_hw
             
+            # SAM入力サイズ（パディング前のサイズ）を計算
+            # SAMは最長辺を1024にして、アスペクト比を保持
+            scale = 1024 / max(orig_h, orig_w)
+            sam_input_h = int(orig_h * scale)
+            sam_input_w = int(orig_w * scale)
+            
+            logger.debug(f"SAM postprocess params: orig_hw={orig_hw}, sam_input_hw=({sam_input_h}, {sam_input_w})")
+            
             # マスクを取得（選択したサンプル）
             pred_mask = outputs.mask_logits[valid_idx]
             if isinstance(pred_mask, list):
@@ -1235,26 +1265,35 @@ class MinimalTrainer:
             # デバッグ: 形状を確認
             logger.debug(f"pred_mask shape before postprocess: {pred_mask.shape}, orig_hw: {orig_hw}")
             
-            # SAMのpostprocess_masksを使用して元画像サイズに復元
-            # ただし、SAMはパディングではなくストレッチを使用していることに注意
-            # 私たちの実装はパディングベースなので、適切に処理する必要がある
+            # SAM公式のpostprocess（3段階処理）
+            # 1. 1024x1024にアップサンプル（マスクがlow_res_masksの場合）
+            if pred_mask.shape[-1] != 1024:
+                pred_mask_1024 = F.interpolate(
+                    pred_mask.float(),
+                    size=(1024, 1024),
+                    mode='bilinear',
+                    align_corners=False
+                )
+            else:
+                pred_mask_1024 = pred_mask.float()
             
-            # パディングを考慮した逆変換
-            # SAM画像は1024x1024でパディング済み
-            # 元画像のアスペクト比を維持してリサイズされている
-            scale = 1024 / max(orig_h, orig_w)
-            new_h = int(orig_h * scale)
-            new_w = int(orig_w * scale)
+            # 2. パディングを除去（右下パディングを削除）
+            pred_mask_unpadded = pred_mask_1024[:, :, :sam_input_h, :sam_input_w]
             
-            # マスクからパディングを除去して元のアスペクト比に戻す
-            pred_mask_unpadded = pred_mask[:, :, :new_h, :new_w]
-            
-            # 元のサイズにリサイズ（INTER_NEARESTが重要）
-            pred_mask_processed = F.interpolate(
-                pred_mask_unpadded.float(),
-                size=(orig_h, orig_w),
-                mode='nearest'
-            )
+            # 3. 元画像サイズにリサイズ
+            try:
+                pred_mask_processed = F.interpolate(
+                    pred_mask_unpadded,
+                    size=(orig_h, orig_w),
+                    mode='nearest-exact'
+                )
+            except:
+                # nearest-exactがサポートされていない場合のフォールバック
+                pred_mask_processed = F.interpolate(
+                    pred_mask_unpadded,
+                    size=(orig_h, orig_w),
+                    mode='nearest'
+                )
             
             # シグモイドで確率に変換してnumpyに
             pred_mask_np = torch.sigmoid(pred_mask_processed).squeeze().detach().cpu().numpy()
@@ -1286,13 +1325,35 @@ class MinimalTrainer:
                     if gt_mask.shape[0] > 1:
                         gt_mask = gt_mask[0:1]  # 最初のマスクのみ使用
                 
-                # GTマスクもパディングを除去して元サイズに
-                gt_mask_unpadded = gt_mask[:, :, :new_h, :new_w]
-                gt_mask_processed = F.interpolate(
-                    gt_mask_unpadded.float(),
-                    size=(orig_h, orig_w),
-                    mode='nearest'
-                )
+                # GTマスクもSAM postprocessを適用
+                # 1. 1024x1024にアップサンプル（必要な場合）
+                if gt_mask.shape[-1] != 1024:
+                    gt_mask_1024 = F.interpolate(
+                        gt_mask.float(),
+                        size=(1024, 1024),
+                        mode='bilinear',
+                        align_corners=False
+                    )
+                else:
+                    gt_mask_1024 = gt_mask.float()
+                
+                # 2. パディングを除去
+                gt_mask_unpadded = gt_mask_1024[:, :, :sam_input_h, :sam_input_w]
+                
+                # 3. 元サイズにリサイズ
+                try:
+                    gt_mask_processed = F.interpolate(
+                        gt_mask_unpadded,
+                        size=(orig_h, orig_w),
+                        mode='nearest-exact'
+                    )
+                except:
+                    # nearest-exactがサポートされていない場合のフォールバック
+                    gt_mask_processed = F.interpolate(
+                        gt_mask_unpadded,
+                        size=(orig_h, orig_w),
+                        mode='nearest'
+                    )
                 
                 gt_mask_np = gt_mask_processed.squeeze().detach().cpu().numpy()
             else:
@@ -1318,9 +1379,9 @@ class MinimalTrainer:
             
             # 元画像がない場合は、SAM画像を元サイズにリサイズして使用
             if original_image_np is None:
-                # SAM画像（パディング済み）から元画像を復元
-                # パディングを除去
-                sam_unpadded = sam_image_np[:new_h, :new_w, :]
+                # SAM画像（1024x1024）から元画像を復元
+                # パディングを除去（右下パディング想定）
+                sam_unpadded = sam_image_np[:sam_input_h, :sam_input_w, :]
                 # 元サイズにリサイズ（cv2.resizeは(width, height)順であることに注意）
                 original_image_np = cv2.resize(sam_unpadded, (orig_w, orig_h), interpolation=cv2.INTER_LINEAR)
                 logger.debug(f"Reconstructed original image from SAM image: shape={original_image_np.shape}")
@@ -1335,8 +1396,8 @@ class MinimalTrainer:
             assert gt_mask_np.shape == (orig_h, orig_w), \
                 f"GT mask shape {gt_mask_np.shape} != expected {(orig_h, orig_w)}"
             
-            # IoU計算（二値化後）- 公式推奨の閾値 > 0.0を使用
-            pred_binary = (pred_mask_np > 0.0).astype(float)
+            # IoU計算（二値化後）- 標準的な閾値0.5を使用
+            pred_binary = (pred_mask_np > 0.5).astype(float)  # 修正: 0.0 -> 0.5
             gt_binary = (gt_mask_np > 0.5).astype(float)
             
             intersection = np.sum(pred_binary * gt_binary)
@@ -1368,33 +1429,34 @@ class MinimalTrainer:
             # 下段: オーバーレイ比較（元画像サイズで）
             # 予測マスクのオーバーレイ
             axes[1, 0].imshow(original_image_np)
-            pred_colored = np.zeros_like(original_image_np)
+            pred_colored = np.zeros_like(original_image_np, dtype=np.float32)
             pred_colored[:, :, 0] = pred_binary * 255  # 赤色で表示
-            axes[1, 0].imshow(pred_colored, alpha=0.3)
+            axes[1, 0].imshow(pred_colored.astype(np.uint8), alpha=0.3)
             axes[1, 0].set_title('Prediction Overlay', fontsize=10)
             axes[1, 0].axis('off')
             
             # GTマスクのオーバーレイ
             axes[1, 1].imshow(original_image_np)
-            gt_colored = np.zeros_like(original_image_np)
+            gt_colored = np.zeros_like(original_image_np, dtype=np.float32)
             gt_colored[:, :, 1] = gt_binary * 255  # 緑色で表示
-            axes[1, 1].imshow(gt_colored, alpha=0.3)
+            axes[1, 1].imshow(gt_colored.astype(np.uint8), alpha=0.3)
             axes[1, 1].set_title('GT Overlay', fontsize=10)
             axes[1, 1].axis('off')
             
             # 比較（予測=赤、GT=緑、重なり=黄）
             axes[1, 2].imshow(original_image_np)
-            compare_colored = np.zeros_like(original_image_np)
+            compare_colored = np.zeros_like(original_image_np, dtype=np.float32)
             compare_colored[:, :, 0] = pred_binary * 255  # 赤
             compare_colored[:, :, 1] = gt_binary * 255    # 緑
-            axes[1, 2].imshow(compare_colored, alpha=0.3)
+            axes[1, 2].imshow(compare_colored.astype(np.uint8), alpha=0.3)
             axes[1, 2].set_title(f'Comparison (IoU: {iou:.3f}, Dice: {dice:.3f})', fontsize=10)
             axes[1, 2].axis('off')
             
             # メタ情報を追加
             info_text = f"Step: {step} | IoU: {iou:.3f} | Dice: {dice:.3f}\n"
             info_text += f"Pred shape: {pred_mask_np.shape} | GT shape: {gt_mask_np.shape}\n"
-            info_text += f"Orig HW: {orig_hw} | Processed with padding-aware resize"
+            info_text += f"Orig HW: {orig_hw} | SAM input HW: ({sam_input_h}, {sam_input_w})\n"
+            info_text += f"SAM postprocess applied | Threshold: 0.5"
             fig.suptitle(info_text, fontsize=12, y=0.98)
             
             plt.tight_layout()

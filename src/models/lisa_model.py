@@ -1108,26 +1108,17 @@ class LISA_Model(nn.Module):
                             high_res_features=high_res_features,  # Pass 256-channel features - SAM will apply conv_s0/s1
                         )
                         
-                        # Upscale mask to original image size
-                        # For dynamic resolution, determine target size from grid_thw
-                        if image_grid_thw is not None and i < image_grid_thw.shape[0]:
-                            # Grid dimensions are in RAW patches (before PatchMerge)
-                            H_grid_raw = int(image_grid_thw[i, 1].item())
-                            W_grid_raw = int(image_grid_thw[i, 2].item())
-                            # Convert to pixel dimensions (14px per patch)
-                            orig_h = H_grid_raw * 14
-                            orig_w = W_grid_raw * 14
-                        elif pixel_values is not None and pixel_values.dim() == 4:
-                            # Fallback to pixel_values dimensions if available
-                            orig_h, orig_w = pixel_values.shape[-2:]
-                        else:
-                            # Use feature map size * stride as fallback
-                            orig_h = h_feat * 16
-                            orig_w = w_feat * 16
+                        # Upscale mask to SAM coordinate system (1024x1024)
+                        # IMPORTANT: Always upscale to SAM size for consistency
+                        # The visualization and loss calculation will handle the proper coordinate transformation
+                        sam_size = 1024  # SAM's standard input size
+                        
+                        # Debug: Log the upsampling operation
+                        logger.debug(f"[MASK UPSCALE] Upsampling mask from {low_res_masks.shape[-2:]} to SAM size {(sam_size, sam_size)}")
                         
                         mask_logit = F.interpolate(
                             low_res_masks,
-                            size=(orig_h, orig_w),
+                            size=(sam_size, sam_size),  # Always use SAM coordinate system
                             mode='bilinear',
                             align_corners=False
                         )
@@ -1136,15 +1127,12 @@ class LISA_Model(nn.Module):
                     except Exception as e:
                         logger.error(f"SAM2.1 mask generation failed with error: {e}")
                         import traceback
-                        traceback.print_exc()
-                        print(f"Warning: SAM2.1 mask generation failed with error: {e}")
-                        import traceback
-                        print(f"Traceback: {traceback.format_exc()}")
-                        # Fall back to dummy mask if SAM fails
-                        if pixel_values is not None:
-                            orig_h, orig_w = pixel_values.shape[-2:]
-                            dummy_mask = torch.zeros(1, orig_h, orig_w, device=pixel_values.device, dtype=torch.float32)
-                            sample_masks.append(dummy_mask)
+                        logger.error(f"Traceback: {traceback.format_exc()}")
+                        # エラーを適切に処理 - ダミーマスクで隠蔽せずに例外を再発生
+                        raise RuntimeError(
+                            f"SAM2.1 mask generation failed for batch {i}, SEG {j}. "
+                            f"This is a critical error that should be fixed. Error: {e}"
+                        ) from e
             
             mask_logits.append(sample_masks if len(sample_masks) > 0 else None)
         

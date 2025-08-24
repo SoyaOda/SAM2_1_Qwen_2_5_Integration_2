@@ -4,7 +4,7 @@ import os
 import random
 import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
-from src.utils.coordinate_transform import CoordinateTransform
+from src.transforms.geometry import SamSquareMeta, apply_sam_transform_to_image, apply_sam_transform_to_mask
 from collections import defaultdict
 
 import cv2
@@ -394,9 +394,8 @@ class SemSegDataset(torch.utils.data.Dataset):
         image = cv2.imread(image_path)
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
 
-        # 座標変換システムの初期化
+        # 元画像サイズを記録
         orig_h, orig_w = image.shape[:2]
-        coord_transform = CoordinateTransform(orig_size=(orig_h, orig_w))
         
         # デュアルエンコーダ対応: Qwen用とSAM用の画像前処理
         # Qwen用画像前処理（アスペクト比維持・14の倍数パディング）
@@ -427,23 +426,8 @@ class SemSegDataset(torch.utils.data.Dataset):
         qwen_std = torch.tensor([0.26862954, 0.26130258, 0.27577711]).view(3, 1, 1)
         image_for_qwen = (image_for_qwen - qwen_mean) / qwen_std
         
-        # SAM用画像前処理（1024x1024）
-        # ResizeLongestSideの代わりにcv2.resizeを使用
-        sam_size = 1024
-        scale = sam_size / max(image.shape[:2])
-        new_h = int(image.shape[0] * scale)
-        new_w = int(image.shape[1] * scale)
-        # 補間方法を明示（縮小時はINTER_AREA、拡大時はINTER_LINEAR）
-        interpolation = cv2.INTER_AREA if scale < 1 else cv2.INTER_LINEAR
-        image_for_sam = cv2.resize(image, (new_w, new_h), interpolation=interpolation)
-        
-        # パディングして正方形にする（32の倍数を考慮）
-        h, w = image_for_sam.shape[:2]
-        pad_h = sam_size - h
-        pad_w = sam_size - w
-        image_for_sam = cv2.copyMakeBorder(
-            image_for_sam, 0, pad_h, 0, pad_w, cv2.BORDER_CONSTANT, value=(0, 0, 0)
-        )
+        # SAM用画像前処理（1024x1024）- 正しいアスペクト比保持+パディング方式
+        image_for_sam, sam_meta = apply_sam_transform_to_image(image)
         
         # テンソル化と正規化（SAM2.1の正しいパラメータ）
         image_for_sam = torch.from_numpy(image_for_sam).permute(2, 0, 1).float() / 255.0
@@ -473,7 +457,9 @@ class SemSegDataset(torch.utils.data.Dataset):
         for ann in sampled_anns:
             try:
                 mask_data = coco_api.annToMask(ann)
-                masks.append(mask_data)
+                # マスクもSAMと同じ変換を適用
+                mask_sam = apply_sam_transform_to_mask(mask_data, sam_meta, ignore_value=0)
+                masks.append(mask_sam)
                 class_name = class_map[ann["category_id"]]
                 if isinstance(class_name, tuple):
                     obj, part = class_name
@@ -522,18 +508,18 @@ class SemSegDataset(torch.utils.data.Dataset):
             return self.__getitem__(0)
         label = torch.ones(masks.shape[1], masks.shape[2]) * self.ignore_label
 
-        # オリジナルLISA準拠の返り値形式（10要素 - coord_transform追加）
+        # オリジナルLISA準拠の返り値形式（10要素 - sam_meta追加）
         return (
             image_path,        # 0: 画像パス
             image_for_sam,     # 1: SAM用前処理済み画像 (torch.Tensor)
             image_for_qwen,   # 2: Qwen用前処理済み画像 (torch.Tensor)
             conversations,     # 3: 会話形式のテキスト (List[str])
-            masks,             # 4: マスク (torch.Tensor)
+            masks,             # 4: マスク (torch.Tensor) - SAMと同じ変換適用済み
             label,             # 5: ラベル (torch.Tensor)
             resize,            # 6: リサイズ情報 (Tuple)
             questions,         # 7: 質問リスト (List[str])
             sampled_classes,   # 8: クラス名リスト (List[str])
-            coord_transform    # 9: 座標変換オブジェクト
+            sam_meta           # 9: SAM変換メタデータ
         )
 
     def _get_semseg_item(self, ds):
@@ -552,9 +538,8 @@ class SemSegDataset(torch.utils.data.Dataset):
         image = cv2.imread(image_path)
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
 
-        # 座標変換システムの初期化
+        # 元画像サイズを記録
         orig_h, orig_w = image.shape[:2]
-        coord_transform = CoordinateTransform(orig_size=(orig_h, orig_w))
         
         # ラベルの読み込み
         label = Image.open(label_path)
@@ -600,31 +585,12 @@ class SemSegDataset(torch.utils.data.Dataset):
         qwen_std = torch.tensor([0.26862954, 0.26130258, 0.27577711]).view(3, 1, 1)
         image_for_qwen = (image_for_qwen - qwen_mean) / qwen_std
         
-        # SAM用画像前処理（1024x1024）
-        # ResizeLongestSideの代わりにcv2.resizeを使用
-        sam_size = 1024
-        scale_sam = sam_size / max(image.shape[:2])
-        new_h_sam = int(image.shape[0] * scale_sam)
-        new_w_sam = int(image.shape[1] * scale_sam)
-        # 補間方法を明示（縮小時はINTER_AREA、拡大時はINTER_LINEAR）
-        interpolation_sam = cv2.INTER_AREA if scale_sam < 1 else cv2.INTER_LINEAR
-        image_for_sam = cv2.resize(image, (new_w_sam, new_h_sam), interpolation=interpolation_sam)
+        # SAM用画像前処理（1024x1024）- 正しいアスペクト比保持+パディング方式
+        image_for_sam, sam_meta = apply_sam_transform_to_image(image)
         
-        # パディングして正方形にする（32の倍数を考慮）
-        h_sam, w_sam = image_for_sam.shape[:2]
-        pad_h_sam = sam_size - h_sam
-        pad_w_sam = sam_size - w_sam
-        image_for_sam = cv2.copyMakeBorder(
-            image_for_sam, 0, pad_h_sam, 0, pad_w_sam, cv2.BORDER_CONSTANT, value=(0, 0, 0)
-        )
-        
-        # ラベルも画像と同じ変換を適用（修正点）
-        # SAM用画像と同じリサイズとパディング
-        label_for_sam = cv2.resize(label, (new_w_sam, new_h_sam), interpolation=cv2.INTER_NEAREST)
-        # SAM用のパディング（画像と同じ）
-        label_for_sam_padded = np.full((sam_size, sam_size), 255, dtype=label.dtype)  # 255でパディング（ignore_label）
-        label_for_sam_padded[:h_sam, :w_sam] = label_for_sam
-        label = label_for_sam_padded  # 以降の処理のためlabelを更新
+        # ラベルも画像と同じ変換を適用
+        label_for_sam = apply_sam_transform_to_mask(label, sam_meta, ignore_value=255)
+        label = label_for_sam  # 以降の処理のためlabelを更新
         
         # テンソル化と正規化（SAM2.1の正しいパラメータ）
         image_for_sam = torch.from_numpy(image_for_sam).permute(2, 0, 1).float() / 255.0
@@ -694,7 +660,7 @@ class SemSegDataset(torch.utils.data.Dataset):
         else:
             return self.__getitem__(0)
 
-        # オリジナルLISA準拠の返り値形式（10要素 - coord_transform追加）
+        # オリジナルLISA準拠の返り値形式（10要素 - sam_meta追加）
         return (
             image_path,        # 0: 画像パス
             image_for_sam,     # 1: SAM用前処理済み画像 (torch.Tensor)
@@ -705,5 +671,5 @@ class SemSegDataset(torch.utils.data.Dataset):
             resize,            # 6: リサイズ情報 (Tuple)
             questions,         # 7: 質問リスト (List[str])
             sampled_classes,   # 8: クラス名リスト (List[str])
-            coord_transform    # 9: 座標変換オブジェクト
+            sam_meta           # 9: SAM変換メタデータ
         )
