@@ -8,6 +8,7 @@ import os
 import sys
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from torch.utils.data import DataLoader
 import logging
 from pathlib import Path
@@ -1187,13 +1188,20 @@ class MinimalTrainer:
             
             # orig_hwを取得（リスト形式に対応）
             orig_hw = None
+            
+            # デバッグ: batchの内容を詳細に確認
+            logger.debug(f"[DEBUG] Batch keys: {batch.keys()}")
+            if 'orig_hw' in batch:
+                logger.debug(f"[DEBUG] batch['orig_hw'] type: {type(batch['orig_hw'])}")
+                logger.debug(f"[DEBUG] batch['orig_hw'] content: {batch['orig_hw']}")
+            
             if 'orig_hw' in batch and batch['orig_hw'] is not None:
                 if isinstance(batch['orig_hw'], list) and len(batch['orig_hw']) > valid_idx:
                     orig_hw = batch['orig_hw'][valid_idx]
                     # リストの場合はタプルに変換
                     if isinstance(orig_hw, list):
                         orig_hw = tuple(orig_hw)
-                    logger.debug(f"Using orig_hw from batch: {orig_hw}")
+                    logger.debug(f"Using orig_hw from batch list: {orig_hw}")
                 elif torch.is_tensor(batch['orig_hw']):
                     # テンソルの場合
                     orig_hw = tuple(batch['orig_hw'][valid_idx].tolist())
@@ -1294,6 +1302,7 @@ class MinimalTrainer:
             
             # 元画像を取得（可能な場合）
             original_image = None
+            logger.debug(f"[DEBUG] Checking for original_images in batch...")
             if 'original_images' in batch and batch['original_images'] is not None:
                 if isinstance(batch['original_images'], list) and len(batch['original_images']) > valid_idx:
                     original_image = batch['original_images'][valid_idx]
