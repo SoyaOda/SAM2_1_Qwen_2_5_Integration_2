@@ -21,6 +21,7 @@ import argparse
 import matplotlib.pyplot as plt
 import matplotlib
 matplotlib.use('Agg')  # バックエンドを設定
+import cv2
 
 # プロジェクトルートをパスに追加
 sys.path.append(str(Path(__file__).parent))
@@ -1129,7 +1130,7 @@ class MinimalTrainer:
         return avg_loss
     
     def save_visualization(self, batch, outputs, step):
-        """可視化の保存（postprocess対応）"""
+        """可視化の保存（postprocess対応、座標系を正しく統一）"""
         try:
             # 可視化が無効な場合はスキップ（visualize_stepsが0以下なら無効）
             if self.visualize_steps <= 0:
@@ -1182,7 +1183,7 @@ class MinimalTrainer:
                 img = img.permute(1, 2, 0).cpu().numpy()
                 return img
             
-            image_np = denormalize_sam_image(sam_image)
+            sam_image_np = denormalize_sam_image(sam_image)
             
             # orig_hwを取得（リスト形式に対応）
             orig_hw = None
@@ -1201,6 +1202,8 @@ class MinimalTrainer:
             # orig_hwが正しく取得できない場合はエラー
             if orig_hw is None or not isinstance(orig_hw, (list, tuple)) or len(orig_hw) != 2:
                 raise ValueError(f"Invalid or missing orig_hw at step {step}: {orig_hw}")
+            
+            orig_h, orig_w = orig_hw
             
             # マスクを取得（選択したサンプル）
             pred_mask = outputs.mask_logits[valid_idx]
@@ -1224,10 +1227,25 @@ class MinimalTrainer:
             # デバッグ: 形状を確認
             logger.debug(f"pred_mask shape before postprocess: {pred_mask.shape}, orig_hw: {orig_hw}")
             
-            # postprocess_masksで元画像サイズに復元
-            pred_mask_processed = self.sam_transforms.postprocess_masks(
-                pred_mask.float(),
-                orig_hw
+            # SAMのpostprocess_masksを使用して元画像サイズに復元
+            # ただし、SAMはパディングではなくストレッチを使用していることに注意
+            # 私たちの実装はパディングベースなので、適切に処理する必要がある
+            
+            # パディングを考慮した逆変換
+            # SAM画像は1024x1024でパディング済み
+            # 元画像のアスペクト比を維持してリサイズされている
+            scale = 1024 / max(orig_h, orig_w)
+            new_h = int(orig_h * scale)
+            new_w = int(orig_w * scale)
+            
+            # マスクからパディングを除去して元のアスペクト比に戻す
+            pred_mask_unpadded = pred_mask[:, :, :new_h, :new_w]
+            
+            # 元のサイズにリサイズ（INTER_NEARESTが重要）
+            pred_mask_processed = F.interpolate(
+                pred_mask_unpadded.float(),
+                size=(orig_h, orig_w),
+                mode='nearest'
             )
             
             # シグモイドで確率に変換してnumpyに
@@ -1248,7 +1266,7 @@ class MinimalTrainer:
                         gt_mask = batch['mask_labels'][valid_idx]
             
             if gt_mask is not None:
-                # GTマスクも同様にpostprocess_masksで元サイズに復元
+                # GTマスクも同様に処理
                 if gt_mask.dim() == 2:
                     gt_mask = gt_mask.unsqueeze(0).unsqueeze(0)  # [H, W] -> [1, 1, H, W]
                 elif gt_mask.dim() == 3:
@@ -1260,9 +1278,12 @@ class MinimalTrainer:
                     if gt_mask.shape[0] > 1:
                         gt_mask = gt_mask[0:1]  # 最初のマスクのみ使用
                 
-                gt_mask_processed = self.sam_transforms.postprocess_masks(
-                    gt_mask.float(),
-                    orig_hw
+                # GTマスクもパディングを除去して元サイズに
+                gt_mask_unpadded = gt_mask[:, :, :new_h, :new_w]
+                gt_mask_processed = F.interpolate(
+                    gt_mask_unpadded.float(),
+                    size=(orig_h, orig_w),
+                    mode='nearest'
                 )
                 
                 gt_mask_np = gt_mask_processed.squeeze().detach().cpu().numpy()
@@ -1286,6 +1307,23 @@ class MinimalTrainer:
             else:
                 original_image_np = None
             
+            # 元画像がない場合は、SAM画像を元サイズにリサイズして使用
+            if original_image_np is None:
+                # SAM画像（パディング済み）から元画像を復元
+                # パディングを除去
+                sam_unpadded = sam_image_np[:new_h, :new_w, :]
+                # 元サイズにリサイズ（cv2.resizeは(width, height)順であることに注意）
+                original_image_np = cv2.resize(sam_unpadded, (orig_w, orig_h), interpolation=cv2.INTER_LINEAR)
+                logger.debug(f"Reconstructed original image from SAM image: shape={original_image_np.shape}")
+            
+            # 画像とマスクのサイズが一致することを確認
+            assert original_image_np.shape[:2] == (orig_h, orig_w), \
+                f"Image shape {original_image_np.shape[:2]} != expected {(orig_h, orig_w)}"
+            assert pred_mask_np.shape == (orig_h, orig_w), \
+                f"Pred mask shape {pred_mask_np.shape} != expected {(orig_h, orig_w)}"
+            assert gt_mask_np.shape == (orig_h, orig_w), \
+                f"GT mask shape {gt_mask_np.shape} != expected {(orig_h, orig_w)}"
+            
             # IoU計算（二値化後）- 公式推奨の閾値 > 0.0を使用
             pred_binary = (pred_mask_np > 0.0).astype(float)
             gt_binary = (gt_mask_np > 0.5).astype(float)
@@ -1301,13 +1339,9 @@ class MinimalTrainer:
             fig, axes = plt.subplots(2, 3, figsize=(15, 10))
             
             # 上段: 個別表示
-            # 元画像があれば表示、なければSAM入力画像を表示
-            if original_image_np is not None:
-                axes[0, 0].imshow(original_image_np)
-                axes[0, 0].set_title(f'Original Image\nshape: {original_image_np.shape}', fontsize=10)
-            else:
-                axes[0, 0].imshow(image_np)
-                axes[0, 0].set_title(f'SAM Input (1024x1024, stretched)\nshape: {image_np.shape}', fontsize=10)
+            # 元画像
+            axes[0, 0].imshow(original_image_np)
+            axes[0, 0].set_title(f'Original Image\nshape: {original_image_np.shape}', fontsize=10)
             axes[0, 0].axis('off')
             
             # 予測マスク（元サイズ）
@@ -1321,38 +1355,25 @@ class MinimalTrainer:
             axes[0, 2].axis('off')
             
             # 下段: オーバーレイ比較（元画像サイズで）
-            # オーバーレイ用の画像を選択
-            if original_image_np is not None and pred_mask_np.shape[:2] == original_image_np.shape[:2]:
-                overlay_base = original_image_np
-            else:
-                # 元画像がない場合は、SAM画像を元サイズにリサイズ
-                from scipy.ndimage import zoom
-                if orig_hw != (1024, 1024):
-                    zoom_h = orig_hw[0] / image_np.shape[0]
-                    zoom_w = orig_hw[1] / image_np.shape[1]
-                    overlay_base = zoom(image_np, (zoom_h, zoom_w, 1), order=1)
-                else:
-                    overlay_base = image_np
-            
             # 予測マスクのオーバーレイ
-            axes[1, 0].imshow(overlay_base)
-            pred_colored = np.zeros_like(overlay_base)
+            axes[1, 0].imshow(original_image_np)
+            pred_colored = np.zeros_like(original_image_np)
             pred_colored[:, :, 0] = pred_binary * 255  # 赤色で表示
             axes[1, 0].imshow(pred_colored, alpha=0.3)
             axes[1, 0].set_title('Prediction Overlay', fontsize=10)
             axes[1, 0].axis('off')
             
             # GTマスクのオーバーレイ
-            axes[1, 1].imshow(overlay_base)
-            gt_colored = np.zeros_like(overlay_base)
+            axes[1, 1].imshow(original_image_np)
+            gt_colored = np.zeros_like(original_image_np)
             gt_colored[:, :, 1] = gt_binary * 255  # 緑色で表示
             axes[1, 1].imshow(gt_colored, alpha=0.3)
             axes[1, 1].set_title('GT Overlay', fontsize=10)
             axes[1, 1].axis('off')
             
             # 比較（予測=赤、GT=緑、重なり=黄）
-            axes[1, 2].imshow(overlay_base)
-            compare_colored = np.zeros_like(overlay_base)
+            axes[1, 2].imshow(original_image_np)
+            compare_colored = np.zeros_like(original_image_np)
             compare_colored[:, :, 0] = pred_binary * 255  # 赤
             compare_colored[:, :, 1] = gt_binary * 255    # 緑
             axes[1, 2].imshow(compare_colored, alpha=0.3)
@@ -1362,7 +1383,7 @@ class MinimalTrainer:
             # メタ情報を追加
             info_text = f"Step: {step} | IoU: {iou:.3f} | Dice: {dice:.3f}\n"
             info_text += f"Pred shape: {pred_mask_np.shape} | GT shape: {gt_mask_np.shape}\n"
-            info_text += f"Orig HW: {orig_hw} | SAM: 1024x1024 (stretched)"
+            info_text += f"Orig HW: {orig_hw} | Processed with padding-aware resize"
             fig.suptitle(info_text, fontsize=12, y=0.98)
             
             plt.tight_layout()
@@ -1372,7 +1393,7 @@ class MinimalTrainer:
             plt.savefig(vis_path, dpi=100, bbox_inches='tight')
             plt.close()
             
-            logger.info(f"Saved visualization to {vis_path} (IoU: {iou:.3f}, Dice: {dice:.3f})")
+            logger.info(f"Saved visualization to {vis_path} (IoU: {iou:.3f}, Dice: {dice:.3f})") 
             
             # WandBにログ
             if self.config.use_wandb:
