@@ -767,8 +767,8 @@ class HybridDataset(torch.utils.data.Dataset):
         sample = selected_dataset[sample_idx]
         
         # データソースタイプの判定（仕様書第3章.2.1）
-        # オリジナルLISAとの互換性：10要素タプル形式の場合
-        if isinstance(sample, tuple) and len(sample) >= 10:
+        # オリジナルLISAとの互換性：9要素または10要素タプル形式の場合
+        if isinstance(sample, tuple) and len(sample) >= 9:
             # SemSegDataset等からの10要素タプル
             image_path = sample[0]
             image_sam = sample[1]          # SAM用前処理済み画像
@@ -779,7 +779,7 @@ class HybridDataset(torch.utils.data.Dataset):
             resize = sample[6]              # リサイズ情報
             questions = sample[7]           # 質問リスト
             sampled_classes = sample[8]    # クラス名リスト
-            coord_transform = sample[9] if len(sample) > 9 else None  # 座標変換オブジェクト
+            coord_transform = sample[9] if len(sample) > 9 else None  # 座標変換オブジェクト（10要素の場合のみ）
             
             # conversation_messagesがList[List[Dict]]形式の場合、最初の要素を使用
             if isinstance(conversation_messages, list) and len(conversation_messages) > 0:
