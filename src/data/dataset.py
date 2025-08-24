@@ -27,6 +27,7 @@ except ImportError:
 from transformers import AutoProcessor
 from torchvision import transforms
 from qwen_vl_utils import process_vision_info
+from sam2.utils.transforms import SAM2Transforms
 
 from src.utils.coordinate_transform import CoordinateTransform
 from src.utils.resolution_utils import ResolutionBucketManager, QualityScoreCalculator, calculate_image_pad_tokens
@@ -109,41 +110,28 @@ def setup_seg_token(tokenizer, seg_token="<SEG>"):
 
 def preprocess_sam_image(image: Image.Image, target_size: Optional[int] = None) -> torch.Tensor:
     """
-    SAM用画像前処理：1024x1024にリサイズ・パディング・正規化
-    SAM標準の右下パディング（left-top anchor）を使用
+    SAM2公式仕様準拠の画像前処理：1024x1024に直接リサイズ・正規化
+    パディングは行わない（SAM2は正方形リサイズを前提）
+    
+    注: この関数は後方互換性のために残されています。
+    新しいコードではSAM2Transformsを直接使用することを推奨します。
     """
     if target_size is None:
         target_size = getattr(config, 'SAM_IMAGE_SIZE', 1024)
     
-    # 1. 最長辺を1024にリサイズ（アスペクト比維持）
-    w, h = image.size
-    scale = float(target_size) / max(w, h)
-    new_w = int(round(w * scale))
-    new_h = int(round(h * scale))
+    # SAM2公式: 直接正方形リサイズ（パディング不要）
+    image = image.resize((target_size, target_size), Image.LANCZOS)
     
-    if (new_w, new_h) != (w, h):
-        image = image.resize((new_w, new_h), Image.LANCZOS)
-    
-    # 2. 1024x1024にパディング（右下のみ、SAM標準）
-    w, h = image.size
-    # SAM標準: 右端・下端にのみパディング（左上原点固定）
-    pad_w = target_size - w  # 右側に全てパディング
-    pad_h = target_size - h  # 下側に全てパディング
-    
-    # パディング用の新しい画像を作成
-    padded_image = Image.new('RGB', (target_size, target_size), (0, 0, 0))
-    padded_image.paste(image, (0, 0))  # 左上に配置（SAM標準）
-    
-    # 3. テンソル化と正規化
+    # SAM2公式: ImageNet正規化
     transform = transforms.Compose([
         transforms.ToTensor(),
         transforms.Normalize(
-            mean=[0.485, 0.456, 0.406],  # SAM2.1の正しい正規化値
+            mean=[0.485, 0.456, 0.406],  # SAM2.1公式正規化値
             std=[0.229, 0.224, 0.225]
         )
     ])
     
-    return transform(padded_image)
+    return transform(image)
 
 def preprocess_qwen_image(image: Image.Image, processor: AutoProcessor, target_size: Optional[int] = None) -> torch.Tensor:
     """
@@ -419,6 +407,14 @@ class HybridDataset(torch.utils.data.Dataset):
         self.use_cache = use_cache
         self.cache = DatasetCache(cache_dir) if use_cache else None
         
+        # SAM2公式Transformsの初期化
+        self.sam_transforms = SAM2Transforms(
+            resolution=self.sam_image_size,
+            mask_threshold=0.0,
+            max_hole_area=0.0,
+            max_sprinkle_area=0.0
+        )
+        
         # データセットの初期化
         self.datasets = dataset.split("||")
         self.all_datasets = []
@@ -681,86 +677,118 @@ class HybridDataset(torch.utils.data.Dataset):
             # 新しい10要素形式（座標変換オブジェクト付き）
             image_path, image_sam, image_qwen_tensor, conversations, masks, label, resize, questions, sampled_classes, coord_transform = sample
             
-            # conversationsからメッセージを構築
+            # 元画像サイズを取得（優先順位に従って）
+            # 1. coord_transform.orig_sizeを最優先
+            if hasattr(coord_transform, 'orig_size') and coord_transform.orig_size is not None:
+                orig_hw = coord_transform.orig_size
+            # 2. resizeタプルを第2優先
+            elif isinstance(resize, tuple) and len(resize) == 2:
+                orig_hw = resize
+            # 3. image_pathからの読み込みは最終手段
+            elif isinstance(image_path, str) and os.path.exists(image_path):
+                try:
+                    with Image.open(image_path) as img:
+                        orig_hw = (img.height, img.width)
+                except Exception as e:
+                    print(f"Warning: 画像読み込みエラー {image_path}: {e}")
+                    # coord_transformの他の属性を試す
+                    if hasattr(coord_transform, 'original_height') and hasattr(coord_transform, 'original_width'):
+                        orig_hw = (coord_transform.original_height, coord_transform.original_width)
+                    else:
+                        orig_hw = (1024, 1024)
+                        print(f"Warning: orig_hwをデフォルト値(1024, 1024)に設定")
+            else:
+                # 最後のフォールバック
+                if hasattr(coord_transform, 'original_height') and hasattr(coord_transform, 'original_width'):
+                    orig_hw = (coord_transform.original_height, coord_transform.original_width)
+                else:
+                    orig_hw = (1024, 1024)
+                    print(f"Warning: orig_hwをデフォルト値(1024, 1024)に設定")
+            
+            # conversations処理
             if isinstance(conversations, list) and len(conversations) > 0:
-                # messages形式の場合
                 if isinstance(conversations[0], list) and len(conversations[0]) >= 2:
-                    # messages形式: [[{"role": "user", "content": ...}, {"role": "assistant", "content": ...}]]
-                    conversation_messages = conversations[0]  # 最初の会話を使用
-                    is_seg_sample = True  # セグメンテーションサンプル
+                    conversation_messages = conversations[0]
+                    is_seg_sample = True
                 elif isinstance(conversations[0], str):
-                    # 文字列形式（後方互換性）- VQAなどの古い形式
                     text_prompt = conversations[0]
                     conversation_messages = None
                     is_seg_sample = False
                 else:
-                    # デフォルト
-                    user_content = "Segment the object in this image."
-                    assistant_content = "<SEG>"
                     conversation_messages = [
-                        {"role": "user", "content": user_content},
-                        {"role": "assistant", "content": assistant_content}
+                        {"role": "user", "content": "Segment the object in this image."},
+                        {"role": "assistant", "content": "<SEG>"}
                     ]
                     is_seg_sample = True
             else:
-                # デフォルト
-                user_content = "Segment the object in this image."
-                assistant_content = "<SEG>"
                 conversation_messages = [
-                    {"role": "user", "content": user_content},
-                    {"role": "assistant", "content": assistant_content}
+                    {"role": "user", "content": "Segment the object in this image."},
+                    {"role": "assistant", "content": "<SEG>"}
                 ]
                 is_seg_sample = True
             
-            # resize と questions, sampled_classes を保持（オリジナルLISAとの互換性）
             resize = resize if 'resize' in locals() else None
             questions = questions if 'questions' in locals() else None
             sampled_classes = sampled_classes if 'sampled_classes' in locals() else None
-            
-            # image_qwenはテンソルとして受け取る（後でPILに変換）
             image_qwen = image_qwen_tensor
             
         elif len(sample) == 9:
-            # 古い9要素形式（SemSegDataset, ReferSegDataset）座標変換オブジェクトなし
+            # 古い9要素形式
             image_path, image_sam, image_qwen_tensor, conversations, masks, label, resize, questions, sampled_classes = sample
             
-            # conversationsからメッセージを構築
+            # 元画像サイズを取得（優先順位に従って）
+            # 1. resizeオブジェクトのorig_sizeを最優先
+            if hasattr(resize, 'orig_size') and resize.orig_size is not None:
+                orig_hw = resize.orig_size
+            # 2. resizeタプルを第2優先
+            elif isinstance(resize, tuple) and len(resize) == 2:
+                orig_hw = resize
+            # 3. image_pathからの読み込みは最終手段
+            elif isinstance(image_path, str) and os.path.exists(image_path):
+                try:
+                    with Image.open(image_path) as img:
+                        orig_hw = (img.height, img.width)
+                except Exception as e:
+                    print(f"Warning: 画像読み込みエラー {image_path}: {e}")
+                    # resizeの他の属性を試す
+                    if hasattr(resize, 'original_height') and hasattr(resize, 'original_width'):
+                        orig_hw = (resize.original_height, resize.original_width)
+                    else:
+                        orig_hw = (1024, 1024)
+                        print(f"Warning: orig_hwをデフォルト値(1024, 1024)に設定")
+            else:
+                # 最後のフォールバック
+                if hasattr(resize, 'original_height') and hasattr(resize, 'original_width'):
+                    orig_hw = (resize.original_height, resize.original_width)
+                else:
+                    orig_hw = (1024, 1024)
+                    print(f"Warning: orig_hwをデフォルト値(1024, 1024)に設定")
+            
+            # conversations処理（同上）
             if isinstance(conversations, list) and len(conversations) > 0:
-                # messages形式の場合
                 if isinstance(conversations[0], list) and len(conversations[0]) >= 2:
-                    # messages形式: [[{"role": "user", "content": ...}, {"role": "assistant", "content": ...}]]
-                    conversation_messages = conversations[0]  # 最初の会話を使用
-                    is_seg_sample = True  # セグメンテーションサンプル
+                    conversation_messages = conversations[0]
+                    is_seg_sample = True
                 elif isinstance(conversations[0], str):
-                    # 文字列形式（後方互換性）- VQAなどの古い形式
                     text_prompt = conversations[0]
                     conversation_messages = None
                     is_seg_sample = False
                 else:
-                    # デフォルト
-                    user_content = "Segment the object in this image."
-                    assistant_content = "<SEG>"
                     conversation_messages = [
-                        {"role": "user", "content": user_content},
-                        {"role": "assistant", "content": assistant_content}
+                        {"role": "user", "content": "Segment the object in this image."},
+                        {"role": "assistant", "content": "<SEG>"}
                     ]
                     is_seg_sample = True
             else:
-                # デフォルト
-                user_content = "Segment the object in this image."
-                assistant_content = "<SEG>"
                 conversation_messages = [
-                    {"role": "user", "content": user_content},
-                    {"role": "assistant", "content": assistant_content}
+                    {"role": "user", "content": "Segment the object in this image."},
+                    {"role": "assistant", "content": "<SEG>"}
                 ]
                 is_seg_sample = True
             
-            # resize と questions, sampled_classes を保持（オリジナルLISAとの互換性）
             resize = resize if 'resize' in locals() else None
             questions = questions if 'questions' in locals() else None
             sampled_classes = sampled_classes if 'sampled_classes' in locals() else None
-            
-            # image_qwenはテンソルとして受け取る（後でPILに変換）
             image_qwen = image_qwen_tensor
             
         elif len(sample) == 5:
@@ -815,8 +843,10 @@ class HybridDataset(torch.utils.data.Dataset):
                 else:
                     raise ValueError(f"サポートされていない画像形式: {type(image_data)}")
             
-            # SAM用画像前処理（現在は使用されていない）
-            image_sam = preprocess_sam_image(image_pil, self.sam_image_size)
+            # SAM用画像前処理 - SAM2公式Transformsを使用
+            # 元画像サイズを保存（後処理で必要）
+            orig_hw = (image_pil.height, image_pil.width)
+            image_sam = self.sam_transforms(image_pil)
             
             # オリジナルLISAとの互換性のために初期化
             resize = None
@@ -829,9 +859,10 @@ class HybridDataset(torch.utils.data.Dataset):
         else:
             raise ValueError(f"不明なサンプル形式: {len(sample)} 要素")
         
+        # 削除: 元画像サイズを取得（すべてのケースで確実に設定）のフォールバック処理
+        # orig_hwは各ケースで既に設定済み
 
-
-                # conversation_messagesの処理
+        # conversation_messagesの処理
         if conversation_messages:
             # メッセージ形式から処理する（セグメンテーションタスク）
             # conversation_messagesは既にuser/assistantのroleを持つ
@@ -1010,6 +1041,7 @@ class HybridDataset(torch.utils.data.Dataset):
                 # エラー時はデフォルト値を使用
                 logger.debug(f"品質スコア計算エラー: {e}")
         
+        
         # 返り値の構築（仕様書準拠、オリジナルLISAとの互換性を保持）
         # collate_fnが期待するキー名に統一
         return {
@@ -1029,6 +1061,7 @@ class HybridDataset(torch.utils.data.Dataset):
             'questions': questions if 'questions' in locals() else None,
             'sampled_classes': sampled_classes if 'sampled_classes' in locals() else None,
             'original_image': image_pil,  # 可視化用の元画像（PIL形式）
+            'orig_hw': orig_hw,  # SAM後処理用の元画像サイズ（必ず設定）
             # 品質スコア関連
             'quality_score': quality_score,
             'loss_weight': loss_weight,
@@ -1063,6 +1096,7 @@ def collate_fn(batch: List[Dict]) -> Dict[str, Any]:
     sampled_classes_list = []  # オリジナルLISA互換
     image_grid_thws = []  # Qwen2.5-VL用
     original_images = []  # 可視化用の元画像
+    orig_hw_list = []  # SAM後処理用の元画像サイズ
     
     for item in batch:
         pixel_values.append(item["pixel_values"])
@@ -1101,6 +1135,17 @@ def collate_fn(batch: List[Dict]) -> Dict[str, Any]:
         # Qwen2.5-VL用
         image_grid_thws.append(item.get("image_grid_thw"))
         original_images.append(item.get("original_image"))
+        
+        # SAM後処理用の元画像サイズを収集
+        orig_hw = item.get("orig_hw")
+        if orig_hw is not None:
+            # タプルまたはリストの形式を統一
+            if isinstance(orig_hw, (list, tuple)) and len(orig_hw) == 2:
+                orig_hw_list.append(tuple(orig_hw))
+            else:
+                orig_hw_list.append(None)
+        else:
+            orig_hw_list.append(None)
     
     # テンソルのスタック
     # pixel_valuesは2D形式 (N_patches, D_v) または3D形式 (C, H, W) の可能性がある
@@ -1176,9 +1221,11 @@ def collate_fn(batch: List[Dict]) -> Dict[str, Any]:
         "image_grid_thw": image_grid_thw_batch,         # (B, 3) or None - Qwen2.5-VL用
         "seg_token_mask": seg_token_masks_padded,      # (B, unified_max_length)
         "ground_truth_mask": ground_truth_masks_stacked,# (num_masks, 1, 1024, 1024) or None
+        "mask_labels": ground_truth_masks_stacked,      # エイリアス: minimal_train.py互換
         "has_mask": has_masks,                          # List[bool]
         "image_paths": image_paths,                     # List[str]
         "text_prompts": text_prompts,                   # List[str]
+        "orig_hw": orig_hw_list,                        # List[tuple] - SAM後処理用の元画像サイズ
         # オリジナルLISA互換フィールド
         "masks_list": ground_truth_masks,               # List[Tensor] - オリジナルLISA形式
         "label_list": label_list,                       # List[Tensor] - オリジナルLISA形式
@@ -1214,6 +1261,14 @@ class LisaQwen3ValDataset(torch.utils.data.Dataset):
         self.qwen_processor = qwen_processor
         self.qwen_image_size = qwen_image_size
         self.sam_image_size = sam_image_size
+        
+        # SAM2公式Transformsの初期化
+        self.sam_transforms = SAM2Transforms(
+            resolution=self.sam_image_size,
+            mask_threshold=0.0,
+            max_hole_area=0.0,
+            max_sprinkle_area=0.0
+        )
         
         # 評価用データセットの初期化
         if "refer_seg" in val_dataset.lower():
@@ -1327,7 +1382,9 @@ class LisaQwen3ValDataset(torch.utils.data.Dataset):
         attention_mask = qwen_processed['attention_mask'].squeeze(0)
         
         try:
-            sam_images = preprocess_sam_image(image, self.sam_image_size)
+            # SAM2公式Transformsを使用（元画像サイズを保持）
+            orig_hw = (image.height, image.width)
+            sam_images = self.sam_transforms(image)
         except Exception as e:
             raise RuntimeError(f"評価用SAM前処理に失敗 (idx={idx}): {e}")
         

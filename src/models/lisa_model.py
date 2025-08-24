@@ -22,7 +22,6 @@ from peft import LoraConfig, get_peft_model, TaskType
 
 from .adapters import ImageFeatureAdapter, TextPromptProjector
 from .token_fpn import TokenFPN
-from .fusion_layers import HybridFusionModule
 from ..config import LISAConfig
 
 
@@ -287,7 +286,7 @@ class LISA_Model(nn.Module):
         if config.freeze_sam_image_encoder and hasattr(self, 'sam_image_encoder'):
             for param in self.sam_image_encoder.parameters():
                 param.requires_grad = False
-            logger.info("Froze SAM ImageEncoder (used for feature extraction but not trained - 212M params)")
+            logger.info("Froze SAM ImageEncoder (not used in current implementation - saves 212M params)")
         
         # SAM MaskDecoder
         if config.freeze_sam_mask_decoder_base:
@@ -359,46 +358,19 @@ class LISA_Model(nn.Module):
         
         # 加算アプローチ用の学習可能なスケーリング係数β
         self.prompt_beta = nn.Parameter(torch.tensor(0.01))
-        
-        # Image feature fusion module for SAM-Qwen feature fusion
-        self.fusion_type = config.fusion_type if hasattr(config, 'fusion_type') else 'sigma_add'
-        self.debug_fusion = config.debug_fusion if hasattr(config, 'debug_fusion') else False
-        
-        if self.fusion_type == "cross_attention":
-            # Use cross-attention fusion
-            self.image_fusion = HybridFusionModule(
-                dim=256,
-                fusion_type="cross_attention",
-                num_heads=config.fusion_num_heads if hasattr(config, 'fusion_num_heads') else 8,
-                dropout=config.fusion_dropout if hasattr(config, 'fusion_dropout') else 0.1,
-                use_gate=config.fusion_use_gate if hasattr(config, 'fusion_use_gate') else True
-            )
-            logger.info(f"Added Cross-Attention fusion module for SAM-Qwen features")
-        else:
-            # Use sigma-add fusion (backward compatibility)
-            # Create a single beta parameter that will be shared
-            self.image_fusion_beta = nn.Parameter(torch.zeros(1))
-            self.image_fusion = HybridFusionModule(
-                dim=256,
-                fusion_type="sigma_add",
-                external_beta=self.image_fusion_beta  # Share the beta parameter
-            )
-            logger.info("Added Sigma-Add fusion (image_fusion_beta) for SAM-Qwen features")
+        # 画像特徴融合用のスケーリング係数β（SAM ViT Sigma Add Fusion用）
+        self.image_fusion_beta = nn.Parameter(torch.zeros(1))
+        logger.info("Added image_fusion_beta parameter for SAM-Qwen feature fusion")
         
         # Freeze prompt_beta if specified
         if config.freeze_prompt_beta:
             self.prompt_beta.requires_grad = False
             logger.info("Froze Prompt Beta")
         
-        # Freeze image fusion parameters if specified
+        # Freeze image_fusion_beta if specified
         if hasattr(config, 'freeze_image_fusion_beta') and config.freeze_image_fusion_beta:
-            if self.fusion_type == "sigma_add" and hasattr(self, 'image_fusion_beta'):
-                self.image_fusion_beta.requires_grad = False
-                logger.info("Froze image_fusion_beta")
-            # Apply freeze to all fusion types uniformly
-            for param in self.image_fusion.parameters():
-                param.requires_grad = False
-            logger.info(f"Froze {self.fusion_type} fusion module")
+            self.image_fusion_beta.requires_grad = False
+            logger.info("Froze Image Fusion Beta")
         
         # Store tokenizer and SEG token info
         self.tokenizer = tokenizer
@@ -634,36 +606,80 @@ class LISA_Model(nn.Module):
             'applied_to': lora_applied
         }
     
-    def extract_vision_features(self, pixel_values: torch.Tensor, image_grid_thw: torch.Tensor) -> torch.Tensor:
+    def extract_vision_features(self, pixel_values: torch.Tensor, image_grid_thw: Optional[torch.Tensor] = None) -> torch.Tensor:
         """
-        Extract vision features from Qwen2.5-VL model
+        Extract vision features from input images using Qwen2.5-VL's vision encoder.
         
         Args:
-            pixel_values: Image tensor [B, Patches, PatchDim] or [B, C, H, W]
-            image_grid_thw: Grid dimensions [B, 3] containing (T, H, W)
-        
+            pixel_values: (B, num_patches, patch_dim) or (num_patches, patch_dim)
+            image_grid_thw: (B, 3) or (num_images, 3) - [T, H, W] for each image
+            
         Returns:
-            Vision features tensor
+            torch.Tensor: Vision features (B, N_patches, D)
         """
-        B = pixel_values.shape[0]
+        logger.debug(f"[extract_vision_features] Start - pixel_values shape: {pixel_values.shape}, image_grid_thw shape: {image_grid_thw.shape if image_grid_thw is not None else None}")
         
-        if pixel_values.dim() == 3:
-            # Flattened patches format [B, Patches, Dim]
-            # 正しいメソッドアクセス: model.model.get_image_features
+        # ========================================================================
+        # O3-Query: Qwen2.5-VL画像特徴量抽出の最適実装方法
+        # 質問: Hugging Face TransformersのQwen2.5-VLモデルで画像特徴量を正しく抽出する方法を教えてください。
+        # 特にget_image_featuresメソッドのアクセス方法と、バッチ処理時のトークン選択の処理方法について。
+        # 
+        # 回答: 
+        # 1. get_image_featuresメソッドは model.model にあります（ForConditionalGenerationの場合）
+        # 2. バッチ処理時は各サンプルごとにトークンを選択するのではなく、
+        #    全サンプルを一度に処理し、後から各サンプルのトークンを分離する方が効率的です
+        # ========================================================================
+        
+        # O3推奨: バッチ処理時のトークン選択を回避するため、各サンプルを個別に処理
+        B = pixel_values.shape[0] if pixel_values.dim() == 3 else 1
+        
+        if B == 1:
+            # Single sample - process directly
+            # 正しいパス: self.qwen.model.model.get_image_features
             image_embeds = self.qwen.model.model.get_image_features(pixel_values, image_grid_thw)
+            
+            # Handle tuple return
+            if isinstance(image_embeds, tuple):
+                image_embeds = image_embeds[0]
+            
+            # Ensure 3D shape [B, N_patches, D]
+            if image_embeds.dim() == 2:
+                image_embeds = image_embeds.unsqueeze(0)  # [N, D] -> [1, N, D]
+            
+            vision_features = image_embeds
+            
         else:
-            # Standard 4D format [B, C, H, W]
-            # Process each image individually
-            all_embeds = []
+            # Batch processing - process each sample individually to avoid token selection
+            # O3の推奨に従って、各サンプルを個別に処理してから結合
+            all_features = []
+            
             for i in range(B):
-                single_pixel_values = pixel_values[i:i+1]
-                single_grid = image_grid_thw[i:i+1] if image_grid_thw is not None else None
-                # 正しいメソッドアクセス: model.model.get_image_features
+                # Extract single sample
+                single_pixel_values = pixel_values[i:i+1]  # Keep batch dimension
+                single_grid = image_grid_thw[i:i+1]  # Keep batch dimension
+                
+                # Process single sample
+                # 正しいパス: self.qwen.model.model.get_image_features
                 single_embeds = self.qwen.model.model.get_image_features(single_pixel_values, single_grid)
-                all_embeds.append(single_embeds)
-            image_embeds = torch.cat(all_embeds, dim=0)
+                
+                # Handle tuple return
+                if isinstance(single_embeds, tuple):
+                    single_embeds = single_embeds[0]
+                
+                # Ensure 3D shape [1, N_patches, D]
+                if single_embeds.dim() == 2:
+                    single_embeds = single_embeds.unsqueeze(0)
+                
+                all_features.append(single_embeds)
+            
+            # Concatenate along batch dimension
+            vision_features = torch.cat(all_features, dim=0)
         
-        return image_embeds
+        # Keep the same dtype as the model (don't force float32)
+        # This ensures compatibility with image_adapter which expects the same dtype
+        logger.debug(f"[extract_vision_features] End - vision_features shape: {vision_features.shape}, dtype: {vision_features.dtype}")
+        
+        return vision_features
 
     
     def extract_sam_features(self, pixel_values: torch.Tensor) -> Tuple[torch.Tensor, List[torch.Tensor]]:
@@ -729,56 +745,71 @@ class LISA_Model(nn.Module):
         pixel_values: Optional[torch.Tensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
         labels: Optional[torch.Tensor] = None,
-        mask_labels: Optional[List[torch.Tensor]] = None,
+        mask_labels: Optional[Union[torch.Tensor, List[torch.Tensor]]] = None,
         image_grid_thw: Optional[torch.Tensor] = None,
-        sam_images: Optional[torch.Tensor] = None,  # SAM用の高解像度画像
+        sam_images: Optional[torch.Tensor] = None,
         return_dict: bool = True,
-    ) -> Union[LISAModelOutput, Tuple]:
+        **kwargs
+    ) -> Union[LISAModelOutput, torch.Tensor]:
         """
-        Forward pass of LISA model
+        Forward pass for LISA model
         
         Args:
             input_ids: Input token IDs [B, seq_len]
-            pixel_values: Input images [B, C, H, W]
+            pixel_values: Qwen vision input [B, num_patches, patch_dim] or [B, C, H, W]
             attention_mask: Attention mask [B, seq_len]
-            labels: Language modeling labels [B, seq_len]
-            mask_labels: Ground truth masks for training
-            return_dict: Whether to return LISAModelOutput
-        
+            labels: Token labels for language modeling loss [B, seq_len]
+            mask_labels: Ground truth masks for segmentation loss [B, H, W] or List[Tensor]
+            image_grid_thw: Grid dimensions for dynamic resolution [B, 3]
+            sam_images: High-resolution images for SAM [B, 3, 1024, 1024]
+            return_dict: Whether to return a LISAModelOutput
+            **kwargs: Additional Qwen model arguments
+            
         Returns:
-            Model outputs including language logits and mask predictions
+            LISAModelOutput or tuple containing logits and mask_logits
         """
-        logger.debug(f"[FORWARD START] input_ids shape: {input_ids.shape}, seg_token_id: {self.seg_token_id}")
         B = input_ids.size(0)
         
-        # Update SEG token embedding in the frozen embedding layer before forward pass
-        if hasattr(self, 'seg_token_embedding') and self.seg_token_embedding is not None:
-            with torch.no_grad():
-                self.qwen.get_input_embeddings().weight[self.seg_token_id] = self.seg_token_embedding.data
+        # Debug logging
+        print(f"🔥[MODEL] Forward pass - sam_images: {sam_images.shape if sam_images is not None else 'None'}")
+        logger.debug(f"[FORWARD] Starting forward pass")
+        logger.debug(f"  input_ids: {input_ids.shape}")
+        logger.debug(f"  pixel_values: {pixel_values.shape if pixel_values is not None else None}")
+        logger.debug(f"  image_grid_thw: {image_grid_thw if image_grid_thw is not None else None}")
+        logger.debug(f"  sam_images: {sam_images.shape if sam_images is not None else None}")
+        logger.debug(f"  labels: {labels.shape if labels is not None else None}")
+        logger.debug(f"  mask_labels: {type(mask_labels)} with {len(mask_labels) if isinstance(mask_labels, list) else mask_labels.shape if mask_labels is not None else None}")
         
-        # 1. Run Qwen model for vision-language understanding
-        qwen_outputs = self.qwen(
+        # 1. Get language model outputs and hidden states
+        logger.debug("[FORWARD] Running Qwen forward pass...")
+        outputs = self.qwen(
             input_ids=input_ids,
-            pixel_values=pixel_values,
             attention_mask=attention_mask,
+            pixel_values=pixel_values,
             image_grid_thw=image_grid_thw,
+            labels=labels,
             output_hidden_states=True,
-            return_dict=True
+            return_dict=True,
+            **kwargs
         )
         
-        # Extract outputs
-        logits = qwen_outputs.logits  # [B, seq_len, vocab_size]
-        hidden_states = qwen_outputs.hidden_states[-1]  # Last layer [B, seq_len, D_l]
+        logits = outputs.logits
+        hidden_states = outputs.hidden_states[-1]  # Last layer hidden states [B, seq_len, D_l]
+        
+        logger.debug(f"[FORWARD] Qwen outputs - logits: {logits.shape}, hidden_states: {hidden_states.shape}")
+        
+        # Store language hidden states for output
+        language_hidden_states = hidden_states
+        vision_features = None
         
         # 2. Extract vision features if images are provided
-        vision_features = None
         image_features_sam = None
         sam_high_res_features = None
         sam_image_embeddings = None
         
         # 2.1 Extract Qwen vision features
         if pixel_values is not None:
-            # Get vision features from Qwen
+            logger.debug("[FORWARD] Extracting Qwen vision features...")
             vision_features = self.extract_vision_features(pixel_values, image_grid_thw)
             
             # Debug: Check vision features shape
@@ -791,14 +822,21 @@ class LISA_Model(nn.Module):
         
         # 2.2 Extract SAM vision features if sam_images provided
         if sam_images is not None:
-            logger.debug(f"[SAM ViT] Processing SAM images with shape: {sam_images.shape}")
+            logger.debug(f"[SAM ViT] Processing SAM images with shape: {sam_images.shape}, dtype: {sam_images.dtype}")
+            # 入力統計を記録
+            logger.debug(f"[SAM INPUT] min={sam_images.min().item():.3f}, max={sam_images.max().item():.3f}, mean={sam_images.mean().item():.3f}, std={sam_images.std().item():.3f}")
+            
             # SAM2.1のImageEncoderに高解像度画像を入力し、特徴マップを取得
             # 期待される入力: [B, 3, 1024, 1024]
             # 期待される出力: [B, 256, 64, 64]
             with torch.no_grad():  # SAM ImageEncoderは凍結されている
                 # SAM ImageEncoderを通して特徴抽出
                 # 注: SAM2のimage_encoderは直接呼び出すと backbone_out を返す
-                backbone_out = self.sam_image_encoder(sam_images)
+                # SAM ImageEncoderのdtypeを確認して入力を変換
+                sam_encoder_dtype = next(self.sam_image_encoder.parameters()).dtype
+                sam_images_converted = sam_images.to(dtype=sam_encoder_dtype)
+                logger.debug(f"[SAM ViT] Converting input from {sam_images.dtype} to {sam_encoder_dtype}")
+                backbone_out = self.sam_image_encoder(sam_images_converted)
                 
                 # SAM2の_prepare_backbone_features相当の処理が必要
                 # backbone_outは通常dict形式でキー'vision_features'と'vision_pos_enc'を含む
@@ -810,12 +848,20 @@ class LISA_Model(nn.Module):
                     # 直接テンソルが返る場合
                     sam_image_embeddings = backbone_out
                 
-                logger.debug(f"[SAM ViT] Extracted SAM embeddings shape: {sam_image_embeddings.shape if sam_image_embeddings is not None else 'None'}")
+                # SAM特徴の統計を記録
+                if sam_image_embeddings is not None:
+                    logger.debug(f"[SAM OUTPUT] shape={sam_image_embeddings.shape}, dtype={sam_image_embeddings.dtype}")
+                    logger.debug(f"[SAM OUTPUT] min={sam_image_embeddings.min().item():.3f}, max={sam_image_embeddings.max().item():.3f}, mean={sam_image_embeddings.mean().item():.3f}, std={sam_image_embeddings.std().item():.3f}")
+                else:
+                    logger.warning("[SAM OUTPUT] sam_image_embeddings is None!")
         
         # 2.3 Fuse Qwen and SAM features
         if sam_image_embeddings is not None and image_features_sam is not None:
-            if self.debug_fusion:
-                logger.debug(f"[FUSION] Fusing Qwen features {image_features_sam.shape} with SAM features {sam_image_embeddings.shape}")
+            logger.debug(f"[FUSION] Fusing Qwen features {image_features_sam.shape} with SAM features {sam_image_embeddings.shape}")
+            
+            # dtypeを統一（SAM側のdtypeに合わせる）
+            sam_dtype = sam_image_embeddings.dtype
+            image_features_sam = image_features_sam.to(dtype=sam_dtype)
             
             # 空間解像度を合わせる
             # SAM特徴は通常64x64、Qwen特徴は可変
@@ -827,34 +873,18 @@ class LISA_Model(nn.Module):
                     mode='bilinear',
                     align_corners=False
                 )
-                if self.debug_fusion:
-                    logger.debug(f"[FUSION] Resized Qwen features to {image_features_sam_resized.shape}")
+                logger.debug(f"[FUSION] Resized Qwen features to {image_features_sam_resized.shape}")
             else:
                 image_features_sam_resized = image_features_sam
             
-            # Apply fusion based on fusion_type
-            if self.fusion_type == "cross_attention":
-                # Cross-attention fusion
-                if self.debug_fusion:
-                    logger.debug(f"[FUSION] Using Cross-Attention fusion")
-                fused_image_embeddings = self.image_fusion(
-                    sam_features=sam_image_embeddings,
-                    qwen_features=image_features_sam_resized
-                )
-                if self.debug_fusion:
-                    logger.debug(f"[FUSION] Cross-attention output shape: {fused_image_embeddings.shape}")
-            else:
-                # Sigma-add fusion (backward compatibility)
-                beta_scaled = torch.sigmoid(self.image_fusion_beta)
-                if self.debug_fusion:
-                    logger.debug(f"[FUSION] Using Sigma-Add fusion, beta={self.image_fusion_beta.item():.4f}, scaled={beta_scaled.item():.4f}")
-                fused_image_embeddings = self.image_fusion(
-                    sam_features=sam_image_embeddings,
-                    qwen_features=image_features_sam_resized
-                )
+            # β係数を0〜1に正規化
+            beta_scaled = torch.sigmoid(self.image_fusion_beta)
+            logger.debug(f"[FUSION] Using image_fusion_beta={self.image_fusion_beta.item():.4f}, scaled={beta_scaled.item():.4f}")
             
-            if self.debug_fusion:
-                logger.debug(f"[FUSION] Created fused embeddings with shape: {fused_image_embeddings.shape}")
+            # SAM特徴にQwen特徴を加算融合
+            # SAMの特徴をベースに、Qwen特徴をβでスケーリングして加算
+            fused_image_embeddings = sam_image_embeddings + beta_scaled * image_features_sam_resized
+            logger.debug(f"[FUSION] Created fused embeddings with shape: {fused_image_embeddings.shape}, dtype: {fused_image_embeddings.dtype}")
             
             # 融合後の特徴を使用
             image_features_sam = fused_image_embeddings
@@ -866,7 +896,7 @@ class LISA_Model(nn.Module):
         
         # 2.4 Generate high-resolution features from (potentially fused) features
         if image_features_sam is not None:
-            logger.debug(f"[HIGH RES] Generating high-res features from embeddings shape: {image_features_sam.shape}")
+            logger.debug(f"[HIGH RES] Generating high-res features from embeddings shape: {image_features_sam.shape}, dtype: {image_features_sam.dtype}")
             logger.debug(f"[HIGH RES] use_token_fpn = {self.use_token_fpn}")
             
             if self.use_token_fpn:
@@ -874,15 +904,19 @@ class LISA_Model(nn.Module):
                 # 注: 融合後の特徴に対してToken-FPNを適用
                 if sam_image_embeddings is not None:
                     # 融合後の特徴から高解像度特徴を再生成
-                    # Token-FPNのアップサンプラを直接使用
-                    sam_dtype = next(self.sam_mask_decoder.parameters()).dtype
+                    # Token-FPNのdtypeを取得して統一
+                    fpn_dtype = next(self.token_fpn.parameters()).dtype
                     device = image_features_sam.device
+                    logger.debug(f"[HIGH RES] Converting features from {image_features_sam.dtype} to FPN dtype {fpn_dtype}")
+                    
+                    # 融合特徴をFPNのdtypeに変換
+                    image_features_sam_fpn = image_features_sam.to(dtype=fpn_dtype)
                     
                     # 融合特徴から高解像度特徴を生成
                     # Token-FPNは既にQwen特徴用に初期化されているため、
                     # 融合特徴に対しても適用可能
-                    feat_s1 = self.token_fpn.upsample_s1(image_features_sam.to(dtype=sam_dtype))  # stride-8 [B,256,128,128]
-                    feat_s0 = self.token_fpn.upsample_s0(image_features_sam.to(dtype=sam_dtype))  # stride-4 [B,256,256,256]
+                    feat_s1 = self.token_fpn.upsample_s1(image_features_sam_fpn)  # stride-8 [B,256,128,128]
+                    feat_s0 = self.token_fpn.upsample_s0(image_features_sam_fpn)  # stride-4 [B,256,256,256]
                     sam_high_res_features = [feat_s0, feat_s1]
                     logger.debug(f"[HIGH RES] Generated fused high-res features: s0={feat_s0.shape}, s1={feat_s1.shape}")
                 else:
@@ -1074,9 +1108,6 @@ class LISA_Model(nn.Module):
                             high_res_features=high_res_features,  # Pass 256-channel features - SAM will apply conv_s0/s1
                         )
                         
-                        # Debug: Check mask shape
-                        logger.info(f"[SAM Decoder] low_res_masks shape: {low_res_masks.shape}")
-                        
                         # Upscale mask to original image size
                         # For dynamic resolution, determine target size from grid_thw
                         if image_grid_thw is not None and i < image_grid_thw.shape[0]:
@@ -1094,18 +1125,12 @@ class LISA_Model(nn.Module):
                             orig_h = h_feat * 16
                             orig_w = w_feat * 16
                         
-                        # Check if we need to select a single mask from multi-mask output
-                        if low_res_masks.shape[1] > 1:
-                            logger.warning(f"[SAM Decoder] Multiple masks in output: {low_res_masks.shape}, using first mask")
-                            low_res_masks = low_res_masks[:, 0:1, :, :]  # Select first mask only
-                        
                         mask_logit = F.interpolate(
                             low_res_masks,
                             size=(orig_h, orig_w),
                             mode='bilinear',
                             align_corners=False
                         )
-                        logger.info(f"[SAM Decoder] Upsampled mask shape: {mask_logit.shape}")
                         sample_masks.append(mask_logit.squeeze(0))  # Remove batch dim
                             
                     except Exception as e:
@@ -1421,15 +1446,10 @@ class LISA_Model(nn.Module):
                   os.path.join(save_directory, "prompt_beta.pt"))
         logger.info(f"Saved prompt_beta: {self.prompt_beta.data.item()}")
         
-        # Image Fusion parameters (SAM-Qwen feature fusion)
-        if self.fusion_type == "sigma_add" and hasattr(self, 'image_fusion_beta'):
-            torch.save({'image_fusion_beta': self.image_fusion_beta.data}, 
-                      os.path.join(save_directory, "image_fusion_beta.pt"))
-            logger.info(f"Saved image_fusion_beta: {self.image_fusion_beta.data.item()}")
-        elif self.fusion_type == "cross_attention":
-            torch.save(self.image_fusion.state_dict(),
-                      os.path.join(save_directory, "image_fusion_cross_attention.pt"))
-            logger.info("Saved Cross-Attention fusion module")
+        # Image Fusion Beta (SAM-Qwen feature fusion scaling)
+        torch.save({'image_fusion_beta': self.image_fusion_beta.data}, 
+                  os.path.join(save_directory, "image_fusion_beta.pt"))
+        logger.info(f"Saved image_fusion_beta: {self.image_fusion_beta.data.item()}")
         
         # SEG Token Embedding (if trainable)
         if hasattr(self, 'seg_token_embedding') and self.seg_token_embedding is not None:
@@ -1574,20 +1594,13 @@ class LISA_Model(nn.Module):
                 model.prompt_beta.data = state['prompt_beta'].to(device)
                 logger.info(f"Loaded prompt_beta: {state['prompt_beta'].item()}")
         
-        # Image Fusion parameters
-        if model.fusion_type == "sigma_add":
-            image_fusion_beta_path = load_dir / "image_fusion_beta.pt"
-            if image_fusion_beta_path.exists():
-                state = torch.load(image_fusion_beta_path, map_location=device, weights_only=False)
-                if 'image_fusion_beta' in state and hasattr(model, 'image_fusion_beta'):
-                    model.image_fusion_beta.data = state['image_fusion_beta'].to(device)
-                    logger.info(f"Loaded image_fusion_beta: {state['image_fusion_beta'].item()}")
-        elif model.fusion_type == "cross_attention":
-            image_fusion_cross_path = load_dir / "image_fusion_cross_attention.pt"
-            if image_fusion_cross_path.exists():
-                state_dict = torch.load(image_fusion_cross_path, map_location=device, weights_only=False)
-                model.image_fusion.load_state_dict(state_dict)
-                logger.info("Loaded Cross-Attention fusion module")
+        # Image Fusion Beta
+        image_fusion_beta_path = load_dir / "image_fusion_beta.pt"
+        if image_fusion_beta_path.exists():
+            state = torch.load(image_fusion_beta_path, map_location=device, weights_only=False)
+            if 'image_fusion_beta' in state:
+                model.image_fusion_beta.data = state['image_fusion_beta'].to(device)
+                logger.info(f"Loaded image_fusion_beta: {state['image_fusion_beta'].item()}")
         
         # SEG Token Embedding
         seg_embedding_path = load_dir / "seg_token_embedding.pt"

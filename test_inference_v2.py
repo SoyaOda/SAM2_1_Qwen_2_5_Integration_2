@@ -393,9 +393,23 @@ class InferenceRunnerV2:
         if n_seg_tokens == 0:
             logger.warning("No SEG token found in input_ids! Check tokenization.")
         
-        # SAM用の高解像度画像を準備
-        sam_image = np.array(image.resize((1024, 1024)))
-        sam_image_tensor = torch.from_numpy(sam_image).permute(2, 0, 1).float() / 255.0
+        # SAM用の高解像度画像を準備（SAM2Transformsを使用して学習時と完全統一）
+        from sam2.utils.transforms import SAM2Transforms
+        
+        # SAM2公式Transformsを使用（学習時と同じ）
+        sam_transforms = SAM2Transforms(
+            resolution=1024,
+            mask_threshold=0.0,
+            max_hole_area=0.0,
+            max_sprinkle_area=0.0
+        )
+        
+        # 元画像サイズを保存（後処理で必要）
+        orig_hw = (image.height, image.width)
+        logger.debug(f"Original image size (H, W): {orig_hw}")
+        
+        # SAM2Transformsで前処理（正方形リサイズ + ImageNet正規化）
+        sam_image_tensor = sam_transforms(image)  # 3×1024×1024 (float, normalized)
         sam_image_tensor = sam_image_tensor.unsqueeze(0).to(self.device)
         
         # 4) モデルのforward（推論モード）
@@ -430,12 +444,20 @@ class InferenceRunnerV2:
                         if isinstance(pred_mask, list):
                             pred_mask = pred_mask[0]
                         
-                        # テンソルをnumpy配列に変換
-                        pred_mask = torch.sigmoid(pred_mask).detach().cpu().numpy()
+                        # pred_maskの形状を4次元に整形（postprocess_masksの要件）
+                        if pred_mask.dim() == 2:
+                            pred_mask = pred_mask.unsqueeze(0).unsqueeze(0)  # [H, W] -> [1, 1, H, W]
+                        elif pred_mask.dim() == 3:
+                            pred_mask = pred_mask.unsqueeze(1)  # [B, H, W] -> [B, 1, H, W]
                         
-                        # 余分な次元を削除
-                        if pred_mask.ndim > 2:
-                            pred_mask = pred_mask.squeeze()
+                        # SAM2公式のpostprocess_masksで元画像サイズに復元
+                        pred_mask_processed = sam_transforms.postprocess_masks(
+                            pred_mask.float(),
+                            orig_hw
+                        )
+                        
+                        # シグモイドで確率に変換してnumpyに
+                        pred_mask = torch.sigmoid(pred_mask_processed).squeeze().detach().cpu().numpy()
                     else:
                         logger.warning("mask_logits is empty")
                         pred_mask = np.zeros((image.height, image.width))
@@ -460,7 +482,8 @@ class InferenceRunnerV2:
         return {
             "mask": pred_mask,
             "logits": logits,
-            "inputs": inputs  # デバッグ用
+            "inputs": inputs,  # デバッグ用
+            "orig_hw": orig_hw  # 後処理で使用した元画像サイズ
         }
     
     def run_inference_with_generation(self, image: Image.Image, prompt: str) -> Dict:

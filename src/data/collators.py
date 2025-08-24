@@ -386,24 +386,27 @@ class MultiModalDataCollator:
                     mask_labels.append(torch.zeros(1, 1024, 1024))
             batch['mask_labels'] = torch.stack(mask_labels)
         
-        # Handle SAM images (for SAM ViT Sigma Add Fusion)
+        # Handle SAM images for high-resolution processing
         if 'sam_images' in features[0] and features[0]['sam_images'] is not None:
-            sam_images = []
-            for f in features:
-                if f.get('sam_images') is not None:
-                    sam_img = f['sam_images']
-                    # Ensure (C, H, W) format
-                    if sam_img.dim() == 4:  # (1, C, H, W) -> (C, H, W)
-                        sam_img = sam_img.squeeze(0)
-                    sam_images.append(sam_img)
+            sam_images_list = []
+            for i, f in enumerate(features):
+                sam_img = f.get('sam_images')
+                if sam_img is not None:
+                    sam_images_list.append(sam_img)
                 else:
                     # Create dummy SAM image if missing
-                    sam_images.append(torch.zeros(3, 1024, 1024))
-            batch['sam_images'] = torch.stack(sam_images)  # (B, C, 1024, 1024)
+                    sam_images_list.append(torch.zeros(3, 1024, 1024))
+            batch['sam_images'] = torch.stack(sam_images_list)
+        else:
+            batch['sam_images'] = None
         
-        # Preserve original images for visualization
+        # Preserve original images and sizes for visualization
         if any('original_image' in f for f in features):
             batch['original_images'] = [f.get('original_image') for f in features]
+        
+        # Preserve original image sizes for SAM postprocessing
+        if any('orig_hw' in f for f in features):
+            batch['orig_hw'] = [f.get('orig_hw') for f in features]
         
         return batch
 
@@ -435,7 +438,6 @@ class LISADataCollator:
         
         # Separate features by type
         has_masks = any('mask_labels' in f for f in features)
-        has_sam_images = any('sam_images' in f for f in features)
         
         # Handle text features (input_ids, attention_mask, labels)
         text_features = []
@@ -470,11 +472,6 @@ class LISADataCollator:
         # Handle image features
         pixel_values = torch.stack([f['pixel_values'] for f in features])
         batch['pixel_values'] = pixel_values
-        
-        # Handle SAM images if present (for SAM ViT Sigma Add Fusion)
-        if has_sam_images:
-            sam_images = torch.stack([f['sam_images'] for f in features])
-            batch['sam_images'] = sam_images
         
         # Handle mask labels if present
         if has_masks:
