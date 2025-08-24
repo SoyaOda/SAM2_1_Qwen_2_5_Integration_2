@@ -903,40 +903,27 @@ class MinimalTrainer:
                     else:
                         gt_h, gt_w = gt_mask.shape[-2:]
                     
-                    # サイズが異なる場合はリサイズ
+                    # サイズが異なる場合のみリサイズ（修正後は同じサイズのはず）
                     if (pred_h, pred_w) != (gt_h, gt_w):
-                        # gt_maskを(B, C, H, W)形式に変換
+                        logger.debug(f"Warning: Mask size mismatch - pred: {(pred_h, pred_w)}, gt: {(gt_h, gt_w)}. This should not happen after fixes.")
+                        
+                        # フォールバック: gt_maskをpred_maskのサイズに合わせる
                         if gt_mask.dim() == 2:
-                            gt_mask_4d = gt_mask.unsqueeze(0).unsqueeze(0)  # (H, W) -> (1, 1, H, W)
+                            gt_mask_4d = gt_mask.unsqueeze(0).unsqueeze(0)
                         elif gt_mask.dim() == 3:
-                            # 最初のマスクのみを使用（1会話1マスク）
                             if gt_mask.shape[0] > 1:
-                                gt_mask = gt_mask[0]  # 複数マスクの場合は最初のみ
-                                gt_mask_4d = gt_mask.unsqueeze(0).unsqueeze(0)  # (H, W) -> (1, 1, H, W)
-                            else:
-                                gt_mask_4d = gt_mask.unsqueeze(1)  # (1, H, W) -> (1, 1, H, W)
+                                gt_mask = gt_mask[0]
+                            gt_mask_4d = gt_mask.unsqueeze(0) if gt_mask.dim() == 3 else gt_mask.unsqueeze(0).unsqueeze(0)
                         else:
                             gt_mask_4d = gt_mask
                         
-                        # 4次元であることを確認
-                        if gt_mask_4d.dim() != 4:
-                            logger.debug(f"gt_mask_4d shape before fix: {gt_mask_4d.shape}")
-                            if gt_mask_4d.dim() == 3:
-                                gt_mask_4d = gt_mask_4d.unsqueeze(0)
-                            elif gt_mask_4d.dim() == 2:
-                                gt_mask_4d = gt_mask_4d.unsqueeze(0).unsqueeze(0)
-                        
-                        # float型に変換してinterpolate
-                        gt_mask_4d = gt_mask_4d.float()
                         gt_mask_resized = nn.functional.interpolate(
-                            gt_mask_4d,
+                            gt_mask_4d.float(),
                             size=(pred_h, pred_w),
                             mode='nearest'
-                        )
-                        
-                        # 元の次元に戻す（(1, 1, H, W) -> (H, W)）
-                        gt_mask_resized = gt_mask_resized.squeeze(0).squeeze(0)
+                        ).squeeze(0).squeeze(0)
                     else:
+                        # サイズが同じ場合（期待される動作）
                         gt_mask_resized = gt_mask
                         # 複数マスクの場合は最初のマスクのみを使用
                         if gt_mask_resized.dim() == 3 and gt_mask_resized.shape[0] > 1:

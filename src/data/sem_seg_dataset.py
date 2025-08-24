@@ -556,6 +556,21 @@ class SemSegDataset(torch.utils.data.Dataset):
         orig_h, orig_w = image.shape[:2]
         coord_transform = CoordinateTransform(orig_size=(orig_h, orig_w))
         
+        # ラベルの読み込み
+        label = Image.open(label_path)
+        label = np.array(label)
+
+        # データセット固有の前処理（オリジナルLISA準拠）
+        if ds == "ade20k":
+            label[label == 0] = 255
+            label -= 1
+            label[label == 254] = 255
+        elif ds == "cocostuff":
+            if hasattr(self, 'cocostuff_class2index'):
+                for c, i in self.cocostuff_class2index.items():
+                    if "-" in c:
+                        label[label == i] = 255
+        
         # デュアルエンコーダ対応: Qwen用とSAM用の画像前処理
         # Qwen用画像前処理（アスペクト比維持・14の倍数パディング）
         h, w = image.shape[:2]
@@ -588,20 +603,28 @@ class SemSegDataset(torch.utils.data.Dataset):
         # SAM用画像前処理（1024x1024）
         # ResizeLongestSideの代わりにcv2.resizeを使用
         sam_size = 1024
-        scale = sam_size / max(image.shape[:2])
-        new_h = int(image.shape[0] * scale)
-        new_w = int(image.shape[1] * scale)
+        scale_sam = sam_size / max(image.shape[:2])
+        new_h_sam = int(image.shape[0] * scale_sam)
+        new_w_sam = int(image.shape[1] * scale_sam)
         # 補間方法を明示（縮小時はINTER_AREA、拡大時はINTER_LINEAR）
-        interpolation = cv2.INTER_AREA if scale < 1 else cv2.INTER_LINEAR
-        image_for_sam = cv2.resize(image, (new_w, new_h), interpolation=interpolation)
+        interpolation_sam = cv2.INTER_AREA if scale_sam < 1 else cv2.INTER_LINEAR
+        image_for_sam = cv2.resize(image, (new_w_sam, new_h_sam), interpolation=interpolation_sam)
         
         # パディングして正方形にする（32の倍数を考慮）
-        h, w = image_for_sam.shape[:2]
-        pad_h = sam_size - h
-        pad_w = sam_size - w
+        h_sam, w_sam = image_for_sam.shape[:2]
+        pad_h_sam = sam_size - h_sam
+        pad_w_sam = sam_size - w_sam
         image_for_sam = cv2.copyMakeBorder(
-            image_for_sam, 0, pad_h, 0, pad_w, cv2.BORDER_CONSTANT, value=(0, 0, 0)
+            image_for_sam, 0, pad_h_sam, 0, pad_w_sam, cv2.BORDER_CONSTANT, value=(0, 0, 0)
         )
+        
+        # ラベルも画像と同じ変換を適用（修正点）
+        # SAM用画像と同じリサイズとパディング
+        label_for_sam = cv2.resize(label, (new_w_sam, new_h_sam), interpolation=cv2.INTER_NEAREST)
+        # SAM用のパディング（画像と同じ）
+        label_for_sam_padded = np.full((sam_size, sam_size), 255, dtype=label.dtype)  # 255でパディング（ignore_label）
+        label_for_sam_padded[:h_sam, :w_sam] = label_for_sam
+        label = label_for_sam_padded  # 以降の処理のためlabelを更新
         
         # テンソル化と正規化（SAM2.1の正しいパラメータ）
         image_for_sam = torch.from_numpy(image_for_sam).permute(2, 0, 1).float() / 255.0
@@ -610,21 +633,6 @@ class SemSegDataset(torch.utils.data.Dataset):
         sam_std = torch.tensor([0.229, 0.224, 0.225]).view(3, 1, 1)
         image_for_sam = (image_for_sam - sam_mean) / sam_std
         resize = image.shape[:2]
-
-        # ラベルの読み込み
-        label = Image.open(label_path)
-        label = np.array(label)
-
-        # データセット固有の前処理（オリジナルLISA準拠）
-        if ds == "ade20k":
-            label[label == 0] = 255
-            label -= 1
-            label[label == 254] = 255
-        elif ds == "cocostuff":
-            if hasattr(self, 'cocostuff_class2index'):
-                for c, i in self.cocostuff_class2index.items():
-                    if "-" in c:
-                        label[label == i] = 255
 
         # クラスの選択とマスクの作成
         unique_labels = np.unique(label).tolist()
@@ -692,7 +700,7 @@ class SemSegDataset(torch.utils.data.Dataset):
             image_for_sam,     # 1: SAM用前処理済み画像 (torch.Tensor)
             image_for_qwen,   # 2: Qwen用前処理済み画像 (torch.Tensor)
             conversations,     # 3: 会話形式のテキスト (List[str])
-            masks,             # 4: マスク (torch.Tensor)
+            masks,             # 4: マスク (torch.Tensor) - SAMと同じ変換適用済み
             label_tensor,      # 5: ラベル (torch.Tensor)
             resize,            # 6: リサイズ情報 (Tuple)
             questions,         # 7: 質問リスト (List[str])

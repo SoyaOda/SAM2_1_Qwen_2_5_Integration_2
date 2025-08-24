@@ -338,6 +338,80 @@ def preprocess_mask(mask: np.ndarray, target_size: Optional[int] = None) -> torc
     # float型で返す（後続の処理で必要な場合があるため）
     return mask_bool.float()
 
+def preprocess_mask_with_aspect_ratio(
+    mask: np.ndarray, 
+    orig_hw: tuple,
+    target_size: int = 1024
+) -> torch.Tensor:
+    """
+    アスペクト比を維持したマスクの前処理
+    画像と同じ変換を適用して座標系を一致させる
+    
+    Args:
+        mask: 入力マスク (numpy array)
+        orig_hw: 元画像のサイズ (height, width)
+        target_size: 目標サイズ（デフォルト1024）
+    
+    Returns:
+        前処理済みマスク (torch.Tensor)
+    """
+    if target_size is None:
+        target_size = getattr(config, 'SAM_IMAGE_SIZE', 1024)
+    
+    # numpy配列に変換
+    if isinstance(mask, torch.Tensor):
+        mask_np = mask.cpu().numpy()
+    else:
+        mask_np = mask
+    
+    # マスクの形状を検証
+    if mask_np.size == 0:
+        raise ValueError("空のマスクです")
+    
+    # 2次元に変換
+    if mask_np.ndim == 2:
+        mask_2d = mask_np
+    elif mask_np.ndim == 3:
+        if mask_np.shape[0] == 1:  # (1, H, W)
+            mask_2d = mask_np[0]
+        elif mask_np.shape[-1] == 1:  # (H, W, 1)
+            mask_2d = mask_np[:, :, 0]
+        else:
+            # 最初のチャンネルを使用
+            if mask_np.shape[0] <= 3:  # (C, H, W)
+                mask_2d = mask_np[0]
+            else:  # (H, W, C)
+                mask_2d = mask_np[:, :, 0]
+    else:
+        raise ValueError(f"サポートされていないマスクの次元: {mask_np.ndim}D")
+    
+    orig_h, orig_w = orig_hw
+    
+    # アスペクト比を維持したリサイズ
+    scale = target_size / max(orig_h, orig_w)
+    new_h = int(orig_h * scale)
+    new_w = int(orig_w * scale)
+    
+    # マスクが元画像サイズと異なる場合は、まず元画像サイズに合わせる
+    if mask_2d.shape != (orig_h, orig_w):
+        mask_2d = cv2.resize(mask_2d.astype(np.float32), (orig_w, orig_h), interpolation=cv2.INTER_NEAREST)
+    
+    # リサイズ（nearest neighborで）
+    mask_resized = cv2.resize(mask_2d.astype(np.float32), (new_w, new_h), interpolation=cv2.INTER_NEAREST)
+    
+    # パディング（右下に0でパディング）
+    padded = np.zeros((target_size, target_size), dtype=np.float32)
+    padded[:new_h, :new_w] = mask_resized
+    
+    # PyTorchテンソルに変換して返す
+    mask_tensor = torch.from_numpy(padded).float()
+    
+    # (1, H, W)形式に
+    if mask_tensor.ndim == 2:
+        mask_tensor = mask_tensor.unsqueeze(0)
+    
+    return mask_tensor
+
 class HybridDataset(torch.utils.data.Dataset):
     """
     仕様書第3章.2 HybridDatasetの実装
@@ -1019,13 +1093,33 @@ class HybridDataset(torch.utils.data.Dataset):
                     ground_truth_mask = torch.zeros(1, self.sam_image_size, self.sam_image_size)
                     has_mask = False
             
-            # マスクのサイズ調整
+            # マスクのサイズ調整 - アスペクト比を維持した変換を使用
             if ground_truth_mask.size(-1) != self.sam_image_size or ground_truth_mask.size(-2) != self.sam_image_size:
-                ground_truth_mask = F.interpolate(
-                    ground_truth_mask.unsqueeze(0).float(),
-                    size=(self.sam_image_size, self.sam_image_size),
-                    mode='nearest'
-                ).squeeze(0)
+                # orig_hwを使用してアスペクト比を維持
+                if 'orig_hw' in locals() and orig_hw is not None:
+                    # numpy配列に変換
+                    if isinstance(ground_truth_mask, torch.Tensor):
+                        mask_np = ground_truth_mask.cpu().numpy()
+                    else:
+                        mask_np = ground_truth_mask
+                    
+                    # 最初の2次元を取得
+                    if mask_np.ndim == 3:
+                        mask_np = mask_np[0]
+                    
+                    # アスペクト比維持版の前処理を使用
+                    ground_truth_mask = preprocess_mask_with_aspect_ratio(
+                        mask_np,
+                        orig_hw=orig_hw,
+                        target_size=self.sam_image_size
+                    )
+                else:
+                    # フォールバック：従来の単純リサイズ
+                    ground_truth_mask = F.interpolate(
+                        ground_truth_mask.unsqueeze(0).float(),
+                        size=(self.sam_image_size, self.sam_image_size),
+                        mode='nearest'
+                    ).squeeze(0)
         else:
             ground_truth_mask = torch.zeros(1, self.sam_image_size, self.sam_image_size)
 
