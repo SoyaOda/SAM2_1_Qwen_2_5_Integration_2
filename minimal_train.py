@@ -1325,9 +1325,11 @@ class MinimalTrainer:
                 original_image_np = cv2.resize(sam_unpadded, (orig_w, orig_h), interpolation=cv2.INTER_LINEAR)
                 logger.debug(f"Reconstructed original image from SAM image: shape={original_image_np.shape}")
             
-            # 画像とマスクのサイズが一致することを確認
-            assert original_image_np.shape[:2] == (orig_h, orig_w), \
-                f"Image shape {original_image_np.shape[:2]} != expected {(orig_h, orig_w)}"
+            # 画像とマスクのサイズが一致することを確認（不一致の場合はリサイズ）
+            if original_image_np.shape[:2] != (orig_h, orig_w):
+                logger.warning(f"Original image shape {original_image_np.shape[:2]} != expected {(orig_h, orig_w)}, resizing...")
+                original_image_np = cv2.resize(original_image_np, (orig_w, orig_h), interpolation=cv2.INTER_LINEAR)
+            
             assert pred_mask_np.shape == (orig_h, orig_w), \
                 f"Pred mask shape {pred_mask_np.shape} != expected {(orig_h, orig_w)}"
             assert gt_mask_np.shape == (orig_h, orig_w), \

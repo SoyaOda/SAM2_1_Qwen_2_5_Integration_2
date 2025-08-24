@@ -1,666 +1,476 @@
-ct/66285546d2b821cf421d4f5eb2576359d3770cd3/config.json HTTP/1.1" 200 0
-08/24/2025 17:27:41 - INFO - src.utils.checkpoint_io - Saved Qwen LoRA adapter
-08/24/2025 17:27:41 - INFO - src.utils.checkpoint_io - Saved SEG token embedding for ID 151665
-08/24/2025 17:27:41 - INFO - src.utils.checkpoint_io - Saved prompt_beta: 0.010000
-08/24/2025 17:27:41 - INFO - src.utils.checkpoint_io - Saved SAM LoRA weights: 54 tensors
-08/24/2025 17:27:41 - INFO - src.utils.checkpoint_io - Saved image_adapter
-08/24/2025 17:27:41 - INFO - src.utils.checkpoint_io - Saved text_prompt_proj
-08/24/2025 17:27:41 - INFO - src.utils.checkpoint_io - Saved token_fpn
-08/24/2025 17:27:41 - INFO - src.utils.checkpoint_io - Saved training state at step 5, epoch 0
-08/24/2025 17:27:41 - INFO - src.utils.checkpoint_io - Checkpoint saved successfully to outputs/minimal_train_20250824_172700/checkpoints/step_5
-08/24/2025 17:27:41 - INFO - __main__ - チェックポイント保存完了: outputs/minimal_train_20250824_172700/checkpoints/step_5
-08/24/2025 17:27:41 - INFO - __main__ - 🔍 チェックポイント step_5 の推論評価を開始...
-08/24/2025 17:27:41 - DEBUG - urllib3.connectionpool - Starting new HTTPS connection (1): raw.githubusercontent.com:443
-08/24/2025 17:27:42 - DEBUG - urllib3.connectionpool - https://raw.githubusercontent.com:443 "GET /facebookresearch/segment-anything/main/notebooks/images/truck.jpg HTTP/1.1" 200 271475
-08/24/2025 17:27:42 - DEBUG - urllib3.connectionpool - Starting new HTTPS connection (1): raw.githubusercontent.com:443
-08/24/2025 17:27:42 - DEBUG - urllib3.connectionpool - https://raw.githubusercontent.com:443 "GET /facebookresearch/segment-anything/main/notebooks/images/groceries.jpg HTTP/1.1" 200 168066
-08/24/2025 17:27:42 - DEBUG - urllib3.connectionpool - Starting new HTTPS connection (1): raw.githubusercontent.com:443
-08/24/2025 17:27:42 - DEBUG - urllib3.connectionpool - https://raw.githubusercontent.com:443 "GET /facebookresearch/segment-anything/main/notebooks/images/dog.jpg HTTP/1.1" 200 99846
+soya@DESKTOP-45J3R3T:~/SAM2_1_Qwen_2_5_Integration_2$ python minimal_train.py --samples_per_epoch 20 --batch_size 2 --gradient_accumulation_steps 16 --num_epochs 2 --save_steps 5 --visualize_steps 5 --run_inference_eval --inference_eval_samples 3 --warmup_ratio 0.1 --debug
+設定: LISAConfig を使用
+08/24/2025 17:36:19 - INFO - __main__ - 可視化を有効化: 5ステップごとに保存
+08/24/2025 17:36:19 - INFO - __main__ - ランダムシードを固定: 42
+08/24/2025 17:36:19 - INFO - __main__ - デバッグモードを有効化
+08/24/2025 17:36:19 - INFO - __main__ - モデルとデータセットのセットアップを開始
+08/24/2025 17:36:19 - INFO - __main__ - トークナイザーとプロセッサの準備
+08/24/2025 17:36:19 - DEBUG - urllib3.connectionpool - Starting new HTTPS connection (1): huggingface.co:443
+08/24/2025 17:36:19 - DEBUG - urllib3.connectionpool - https://huggingface.co:443 "HEAD /Qwen/Qwen2.5-VL-3B-Instruct/resolve/main/tokenizer_config.json HTTP/1.1" 307 0
+08/24/2025 17:36:19 - DEBUG - urllib3.connectionpool - https://huggingface.co:443 "HEAD /api/resolve-cache/models/Qwen/Qwen2.5-VL-3B-Instruct/66285546d2b821cf421d4f5eb2576359d3770cd3/tokenizer_config.json HTTP/1.1" 200 0
+08/24/2025 17:36:20 - DEBUG - urllib3.connectionpool - https://huggingface.co:443 "GET /api/models/Qwen/Qwen2.5-VL-3B-Instruct/tree/main/additional_chat_templates?recursive=False&expand=False HTTP/1.1" 404 64
+Added 1 special tokens to tokenizer
+Tokenizer prepared with vocab size: 151666
+Special tokens: {'<SEG>': 151665}
+08/24/2025 17:36:20 - INFO - __main__ - 動的解像度モード有効: min_pixels=112896, max_pixels=7225344
+08/24/2025 17:36:20 - DEBUG - urllib3.connectionpool - https://huggingface.co:443 "HEAD /Qwen/Qwen2.5-VL-3B-Instruct/resolve/main/processor_config.json HTTP/1.1" 404 0
+08/24/2025 17:36:21 - DEBUG - urllib3.connectionpool - https://huggingface.co:443 "HEAD /Qwen/Qwen2.5-VL-3B-Instruct/resolve/main/preprocessor_config.json HTTP/1.1" 307 0
+08/24/2025 17:36:21 - DEBUG - urllib3.connectionpool - https://huggingface.co:443 "HEAD /api/resolve-cache/models/Qwen/Qwen2.5-VL-3B-Instruct/66285546d2b821cf421d4f5eb2576359d3770cd3/preprocessor_config.json HTTP/1.1" 200 0
+08/24/2025 17:36:21 - DEBUG - urllib3.connectionpool - https://huggingface.co:443 "HEAD /Qwen/Qwen2.5-VL-3B-Instruct/resolve/main/preprocessor_config.json HTTP/1.1" 307 0
+08/24/2025 17:36:21 - DEBUG - urllib3.connectionpool - https://huggingface.co:443 "HEAD /api/resolve-cache/models/Qwen/Qwen2.5-VL-3B-Instruct/66285546d2b821cf421d4f5eb2576359d3770cd3/preprocessor_config.json HTTP/1.1" 200 0
+08/24/2025 17:36:21 - DEBUG - urllib3.connectionpool - https://huggingface.co:443 "HEAD /Qwen/Qwen2.5-VL-3B-Instruct/resolve/main/preprocessor_config.json HTTP/1.1" 307 0
+08/24/2025 17:36:21 - DEBUG - urllib3.connectionpool - https://huggingface.co:443 "HEAD /api/resolve-cache/models/Qwen/Qwen2.5-VL-3B-Instruct/66285546d2b821cf421d4f5eb2576359d3770cd3/preprocessor_config.json HTTP/1.1" 200 0
+Using a slow image processor as `use_fast` is unset and a slow processor was saved with this model. `use_fast=True` will be the default behavior in v4.52, even if the model was saved with a slow processor. This will result in minor differences in outputs. You'll still be able to use a slow processor with `use_fast=False`.
+08/24/2025 17:36:21 - DEBUG - urllib3.connectionpool - https://huggingface.co:443 "HEAD /Qwen/Qwen2.5-VL-3B-Instruct/resolve/main/tokenizer_config.json HTTP/1.1" 307 0
+08/24/2025 17:36:21 - DEBUG - urllib3.connectionpool - https://huggingface.co:443 "HEAD /api/resolve-cache/models/Qwen/Qwen2.5-VL-3B-Instruct/66285546d2b821cf421d4f5eb2576359d3770cd3/tokenizer_config.json HTTP/1.1" 200 0
+08/24/2025 17:36:21 - DEBUG - urllib3.connectionpool - https://huggingface.co:443 "GET /api/models/Qwen/Qwen2.5-VL-3B-Instruct/tree/main/additional_chat_templates?recursive=False&expand=False HTTP/1.1" 404 64
+08/24/2025 17:36:22 - DEBUG - urllib3.connectionpool - https://huggingface.co:443 "HEAD /Qwen/Qwen2.5-VL-3B-Instruct/resolve/main/video_preprocessor_config.json HTTP/1.1" 404 0
+08/24/2025 17:36:22 - DEBUG - urllib3.connectionpool - https://huggingface.co:443 "HEAD /Qwen/Qwen2.5-VL-3B-Instruct/resolve/main/preprocessor_config.json HTTP/1.1" 307 0
+08/24/2025 17:36:22 - DEBUG - urllib3.connectionpool - https://huggingface.co:443 "HEAD /api/resolve-cache/models/Qwen/Qwen2.5-VL-3B-Instruct/66285546d2b821cf421d4f5eb2576359d3770cd3/preprocessor_config.json HTTP/1.1" 200 0
+You have video processor config saved in `preprocessor.json` file which is deprecated. Video processor configs should be saved in their own `video_preprocessor.json` file. You can rename the file or load and save the processor back which renames it automatically. Loading from `preprocessor.json` will be removed in v5.0.
+08/24/2025 17:36:22 - DEBUG - urllib3.connectionpool - https://huggingface.co:443 "HEAD /Qwen/Qwen2.5-VL-3B-Instruct/resolve/main/config.json HTTP/1.1" 307 0
+08/24/2025 17:36:22 - DEBUG - urllib3.connectionpool - https://huggingface.co:443 "HEAD /api/resolve-cache/models/Qwen/Qwen2.5-VL-3B-Instruct/66285546d2b821cf421d4f5eb2576359d3770cd3/config.json HTTP/1.1" 200 0
+08/24/2025 17:36:22 - DEBUG - urllib3.connectionpool - https://huggingface.co:443 "HEAD /Qwen/Qwen2.5-VL-3B-Instruct/resolve/main/video_preprocessor_config.json HTTP/1.1" 404 0
+08/24/2025 17:36:23 - DEBUG - urllib3.connectionpool - https://huggingface.co:443 "HEAD /Qwen/Qwen2.5-VL-3B-Instruct/resolve/main/preprocessor_config.json HTTP/1.1" 307 0
+08/24/2025 17:36:23 - DEBUG - urllib3.connectionpool - https://huggingface.co:443 "HEAD /api/resolve-cache/models/Qwen/Qwen2.5-VL-3B-Instruct/66285546d2b821cf421d4f5eb2576359d3770cd3/preprocessor_config.json HTTP/1.1" 200 0
+08/24/2025 17:36:23 - DEBUG - urllib3.connectionpool - https://huggingface.co:443 "GET /api/models/Qwen/Qwen2.5-VL-3B-Instruct/tree/main/additional_chat_templates?recursive=False&expand=False HTTP/1.1" 404 64
+08/24/2025 17:36:23 - DEBUG - urllib3.connectionpool - https://huggingface.co:443 "HEAD /Qwen/Qwen2.5-VL-3B-Instruct/resolve/main/processor_config.json HTTP/1.1" 404 0
+08/24/2025 17:36:23 - DEBUG - urllib3.connectionpool - https://huggingface.co:443 "HEAD /Qwen/Qwen2.5-VL-3B-Instruct/resolve/main/chat_template.json HTTP/1.1" 307 0
+08/24/2025 17:36:23 - DEBUG - urllib3.connectionpool - https://huggingface.co:443 "HEAD /api/resolve-cache/models/Qwen/Qwen2.5-VL-3B-Instruct/66285546d2b821cf421d4f5eb2576359d3770cd3/chat_template.json HTTP/1.1" 200 0
+08/24/2025 17:36:23 - DEBUG - urllib3.connectionpool - https://huggingface.co:443 "HEAD /Qwen/Qwen2.5-VL-3B-Instruct/resolve/main/chat_template.jinja HTTP/1.1" 404 0
+08/24/2025 17:36:24 - INFO - __main__ - ProcessorのトークナイザーにSEGトークンを追加
+08/24/2025 17:36:24 - INFO - __main__ - Processor語彙サイズ: 151666
+08/24/2025 17:36:24 - INFO - __main__ - LISA改モデルの読み込み
+08/24/2025 17:36:24 - DEBUG - urllib3.connectionpool - https://huggingface.co:443 "HEAD /Qwen/Qwen2.5-VL-3B-Instruct/resolve/main/config.json HTTP/1.1" 307 0
+08/24/2025 17:36:24 - DEBUG - urllib3.connectionpool - https://huggingface.co:443 "HEAD /api/resolve-cache/models/Qwen/Qwen2.5-VL-3B-Instruct/66285546d2b821cf421d4f5eb2576359d3770cd3/config.json HTTP/1.1" 200 0
+08/24/2025 17:36:24 - DEBUG - urllib3.connectionpool - https://huggingface.co:443 "HEAD /Qwen/Qwen2.5-VL-3B-Instruct/resolve/main/config.json HTTP/1.1" 307 0
+08/24/2025 17:36:24 - DEBUG - urllib3.connectionpool - https://huggingface.co:443 "HEAD /api/resolve-cache/models/Qwen/Qwen2.5-VL-3B-Instruct/66285546d2b821cf421d4f5eb2576359d3770cd3/config.json HTTP/1.1" 200 0
+Loading checkpoint shards: 100%|████████████████████████████████████████████████████████████████████████████| 2/2 [00:16<00:00,  8.16s/it]
+08/24/2025 17:36:41 - DEBUG - urllib3.connectionpool - https://huggingface.co:443 "HEAD /Qwen/Qwen2.5-VL-3B-Instruct/resolve/main/generation_config.json HTTP/1.1" 307 0
+08/24/2025 17:36:41 - DEBUG - urllib3.connectionpool - https://huggingface.co:443 "HEAD /api/resolve-cache/models/Qwen/Qwen2.5-VL-3B-Instruct/66285546d2b821cf421d4f5eb2576359d3770cd3/generation_config.json HTTP/1.1" 200 0
+08/24/2025 17:36:41 - DEBUG - urllib3.connectionpool - https://huggingface.co:443 "HEAD /Qwen/Qwen2.5-VL-3B-Instruct/resolve/main/custom_generate/generate.py HTTP/1.1" 404 0
+08/24/2025 17:36:41 - INFO - src.models.lisa_model - Set visual.config.image_feature_select_strategy = 'none'
+08/24/2025 17:36:41 - INFO - src.models.lisa_model - Set model.config.image_feature_select_strategy = 'none'
+08/24/2025 17:36:41 - INFO - src.models.lisa_model - Set model.model.config.image_feature_select_strategy = 'none'
+08/24/2025 17:36:41 - INFO - src.models.lisa_model - Disabled top128 token selection - using all visual tokens for segmentation
+08/24/2025 17:36:41 - DEBUG - urllib3.connectionpool - https://huggingface.co:443 "HEAD /facebook/sam2.1-hiera-large/resolve/main/sam2.1_hiera_large.pt HTTP/1.1" 302 0
+08/24/2025 17:36:44 - INFO - root - Loaded checkpoint sucessfully
+08/24/2025 17:36:45 - DEBUG - src.models.token_fpn - Found 32 vision blocks
+08/24/2025 17:36:45 - DEBUG - src.models.token_fpn - Registered hook at block 8
+08/24/2025 17:36:45 - DEBUG - src.models.token_fpn - Registered hook at block 16
+08/24/2025 17:36:45 - DEBUG - src.models.token_fpn - Registered hook at block 24
+08/24/2025 17:36:45 - DEBUG - src.models.token_fpn - Registered hook at block 31
+08/24/2025 17:36:45 - INFO - src.models.lisa_model - Token-FPN initialized with intermediate layer extraction
+08/24/2025 17:36:45 - INFO - src.models.lisa_model - Froze Qwen2.5-VL base model
+08/24/2025 17:36:45 - INFO - src.models.lisa_model - Froze SAM ImageEncoder (not used in current implementation - saves 212M params)
+08/24/2025 17:36:45 - INFO - src.models.lisa_model - Froze SAM MaskDecoder (will use LoRA if enabled)
+08/24/2025 17:36:45 - INFO - src.models.lisa_model - Froze SAM PromptEncoder
+08/24/2025 17:36:45 - INFO - src.models.lisa_model - Froze SAM memory_attention (video components - saves 8.3M params)
+08/24/2025 17:36:45 - INFO - src.models.lisa_model - Froze other SAM video components
+08/24/2025 17:36:45 - INFO - src.models.lisa_model - Added image_fusion_beta parameter for SAM-Qwen feature fusion
+08/24/2025 17:36:45 - INFO - src.models.lisa_model - SAM MaskDecoder is frozen. Applying LoRA (r=8)...
+08/24/2025 17:36:45 - INFO - src.models.lisa_model - Adding LoRA to SAM2.1 MaskDecoder (r=8, alpha=64)
+08/24/2025 17:36:45 - INFO - src.models.lisa_model - Applied LoRA to 18 modules in SAM MaskDecoder
+08/24/2025 17:36:45 - INFO - src.models.lisa_model - Total SAM LoRA parameters: 61,440
+08/24/2025 17:36:45 - INFO - src.models.lisa_model - Applying LoRA to Qwen2.5-VL (r=8, alpha=32)...
+08/24/2025 17:36:45 - INFO - src.models.lisa_model - Added 2,506,752 LoRA parameters to Qwen2.5-VL
+trainable params: 2,506,752 || all params: 3,757,129,728 || trainable%: 0.0667
+08/24/2025 17:36:45 - INFO - __main__ - トークナイザーを設定してSEGトークンの埋め込みをリサイズ
+08/24/2025 17:36:45 - INFO - src.models.lisa_model - SEG token embedding training enabled for token ID 151665 (separate parameter: 2048 dims)
+08/24/2025 17:36:45 - INFO - __main__ - SAM MaskDecoderにLoRAを適用 (r=8)
+08/24/2025 17:36:45 - WARNING - src.models.lisa_model - SAM MaskDecoder is not frozen! LoRA should only be applied to frozen layers. Consider setting freeze_sam_mask_decoder_base=True in config.
+08/24/2025 17:36:45 - INFO - __main__ - ================================================================================
+08/24/2025 17:36:45 - INFO - __main__ - パラメータ統計詳細
+08/24/2025 17:36:45 - INFO - __main__ - ================================================================================
+08/24/2025 17:36:45 - INFO - __main__ - 総パラメータ数: 3,988,465,588
+08/24/2025 17:36:45 - INFO - __main__ - 学習可能パラメータ数: 9,395,970
+08/24/2025 17:36:45 - INFO - __main__ - 凍結パラメータ数: 3,979,069,618
+08/24/2025 17:36:45 - INFO - __main__ - 学習可能パラメータの割合: 0.24%
+08/24/2025 17:36:45 - INFO - __main__ - --------------------------------------------------------------------------------
+08/24/2025 17:36:45 - INFO - __main__ - 学習可能コンポーネントの内訳:
+08/24/2025 17:36:45 - INFO - __main__ -    1. Token-FPN (freeze_token_fpn)                     4,462,848 ( 47.5%)
+08/24/2025 17:36:45 - INFO - __main__ -    2. Qwen LoRA (freeze_qwen_lora)                     2,506,752 ( 26.7%)
+08/24/2025 17:36:45 - INFO - __main__ -    3. Text Prompt Projector (freeze_text_prompt_projector)    1,181,952 ( 12.6%)
+08/24/2025 17:36:45 - INFO - __main__ -    4. Image Adapter (freeze_image_adapter)             1,180,928 ( 12.6%)
+08/24/2025 17:36:45 - INFO - __main__ -    5. SAM LoRA (freeze_sam_lora)                          61,440 (  0.7%)
+08/24/2025 17:36:45 - INFO - __main__ -    6. SEG Token (freeze_seg_token)                         2,048 (  0.0%)
+08/24/2025 17:36:45 - INFO - __main__ -    7. Prompt Beta (freeze_prompt_beta)                         1 (  0.0%)
+08/24/2025 17:36:45 - INFO - __main__ -    8. Other                                                    1 (  0.0%)
+08/24/2025 17:36:45 - INFO - __main__ - --------------------------------------------------------------------------------
+08/24/2025 17:36:45 - INFO - __main__ - 凍結コンポーネント:
+08/24/2025 17:36:45 - INFO - __main__ -   - Qwen Base (freeze_qwen_base)                  3,754,622,976 ( 94.4%)
+08/24/2025 17:36:45 - INFO - __main__ -   - SAM ImageEncoder (freeze_sam_image_encoder)    212,703,280 (  5.3%)
+08/24/2025 17:36:45 - INFO - __main__ -   - SAM MemoryAttention (freeze_sam_memory_attention)    5,922,304 (  0.1%)
+08/24/2025 17:36:45 - INFO - __main__ -   - SAM MaskDecoder Base (freeze_sam_mask_decoder_base)    4,215,109 (  0.1%)
+08/24/2025 17:36:45 - INFO - __main__ -   - SAM Video Components (frozen)                    1,599,729 (  0.0%)
+08/24/2025 17:36:45 - INFO - __main__ -   - SAM PromptEncoder (freeze_sam_prompt_encoder)        6,220 (  0.0%)
+08/24/2025 17:36:45 - INFO - __main__ - ================================================================================
+08/24/2025 17:36:45 - INFO - __main__ - データセットの作成
+08/24/2025 17:36:45 - INFO - __main__ - データセットディレクトリ: /mnt/h/download/LISA-dataset/data/dataset
+08/24/2025 17:36:45 - INFO - __main__ - データセットタイプ: ['sem_seg', 'refer_seg', 'vqa', 'reason_seg']
+08/24/2025 17:36:45 - INFO - __main__ - サンプルレート: [9.0, 3.0, 3.0, 1.0]
+<SEG>トークンセットアップ完了:
+  - 追加されたトークン数: 1
+  - <SEG>トークンID: 151665
+HybridDataset初期化:
+  - ベースディレクトリ: /mnt/h/download/LISA-dataset/data/dataset
+  - Qwen画像サイズ: 448
+  - SAM画像サイズ: 1024
+  - 対象データセット: ['sem_seg', 'refer_seg', 'vqa', 'reason_seg']
+  - Semantic Segmentation: ade20k||cocostuff
+08/24/2025 17:36:45 - INFO - src.data.dataset_cache - キャッシュから sem_seg を読み込み中...
+08/24/2025 17:36:46 - INFO - src.data.dataset_cache - ✅ キャッシュから sem_seg を高速読み込み完了
+    ✅ キャッシュから高速読み込み完了
+  - Referring Segmentation: refcoco||refcoco+||refcocog
+08/24/2025 17:36:46 - INFO - src.data.dataset_cache - キャッシュから refer_seg を読み込み中...
+08/24/2025 17:36:49 - INFO - src.data.dataset_cache - ✅ キャッシュから refer_seg を高速読み込み完了
+    ✅ キャッシュから高速読み込み完了
+  - VQA: llava_instruct_150k
+08/24/2025 17:36:49 - INFO - src.data.dataset_cache - キャッシュから vqa を読み込み中...
+08/24/2025 17:36:50 - INFO - src.data.dataset_cache - ✅ キャッシュから vqa を高速読み込み完了
+    ✅ キャッシュから高速読み込み完了
+  - Reasoning Segmentation: ReasonSeg|train
+08/24/2025 17:36:50 - INFO - src.data.dataset_cache - キャッシュから reason_seg を読み込み中...
+08/24/2025 17:36:50 - INFO - src.data.dataset_cache - ✅ キャッシュから reason_seg を高速読み込み完了
+    ✅ キャッシュから高速読み込み完了
+✅ HybridDataset初期化完了: 4 データセット
+08/24/2025 17:36:50 - INFO - __main__ - データセットサイズ: 20
+08/24/2025 17:36:50 - INFO - __main__ - バッチ数: 10
+08/24/2025 17:36:50 - INFO - __main__ - 総ステップ数: 2
+08/24/2025 17:36:50 - INFO - __main__ - ウォームアップステップ数: 0
+08/24/2025 17:36:50 - INFO - __main__ - 訓練開始
+08/24/2025 17:36:50 - INFO - __main__ - メイン学習ステージ開始
+Epoch 1/2:   0%|                                                                                                   | 0/10 [00:00<?, ?it/s]08/24/2025 17:36:52 - DEBUG - PIL.PngImagePlugin - STREAM b'IHDR' 16 13
+08/24/2025 17:36:52 - DEBUG - PIL.PngImagePlugin - STREAM b'tIME' 41 7
+08/24/2025 17:36:52 - DEBUG - PIL.PngImagePlugin - b'tIME' 41 7 (unknown)
+08/24/2025 17:36:52 - DEBUG - PIL.PngImagePlugin - STREAM b'IDAT' 60 8192
+08/24/2025 17:36:52 - DEBUG - PIL.PngImagePlugin - STREAM b'IHDR' 16 13
+08/24/2025 17:36:52 - DEBUG - PIL.PngImagePlugin - STREAM b'tIME' 41 7
+08/24/2025 17:36:52 - DEBUG - PIL.PngImagePlugin - b'tIME' 41 7 (unknown)
+08/24/2025 17:36:52 - DEBUG - PIL.PngImagePlugin - STREAM b'IDAT' 60 4701
+08/24/2025 17:36:52 - DEBUG - __main__ - Batch 0: img_tokens=784, txt_tokens=233, total=1017
+08/24/2025 17:36:52 - DEBUG - __main__ - pixel_values shape: torch.Size([2, 784, 1176])
+08/24/2025 17:36:52 - DEBUG - __main__ - input_ids shape: torch.Size([2, 233])
+08/24/2025 17:36:52 - DEBUG - __main__ - sam_images shape: torch.Size([2, 3, 1024, 1024])
+08/24/2025 17:36:52 - DEBUG - __main__ - image_grid_thw: tensor([[ 1, 28, 28],
+        [ 1, 28, 28]], device='cuda:0')
+🔥[MODEL] Forward pass - sam_images: torch.Size([2, 3, 1024, 1024])
+08/24/2025 17:36:52 - DEBUG - src.models.lisa_model - [FORWARD] Starting forward pass
+08/24/2025 17:36:52 - DEBUG - src.models.lisa_model -   input_ids: torch.Size([2, 233])
+08/24/2025 17:36:52 - DEBUG - src.models.lisa_model -   pixel_values: torch.Size([2, 784, 1176])
+08/24/2025 17:36:52 - DEBUG - src.models.lisa_model -   image_grid_thw: tensor([[ 1, 28, 28],
+        [ 1, 28, 28]], device='cuda:0')
+08/24/2025 17:36:52 - DEBUG - src.models.lisa_model -   sam_images: torch.Size([2, 3, 1024, 1024])
+08/24/2025 17:36:52 - DEBUG - src.models.lisa_model -   labels: torch.Size([2, 233])
+08/24/2025 17:36:52 - DEBUG - src.models.lisa_model -   mask_labels: <class 'list'> with 2
+08/24/2025 17:36:52 - DEBUG - src.models.lisa_model - [FORWARD] Running Qwen forward pass...
+`loss_type=None` was set in the config but it is unrecognised.Using the default loss: `ForCausalLMLoss`.
+08/24/2025 17:36:53 - DEBUG - src.models.lisa_model - [FORWARD] Qwen outputs - logits: torch.Size([2, 233, 151936]), hidden_states: torch.Size([2, 233, 2048])
+08/24/2025 17:36:53 - DEBUG - src.models.lisa_model - [FORWARD] Extracting Qwen vision features...
+08/24/2025 17:36:53 - DEBUG - src.models.lisa_model - [extract_vision_features] Start - pixel_values shape: torch.Size([2, 784, 1176]), image_grid_thw shape: torch.Size([2, 3])
+08/24/2025 17:36:53 - DEBUG - src.models.lisa_model - [extract_vision_features] End - vision_features shape: torch.Size([2, 196, 2048]), dtype: torch.bfloat16
+08/24/2025 17:36:53 - DEBUG - src.models.lisa_model - [SAM ViT] Processing SAM images with shape: torch.Size([2, 3, 1024, 1024]), dtype: torch.float32
+08/24/2025 17:36:53 - DEBUG - src.models.lisa_model - [SAM INPUT] min=-2.118, max=2.640, mean=-0.350, std=1.535
+08/24/2025 17:36:53 - DEBUG - src.models.lisa_model - [SAM ViT] Converting input from torch.float32 to torch.float32
+08/24/2025 17:36:54 - DEBUG - src.models.lisa_model - [SAM OUTPUT] shape=torch.Size([2, 256, 64, 64]), dtype=torch.float32
+08/24/2025 17:36:54 - DEBUG - src.models.lisa_model - [SAM OUTPUT] min=-7.876, max=8.158, mean=0.028, std=0.910
+08/24/2025 17:36:54 - DEBUG - src.models.lisa_model - [FUSION] Fusing Qwen features torch.Size([2, 256, 14, 14]) with SAM features torch.Size([2, 256, 64, 64])
+08/24/2025 17:36:54 - DEBUG - src.models.lisa_model - [FUSION] Resized Qwen features to torch.Size([2, 256, 64, 64])
+08/24/2025 17:36:54 - DEBUG - src.models.lisa_model - [FUSION] Using image_fusion_beta=0.0000, scaled=0.5000
+08/24/2025 17:36:54 - DEBUG - src.models.lisa_model - [FUSION] Created fused embeddings with shape: torch.Size([2, 256, 64, 64]), dtype: torch.float32
+08/24/2025 17:36:54 - DEBUG - src.models.lisa_model - [HIGH RES] Generating high-res features from embeddings shape: torch.Size([2, 256, 64, 64]), dtype: torch.float32
+08/24/2025 17:36:54 - DEBUG - src.models.lisa_model - [HIGH RES] use_token_fpn = True
+08/24/2025 17:36:54 - DEBUG - src.models.lisa_model - [HIGH RES] Converting features from torch.float32 to FPN dtype torch.bfloat16
+08/24/2025 17:36:54 - DEBUG - src.models.lisa_model - [HIGH RES] Generated fused high-res features: s0=torch.Size([2, 256, 256, 256]), s1=torch.Size([2, 256, 128, 128])
+08/24/2025 17:36:54 - DEBUG - src.models.lisa_model - [MASK GEN] Total seg_positions: [[229], [226]]
+08/24/2025 17:36:54 - DEBUG - src.models.lisa_model - [MASK GEN] Total batches: 2
+08/24/2025 17:36:54 - DEBUG - src.models.lisa_model - [MASK GEN] Batch 0: seg_positions = [229]
+08/24/2025 17:36:54 - DEBUG - src.models.lisa_model - [MASK GEN] image_features_sam shape: torch.Size([2, 256, 64, 64])
+08/24/2025 17:36:54 - DEBUG - src.models.lisa_model - [MASK GEN] Batch 0: Processing 1 SEG tokens
+08/24/2025 17:36:54 - DEBUG - src.models.lisa_model - [MASK GEN] Batch 0, SEG 0: Starting mask generation
+08/24/2025 17:36:54 - DEBUG - src.models.lisa_model - [CENTROID] Batch 0, SEG 0: Computed centroid from GT mask - x=542.0, y=294.0 (image center would be 512, 512)
+08/24/2025 17:36:54 - DEBUG - src.models.lisa_model - [MASK GEN] Batch 1: seg_positions = [226]
+08/24/2025 17:36:54 - DEBUG - src.models.lisa_model - [MASK GEN] image_features_sam shape: torch.Size([2, 256, 64, 64])
+08/24/2025 17:36:54 - DEBUG - src.models.lisa_model - [MASK GEN] Batch 1: Processing 1 SEG tokens
+08/24/2025 17:36:54 - DEBUG - src.models.lisa_model - [MASK GEN] Batch 1, SEG 0: Starting mask generation
+08/24/2025 17:36:54 - DEBUG - src.models.lisa_model - [CENTROID] Batch 1, SEG 0: Computed centroid from GT mask - x=327.5, y=499.5 (image center would be 512, 512)
+08/24/2025 17:36:54 - DEBUG - __main__ - pred_mask shape: torch.Size([1, 392, 392])
+08/24/2025 17:36:54 - DEBUG - __main__ - gt_mask shape: torch.Size([1, 1024, 1024])
+08/24/2025 17:36:54 - DEBUG - __main__ - Warning: Mask size mismatch - pred: (392, 392), gt: (1024, 1024). This should not happen after fixes.
+08/24/2025 17:36:54 - DEBUG - __main__ - pred_mask shape: torch.Size([1, 392, 392])
+08/24/2025 17:36:54 - DEBUG - __main__ - gt_mask shape: torch.Size([1, 1024, 1024])
+08/24/2025 17:36:54 - DEBUG - __main__ - Warning: Mask size mismatch - pred: (392, 392), gt: (1024, 1024). This should not happen after fixes.
+Epoch 1/2:   0%|                                       | 0/10 [00:04<?, ?it/s, loss=15.2649, lm=13.1875, seg=2.0774, lr=1.00e-03, β=0.502]08/24/2025 17:36:54 - DEBUG - __main__ - Calling save_visualization at step 1
+08/24/2025 17:36:54 - DEBUG - __main__ - Skipping visualization at step 1 (not a visualization step)
+Epoch 1/2:  10%|███                            | 1/10 [00:04<00:37,  4.15s/it, loss=15.2649, lm=13.1875, seg=2.0774, lr=1.00e-03, β=0.502]08/24/2025 17:36:54 - DEBUG - PIL.PngImagePlugin - STREAM b'IHDR' 16 13
+08/24/2025 17:36:54 - DEBUG - PIL.PngImagePlugin - STREAM b'tIME' 41 7
+08/24/2025 17:36:54 - DEBUG - PIL.PngImagePlugin - b'tIME' 41 7 (unknown)
+08/24/2025 17:36:54 - DEBUG - PIL.PngImagePlugin - STREAM b'IDAT' 60 3494
+08/24/2025 17:36:55 - DEBUG - PIL.PngImagePlugin - STREAM b'IHDR' 16 13
+08/24/2025 17:36:55 - DEBUG - PIL.PngImagePlugin - STREAM b'tIME' 41 7
+08/24/2025 17:36:55 - DEBUG - PIL.PngImagePlugin - b'tIME' 41 7 (unknown)
+08/24/2025 17:36:55 - DEBUG - PIL.PngImagePlugin - STREAM b'IDAT' 60 2946
+08/24/2025 17:36:55 - DEBUG - __main__ - Batch 1: img_tokens=784, txt_tokens=232, total=1016
+08/24/2025 17:36:55 - DEBUG - __main__ - pixel_values shape: torch.Size([2, 784, 1176])
+08/24/2025 17:36:55 - DEBUG - __main__ - input_ids shape: torch.Size([2, 232])
+08/24/2025 17:36:55 - DEBUG - __main__ - sam_images shape: torch.Size([2, 3, 1024, 1024])
+08/24/2025 17:36:55 - DEBUG - __main__ - image_grid_thw: tensor([[ 1, 28, 28],
+        [ 1, 28, 28]], device='cuda:0')
+🔥[MODEL] Forward pass - sam_images: torch.Size([2, 3, 1024, 1024])
+08/24/2025 17:36:55 - DEBUG - src.models.lisa_model - [FORWARD] Starting forward pass
+08/24/2025 17:36:55 - DEBUG - src.models.lisa_model -   input_ids: torch.Size([2, 232])
+08/24/2025 17:36:55 - DEBUG - src.models.lisa_model -   pixel_values: torch.Size([2, 784, 1176])
+08/24/2025 17:36:55 - DEBUG - src.models.lisa_model -   image_grid_thw: tensor([[ 1, 28, 28],
+        [ 1, 28, 28]], device='cuda:0')
+08/24/2025 17:36:55 - DEBUG - src.models.lisa_model -   sam_images: torch.Size([2, 3, 1024, 1024])
+08/24/2025 17:36:55 - DEBUG - src.models.lisa_model -   labels: torch.Size([2, 232])
+08/24/2025 17:36:55 - DEBUG - src.models.lisa_model -   mask_labels: <class 'list'> with 2
+08/24/2025 17:36:55 - DEBUG - src.models.lisa_model - [FORWARD] Running Qwen forward pass...
+08/24/2025 17:36:55 - DEBUG - src.models.lisa_model - [FORWARD] Qwen outputs - logits: torch.Size([2, 232, 151936]), hidden_states: torch.Size([2, 232, 2048])
+08/24/2025 17:36:55 - DEBUG - src.models.lisa_model - [FORWARD] Extracting Qwen vision features...
+08/24/2025 17:36:55 - DEBUG - src.models.lisa_model - [extract_vision_features] Start - pixel_values shape: torch.Size([2, 784, 1176]), image_grid_thw shape: torch.Size([2, 3])
+08/24/2025 17:36:55 - DEBUG - src.models.lisa_model - [extract_vision_features] End - vision_features shape: torch.Size([2, 196, 2048]), dtype: torch.bfloat16
+08/24/2025 17:36:55 - DEBUG - src.models.lisa_model - [SAM ViT] Processing SAM images with shape: torch.Size([2, 3, 1024, 1024]), dtype: torch.float32
+08/24/2025 17:36:55 - DEBUG - src.models.lisa_model - [SAM INPUT] min=-2.118, max=2.640, mean=-0.313, std=1.664
+08/24/2025 17:36:55 - DEBUG - src.models.lisa_model - [SAM ViT] Converting input from torch.float32 to torch.float32
+08/24/2025 17:36:55 - DEBUG - src.models.lisa_model - [SAM OUTPUT] shape=torch.Size([2, 256, 64, 64]), dtype=torch.float32
+08/24/2025 17:36:56 - DEBUG - src.models.lisa_model - [SAM OUTPUT] min=-7.912, max=8.318, mean=0.024, std=0.908
+08/24/2025 17:36:56 - DEBUG - src.models.lisa_model - [FUSION] Fusing Qwen features torch.Size([2, 256, 14, 14]) with SAM features torch.Size([2, 256, 64, 64])
+08/24/2025 17:36:56 - DEBUG - src.models.lisa_model - [FUSION] Resized Qwen features to torch.Size([2, 256, 64, 64])
+08/24/2025 17:36:56 - DEBUG - src.models.lisa_model - [FUSION] Using image_fusion_beta=0.0000, scaled=0.5000
+08/24/2025 17:36:56 - DEBUG - src.models.lisa_model - [FUSION] Created fused embeddings with shape: torch.Size([2, 256, 64, 64]), dtype: torch.float32
+08/24/2025 17:36:56 - DEBUG - src.models.lisa_model - [HIGH RES] Generating high-res features from embeddings shape: torch.Size([2, 256, 64, 64]), dtype: torch.float32
+08/24/2025 17:36:56 - DEBUG - src.models.lisa_model - [HIGH RES] use_token_fpn = True
+08/24/2025 17:36:56 - DEBUG - src.models.lisa_model - [HIGH RES] Converting features from torch.float32 to FPN dtype torch.bfloat16
+08/24/2025 17:36:56 - DEBUG - src.models.lisa_model - [HIGH RES] Generated fused high-res features: s0=torch.Size([2, 256, 256, 256]), s1=torch.Size([2, 256, 128, 128])
+08/24/2025 17:36:56 - DEBUG - src.models.lisa_model - [MASK GEN] Total seg_positions: [[228], [225]]
+08/24/2025 17:36:56 - DEBUG - src.models.lisa_model - [MASK GEN] Total batches: 2
+08/24/2025 17:36:56 - DEBUG - src.models.lisa_model - [MASK GEN] Batch 0: seg_positions = [228]
+08/24/2025 17:36:56 - DEBUG - src.models.lisa_model - [MASK GEN] image_features_sam shape: torch.Size([2, 256, 64, 64])
+08/24/2025 17:36:56 - DEBUG - src.models.lisa_model - [MASK GEN] Batch 0: Processing 1 SEG tokens
+08/24/2025 17:36:56 - DEBUG - src.models.lisa_model - [MASK GEN] Batch 0, SEG 0: Starting mask generation
+08/24/2025 17:36:56 - DEBUG - src.models.lisa_model - [CENTROID] Batch 0, SEG 0: Computed centroid from GT mask - x=499.2, y=600.8 (image center would be 512, 512)
+08/24/2025 17:36:56 - DEBUG - src.models.lisa_model - [MASK GEN] Batch 1: seg_positions = [225]
+08/24/2025 17:36:56 - DEBUG - src.models.lisa_model - [MASK GEN] image_features_sam shape: torch.Size([2, 256, 64, 64])
+08/24/2025 17:36:56 - DEBUG - src.models.lisa_model - [MASK GEN] Batch 1: Processing 1 SEG tokens
+08/24/2025 17:36:56 - DEBUG - src.models.lisa_model - [MASK GEN] Batch 1, SEG 0: Starting mask generation
+08/24/2025 17:36:56 - DEBUG - src.models.lisa_model - [CENTROID] Batch 1, SEG 0: Computed centroid from GT mask - x=742.7, y=81.7 (image center would be 512, 512)
+08/24/2025 17:36:56 - DEBUG - __main__ - pred_mask shape: torch.Size([1, 392, 392])
+08/24/2025 17:36:56 - DEBUG - __main__ - gt_mask shape: torch.Size([1, 1024, 1024])
+08/24/2025 17:36:56 - DEBUG - __main__ - Warning: Mask size mismatch - pred: (392, 392), gt: (1024, 1024). This should not happen after fixes.
+08/24/2025 17:36:56 - DEBUG - __main__ - pred_mask shape: torch.Size([1, 392, 392])
+08/24/2025 17:36:56 - DEBUG - __main__ - gt_mask shape: torch.Size([1, 1024, 1024])
+08/24/2025 17:36:56 - DEBUG - __main__ - Warning: Mask size mismatch - pred: (392, 392), gt: (1024, 1024). This should not happen after fixes.
+Epoch 1/2:  10%|███                            | 1/10 [00:05<00:37,  4.15s/it, loss=13.9513, lm=13.0000, seg=0.9513, lr=1.00e-03, β=0.502]08/24/2025 17:36:56 - DEBUG - __main__ - Calling save_visualization at step 2
+08/24/2025 17:36:56 - DEBUG - __main__ - Skipping visualization at step 2 (not a visualization step)
+Epoch 1/2:  20%|██████▏                        | 2/10 [00:05<00:19,  2.48s/it, loss=13.9513, lm=13.0000, seg=0.9513, lr=1.00e-03, β=0.502]08/24/2025 17:36:56 - DEBUG - PIL.PngImagePlugin - STREAM b'IHDR' 16 13
+08/24/2025 17:36:56 - DEBUG - PIL.PngImagePlugin - STREAM b'tIME' 41 7
+08/24/2025 17:36:56 - DEBUG - PIL.PngImagePlugin - b'tIME' 41 7 (unknown)
+08/24/2025 17:36:56 - DEBUG - PIL.PngImagePlugin - STREAM b'IDAT' 60 5765
+08/24/2025 17:36:56 - DEBUG - PIL.PngImagePlugin - STREAM b'IHDR' 16 13
+08/24/2025 17:36:56 - DEBUG - PIL.PngImagePlugin - STREAM b'IDAT' 41 9240
+08/24/2025 17:36:56 - DEBUG - __main__ - Batch 2: img_tokens=900, txt_tokens=258, total=1158
+08/24/2025 17:36:56 - DEBUG - __main__ - pixel_values shape: torch.Size([2, 900, 1176])
+08/24/2025 17:36:56 - DEBUG - __main__ - input_ids shape: torch.Size([2, 258])
+08/24/2025 17:36:56 - DEBUG - __main__ - sam_images shape: torch.Size([2, 3, 1024, 1024])
+08/24/2025 17:36:56 - DEBUG - __main__ - image_grid_thw: tensor([[ 1, 30, 30],
+        [ 1, 30, 30]], device='cuda:0')
+🔥[MODEL] Forward pass - sam_images: torch.Size([2, 3, 1024, 1024])
+08/24/2025 17:36:56 - DEBUG - src.models.lisa_model - [FORWARD] Starting forward pass
+08/24/2025 17:36:56 - DEBUG - src.models.lisa_model -   input_ids: torch.Size([2, 258])
+08/24/2025 17:36:56 - DEBUG - src.models.lisa_model -   pixel_values: torch.Size([2, 900, 1176])
+08/24/2025 17:36:56 - DEBUG - src.models.lisa_model -   image_grid_thw: tensor([[ 1, 30, 30],
+        [ 1, 30, 30]], device='cuda:0')
+08/24/2025 17:36:56 - DEBUG - src.models.lisa_model -   sam_images: torch.Size([2, 3, 1024, 1024])
+08/24/2025 17:36:56 - DEBUG - src.models.lisa_model -   labels: torch.Size([2, 258])
+08/24/2025 17:36:56 - DEBUG - src.models.lisa_model -   mask_labels: <class 'list'> with 2
+08/24/2025 17:36:56 - DEBUG - src.models.lisa_model - [FORWARD] Running Qwen forward pass...
+08/24/2025 17:36:56 - DEBUG - src.models.lisa_model - [FORWARD] Qwen outputs - logits: torch.Size([2, 258, 151936]), hidden_states: torch.Size([2, 258, 2048])
+08/24/2025 17:36:56 - DEBUG - src.models.lisa_model - [FORWARD] Extracting Qwen vision features...
+08/24/2025 17:36:56 - DEBUG - src.models.lisa_model - [extract_vision_features] Start - pixel_values shape: torch.Size([2, 900, 1176]), image_grid_thw shape: torch.Size([2, 3])
+08/24/2025 17:36:57 - DEBUG - src.models.lisa_model - [extract_vision_features] End - vision_features shape: torch.Size([2, 225, 2048]), dtype: torch.bfloat16
+08/24/2025 17:36:57 - DEBUG - src.models.lisa_model - [SAM ViT] Processing SAM images with shape: torch.Size([2, 3, 1024, 1024]), dtype: torch.float32
+08/24/2025 17:36:57 - DEBUG - src.models.lisa_model - [SAM INPUT] min=-2.118, max=2.640, mean=-0.392, std=1.244
+08/24/2025 17:36:57 - DEBUG - src.models.lisa_model - [SAM ViT] Converting input from torch.float32 to torch.float32
+08/24/2025 17:36:57 - DEBUG - src.models.lisa_model - [SAM OUTPUT] shape=torch.Size([2, 256, 64, 64]), dtype=torch.float32
+08/24/2025 17:36:57 - DEBUG - src.models.lisa_model - [SAM OUTPUT] min=-7.949, max=8.096, mean=0.025, std=0.923
+08/24/2025 17:36:57 - DEBUG - src.models.lisa_model - [FUSION] Fusing Qwen features torch.Size([2, 256, 15, 15]) with SAM features torch.Size([2, 256, 64, 64])
+08/24/2025 17:36:57 - DEBUG - src.models.lisa_model - [FUSION] Resized Qwen features to torch.Size([2, 256, 64, 64])
+08/24/2025 17:36:57 - DEBUG - src.models.lisa_model - [FUSION] Using image_fusion_beta=0.0000, scaled=0.5000
+08/24/2025 17:36:57 - DEBUG - src.models.lisa_model - [FUSION] Created fused embeddings with shape: torch.Size([2, 256, 64, 64]), dtype: torch.float32
+08/24/2025 17:36:57 - DEBUG - src.models.lisa_model - [HIGH RES] Generating high-res features from embeddings shape: torch.Size([2, 256, 64, 64]), dtype: torch.float32
+08/24/2025 17:36:57 - DEBUG - src.models.lisa_model - [HIGH RES] use_token_fpn = True
+08/24/2025 17:36:57 - DEBUG - src.models.lisa_model - [HIGH RES] Converting features from torch.float32 to FPN dtype torch.bfloat16
+08/24/2025 17:36:57 - DEBUG - src.models.lisa_model - [HIGH RES] Generated fused high-res features: s0=torch.Size([2, 256, 256, 256]), s1=torch.Size([2, 256, 128, 128])
+08/24/2025 17:36:57 - DEBUG - src.models.lisa_model - [MASK GEN] Total seg_positions: [[251], [254]]
+08/24/2025 17:36:57 - DEBUG - src.models.lisa_model - [MASK GEN] Total batches: 2
+08/24/2025 17:36:57 - DEBUG - src.models.lisa_model - [MASK GEN] Batch 0: seg_positions = [251]
+08/24/2025 17:36:57 - DEBUG - src.models.lisa_model - [MASK GEN] image_features_sam shape: torch.Size([2, 256, 64, 64])
+08/24/2025 17:36:57 - DEBUG - src.models.lisa_model - [MASK GEN] Batch 0: Processing 1 SEG tokens
+08/24/2025 17:36:57 - DEBUG - src.models.lisa_model - [MASK GEN] Batch 0, SEG 0: Starting mask generation
+08/24/2025 17:36:57 - DEBUG - src.models.lisa_model - [CENTROID] Batch 0, SEG 0: Computed centroid from GT mask - x=238.3, y=83.5 (image center would be 512, 512)
+08/24/2025 17:36:57 - DEBUG - src.models.lisa_model - [MASK GEN] Batch 1: seg_positions = [254]
+08/24/2025 17:36:57 - DEBUG - src.models.lisa_model - [MASK GEN] image_features_sam shape: torch.Size([2, 256, 64, 64])
+08/24/2025 17:36:57 - DEBUG - src.models.lisa_model - [MASK GEN] Batch 1: Processing 1 SEG tokens
+08/24/2025 17:36:57 - DEBUG - src.models.lisa_model - [MASK GEN] Batch 1, SEG 0: Starting mask generation
+08/24/2025 17:36:57 - DEBUG - src.models.lisa_model - [CENTROID] Batch 1, SEG 0: Computed centroid from GT mask - x=621.5, y=344.8 (image center would be 512, 512)
+08/24/2025 17:36:57 - DEBUG - __main__ - pred_mask shape: torch.Size([1, 420, 420])
+08/24/2025 17:36:57 - DEBUG - __main__ - gt_mask shape: torch.Size([1, 1024, 1024])
+08/24/2025 17:36:57 - DEBUG - __main__ - Warning: Mask size mismatch - pred: (420, 420), gt: (1024, 1024). This should not happen after fixes.
+08/24/2025 17:36:57 - DEBUG - __main__ - pred_mask shape: torch.Size([1, 420, 420])
+08/24/2025 17:36:57 - DEBUG - __main__ - gt_mask shape: torch.Size([1, 1024, 1024])
+08/24/2025 17:36:57 - DEBUG - __main__ - Warning: Mask size mismatch - pred: (420, 420), gt: (1024, 1024). This should not happen after fixes.
+Epoch 1/2:  20%|██████▏                        | 2/10 [00:06<00:19,  2.48s/it, loss=15.2151, lm=14.0000, seg=1.2151, lr=1.00e-03, β=0.502]08/24/2025 17:36:57 - DEBUG - __main__ - Calling save_visualization at step 3
+08/24/2025 17:36:57 - DEBUG - __main__ - Skipping visualization at step 3 (not a visualization step)
+Epoch 1/2:  30%|█████████▎                     | 3/10 [00:06<00:13,  1.96s/it, loss=15.2151, lm=14.0000, seg=1.2151, lr=1.00e-03, β=0.502]08/24/2025 17:36:57 - DEBUG - PIL.PngImagePlugin - STREAM b'IHDR' 16 13
+08/24/2025 17:36:57 - DEBUG - PIL.PngImagePlugin - STREAM b'IDAT' 41 5747
+08/24/2025 17:36:57 - DEBUG - PIL.PngImagePlugin - STREAM b'IHDR' 16 13
+08/24/2025 17:36:57 - DEBUG - PIL.PngImagePlugin - STREAM b'IDAT' 41 5615
+08/24/2025 17:36:57 - DEBUG - __main__ - Batch 3: img_tokens=1024, txt_tokens=293, total=1317
+08/24/2025 17:36:57 - DEBUG - __main__ - pixel_values shape: torch.Size([2, 1024, 1176])
+08/24/2025 17:36:57 - DEBUG - __main__ - input_ids shape: torch.Size([2, 293])
+08/24/2025 17:36:57 - DEBUG - __main__ - sam_images shape: torch.Size([2, 3, 1024, 1024])
+08/24/2025 17:36:57 - DEBUG - __main__ - image_grid_thw: tensor([[ 1, 32, 32],
+        [ 1, 32, 32]], device='cuda:0')
+🔥[MODEL] Forward pass - sam_images: torch.Size([2, 3, 1024, 1024])
+08/24/2025 17:36:57 - DEBUG - src.models.lisa_model - [FORWARD] Starting forward pass
+08/24/2025 17:36:57 - DEBUG - src.models.lisa_model -   input_ids: torch.Size([2, 293])
+08/24/2025 17:36:57 - DEBUG - src.models.lisa_model -   pixel_values: torch.Size([2, 1024, 1176])
+08/24/2025 17:36:57 - DEBUG - src.models.lisa_model -   image_grid_thw: tensor([[ 1, 32, 32],
+        [ 1, 32, 32]], device='cuda:0')
+08/24/2025 17:36:57 - DEBUG - src.models.lisa_model -   sam_images: torch.Size([2, 3, 1024, 1024])
+08/24/2025 17:36:57 - DEBUG - src.models.lisa_model -   labels: torch.Size([2, 293])
+08/24/2025 17:36:57 - DEBUG - src.models.lisa_model -   mask_labels: <class 'list'> with 2
+08/24/2025 17:36:57 - DEBUG - src.models.lisa_model - [FORWARD] Running Qwen forward pass...
+08/24/2025 17:36:58 - DEBUG - src.models.lisa_model - [FORWARD] Qwen outputs - logits: torch.Size([2, 293, 151936]), hidden_states: torch.Size([2, 293, 2048])
+08/24/2025 17:36:58 - DEBUG - src.models.lisa_model - [FORWARD] Extracting Qwen vision features...
+08/24/2025 17:36:58 - DEBUG - src.models.lisa_model - [extract_vision_features] Start - pixel_values shape: torch.Size([2, 1024, 1176]), image_grid_thw shape: torch.Size([2, 3])
+08/24/2025 17:36:58 - DEBUG - src.models.lisa_model - [extract_vision_features] End - vision_features shape: torch.Size([2, 256, 2048]), dtype: torch.bfloat16
+08/24/2025 17:36:58 - DEBUG - src.models.lisa_model - [SAM ViT] Processing SAM images with shape: torch.Size([2, 3, 1024, 1024]), dtype: torch.float32
+08/24/2025 17:36:58 - DEBUG - src.models.lisa_model - [SAM INPUT] min=-2.118, max=2.640, mean=-0.326, std=1.531
+08/24/2025 17:36:58 - DEBUG - src.models.lisa_model - [SAM ViT] Converting input from torch.float32 to torch.float32
+08/24/2025 17:36:58 - DEBUG - src.models.lisa_model - [SAM OUTPUT] shape=torch.Size([2, 256, 64, 64]), dtype=torch.float32
+08/24/2025 17:36:58 - DEBUG - src.models.lisa_model - [SAM OUTPUT] min=-7.699, max=8.566, mean=0.025, std=0.903
+08/24/2025 17:36:58 - DEBUG - src.models.lisa_model - [FUSION] Fusing Qwen features torch.Size([2, 256, 16, 16]) with SAM features torch.Size([2, 256, 64, 64])
+08/24/2025 17:36:58 - DEBUG - src.models.lisa_model - [FUSION] Resized Qwen features to torch.Size([2, 256, 64, 64])
+08/24/2025 17:36:58 - DEBUG - src.models.lisa_model - [FUSION] Using image_fusion_beta=0.0000, scaled=0.5000
+08/24/2025 17:36:58 - DEBUG - src.models.lisa_model - [FUSION] Created fused embeddings with shape: torch.Size([2, 256, 64, 64]), dtype: torch.float32
+08/24/2025 17:36:58 - DEBUG - src.models.lisa_model - [HIGH RES] Generating high-res features from embeddings shape: torch.Size([2, 256, 64, 64]), dtype: torch.float32
+08/24/2025 17:36:58 - DEBUG - src.models.lisa_model - [HIGH RES] use_token_fpn = True
+08/24/2025 17:36:58 - DEBUG - src.models.lisa_model - [HIGH RES] Converting features from torch.float32 to FPN dtype torch.bfloat16
+08/24/2025 17:36:58 - DEBUG - src.models.lisa_model - [HIGH RES] Generated fused high-res features: s0=torch.Size([2, 256, 256, 256]), s1=torch.Size([2, 256, 128, 128])
+08/24/2025 17:36:58 - DEBUG - src.models.lisa_model - [MASK GEN] Total seg_positions: [[289], [289]]
+08/24/2025 17:36:58 - DEBUG - src.models.lisa_model - [MASK GEN] Total batches: 2
+08/24/2025 17:36:58 - DEBUG - src.models.lisa_model - [MASK GEN] Batch 0: seg_positions = [289]
+08/24/2025 17:36:58 - DEBUG - src.models.lisa_model - [MASK GEN] image_features_sam shape: torch.Size([2, 256, 64, 64])
+08/24/2025 17:36:58 - DEBUG - src.models.lisa_model - [MASK GEN] Batch 0: Processing 1 SEG tokens
+08/24/2025 17:36:58 - DEBUG - src.models.lisa_model - [MASK GEN] Batch 0, SEG 0: Starting mask generation
+08/24/2025 17:36:58 - DEBUG - src.models.lisa_model - [CENTROID] Batch 0, SEG 0: Computed centroid from GT mask - x=597.9, y=840.3 (image center would be 512, 512)
+08/24/2025 17:36:58 - DEBUG - src.models.lisa_model - [MASK GEN] Batch 1: seg_positions = [289]
+08/24/2025 17:36:58 - DEBUG - src.models.lisa_model - [MASK GEN] image_features_sam shape: torch.Size([2, 256, 64, 64])
+08/24/2025 17:36:58 - DEBUG - src.models.lisa_model - [MASK GEN] Batch 1: Processing 1 SEG tokens
+08/24/2025 17:36:58 - DEBUG - src.models.lisa_model - [MASK GEN] Batch 1, SEG 0: Starting mask generation
+08/24/2025 17:36:58 - DEBUG - src.models.lisa_model - [CENTROID] Batch 1, SEG 0: Computed centroid from GT mask - x=433.2, y=305.8 (image center would be 512, 512)
+08/24/2025 17:36:58 - DEBUG - __main__ - pred_mask shape: torch.Size([1, 448, 448])
+08/24/2025 17:36:58 - DEBUG - __main__ - gt_mask shape: torch.Size([1, 1024, 1024])
+08/24/2025 17:36:58 - DEBUG - __main__ - Warning: Mask size mismatch - pred: (448, 448), gt: (1024, 1024). This should not happen after fixes.
+08/24/2025 17:36:58 - DEBUG - __main__ - pred_mask shape: torch.Size([1, 448, 448])
+08/24/2025 17:36:58 - DEBUG - __main__ - gt_mask shape: torch.Size([1, 1024, 1024])
+08/24/2025 17:36:58 - DEBUG - __main__ - Warning: Mask size mismatch - pred: (448, 448), gt: (1024, 1024). This should not happen after fixes.
+Epoch 1/2:  30%|█████████▎                     | 3/10 [00:08<00:13,  1.96s/it, loss=14.5968, lm=13.5625, seg=1.0343, lr=1.00e-03, β=0.502]08/24/2025 17:36:58 - DEBUG - __main__ - Calling save_visualization at step 4
+08/24/2025 17:36:58 - DEBUG - __main__ - Skipping visualization at step 4 (not a visualization step)
+Epoch 1/2:  40%|████████████▍                  | 4/10 [00:08<00:10,  1.74s/it, loss=14.5968, lm=13.5625, seg=1.0343, lr=1.00e-03, β=0.502]08/24/2025 17:36:59 - DEBUG - PIL.PngImagePlugin - STREAM b'IHDR' 16 13
+08/24/2025 17:36:59 - DEBUG - PIL.PngImagePlugin - STREAM b'IDAT' 41 4736
+08/24/2025 17:36:59 - DEBUG - __main__ - Batch 4: img_tokens=1024, txt_tokens=305, total=1329
+08/24/2025 17:36:59 - DEBUG - __main__ - pixel_values shape: torch.Size([2, 1024, 1176])
+08/24/2025 17:36:59 - DEBUG - __main__ - input_ids shape: torch.Size([2, 305])
+08/24/2025 17:36:59 - DEBUG - __main__ - sam_images shape: torch.Size([2, 3, 1024, 1024])
+08/24/2025 17:36:59 - DEBUG - __main__ - image_grid_thw: tensor([[ 1, 32, 32],
+        [ 1, 32, 32]], device='cuda:0')
+🔥[MODEL] Forward pass - sam_images: torch.Size([2, 3, 1024, 1024])
+08/24/2025 17:36:59 - DEBUG - src.models.lisa_model - [FORWARD] Starting forward pass
+08/24/2025 17:36:59 - DEBUG - src.models.lisa_model -   input_ids: torch.Size([2, 305])
+08/24/2025 17:36:59 - DEBUG - src.models.lisa_model -   pixel_values: torch.Size([2, 1024, 1176])
+08/24/2025 17:36:59 - DEBUG - src.models.lisa_model -   image_grid_thw: tensor([[ 1, 32, 32],
+        [ 1, 32, 32]], device='cuda:0')
+08/24/2025 17:36:59 - DEBUG - src.models.lisa_model -   sam_images: torch.Size([2, 3, 1024, 1024])
+08/24/2025 17:36:59 - DEBUG - src.models.lisa_model -   labels: torch.Size([2, 305])
+08/24/2025 17:36:59 - DEBUG - src.models.lisa_model -   mask_labels: <class 'list'> with 2
+08/24/2025 17:36:59 - DEBUG - src.models.lisa_model - [FORWARD] Running Qwen forward pass...
+08/24/2025 17:36:59 - DEBUG - src.models.lisa_model - [FORWARD] Qwen outputs - logits: torch.Size([2, 305, 151936]), hidden_states: torch.Size([2, 305, 2048])
+08/24/2025 17:36:59 - DEBUG - src.models.lisa_model - [FORWARD] Extracting Qwen vision features...
+08/24/2025 17:36:59 - DEBUG - src.models.lisa_model - [extract_vision_features] Start - pixel_values shape: torch.Size([2, 1024, 1176]), image_grid_thw shape: torch.Size([2, 3])
+08/24/2025 17:36:59 - DEBUG - src.models.lisa_model - [extract_vision_features] End - vision_features shape: torch.Size([2, 256, 2048]), dtype: torch.bfloat16
+08/24/2025 17:36:59 - DEBUG - src.models.lisa_model - [SAM ViT] Processing SAM images with shape: torch.Size([2, 3, 1024, 1024]), dtype: torch.float32
+08/24/2025 17:36:59 - DEBUG - src.models.lisa_model - [SAM INPUT] min=-2.118, max=2.553, mean=-1.297, std=1.069
+08/24/2025 17:36:59 - DEBUG - src.models.lisa_model - [SAM ViT] Converting input from torch.float32 to torch.float32
+08/24/2025 17:36:59 - DEBUG - src.models.lisa_model - [SAM OUTPUT] shape=torch.Size([2, 256, 64, 64]), dtype=torch.float32
+08/24/2025 17:37:00 - DEBUG - src.models.lisa_model - [SAM OUTPUT] min=-7.664, max=7.085, mean=0.034, std=0.893
+08/24/2025 17:37:00 - DEBUG - src.models.lisa_model - [FUSION] Fusing Qwen features torch.Size([2, 256, 16, 16]) with SAM features torch.Size([2, 256, 64, 64])
+08/24/2025 17:37:00 - DEBUG - src.models.lisa_model - [FUSION] Resized Qwen features to torch.Size([2, 256, 64, 64])
+08/24/2025 17:37:00 - DEBUG - src.models.lisa_model - [FUSION] Using image_fusion_beta=0.0000, scaled=0.5000
+08/24/2025 17:37:00 - DEBUG - src.models.lisa_model - [FUSION] Created fused embeddings with shape: torch.Size([2, 256, 64, 64]), dtype: torch.float32
+08/24/2025 17:37:00 - DEBUG - src.models.lisa_model - [HIGH RES] Generating high-res features from embeddings shape: torch.Size([2, 256, 64, 64]), dtype: torch.float32
+08/24/2025 17:37:00 - DEBUG - src.models.lisa_model - [HIGH RES] use_token_fpn = True
+08/24/2025 17:37:00 - DEBUG - src.models.lisa_model - [HIGH RES] Converting features from torch.float32 to FPN dtype torch.bfloat16
+08/24/2025 17:37:00 - DEBUG - src.models.lisa_model - [HIGH RES] Generated fused high-res features: s0=torch.Size([2, 256, 256, 256]), s1=torch.Size([2, 256, 128, 128])
+08/24/2025 17:37:00 - DEBUG - src.models.lisa_model - [MASK GEN] Total seg_positions: [[], [293]]
+08/24/2025 17:37:00 - DEBUG - src.models.lisa_model - [MASK GEN] Total batches: 2
+08/24/2025 17:37:00 - DEBUG - src.models.lisa_model - [MASK GEN] Batch 0: seg_positions = []
+08/24/2025 17:37:00 - DEBUG - src.models.lisa_model - [MASK GEN] image_features_sam shape: torch.Size([2, 256, 64, 64])
+08/24/2025 17:37:00 - DEBUG - src.models.lisa_model - [MASK GEN] Batch 1: seg_positions = [293]
+08/24/2025 17:37:00 - DEBUG - src.models.lisa_model - [MASK GEN] image_features_sam shape: torch.Size([2, 256, 64, 64])
+08/24/2025 17:37:00 - DEBUG - src.models.lisa_model - [MASK GEN] Batch 1: Processing 1 SEG tokens
+08/24/2025 17:37:00 - DEBUG - src.models.lisa_model - [MASK GEN] Batch 1, SEG 0: Starting mask generation
+08/24/2025 17:37:00 - DEBUG - src.models.lisa_model - [CENTROID] Batch 1, SEG 0: Computed centroid from GT mask - x=676.8, y=319.7 (image center would be 512, 512)
+08/24/2025 17:37:00 - DEBUG - __main__ - pred_mask shape: torch.Size([1, 448, 448])
+08/24/2025 17:37:00 - DEBUG - __main__ - gt_mask shape: torch.Size([1, 1024, 1024])
+08/24/2025 17:37:00 - DEBUG - __main__ - Warning: Mask size mismatch - pred: (448, 448), gt: (1024, 1024). This should not happen after fixes.
+Epoch 1/2:  40%|████████████▍                  | 4/10 [00:09<00:10,  1.74s/it, loss=15.6536, lm=13.8750, seg=1.7786, lr=1.00e-03, β=0.502]08/24/2025 17:37:00 - DEBUG - __main__ - Calling save_visualization at step 5
+08/24/2025 17:37:00 - DEBUG - __main__ - Creating visualization at step 5 for sample 1
+08/24/2025 17:37:00 - DEBUG - __main__ - [DEBUG] Batch keys: dict_keys(['pixel_values', 'image_grid_thw', 'input_ids', 'attention_mask', 'labels', 'mask_labels', 'sam_images', 'original_images', 'orig_hw'])
+08/24/2025 17:37:00 - DEBUG - __main__ - [DEBUG] batch['orig_hw'] type: <class 'list'>
+08/24/2025 17:37:00 - DEBUG - __main__ - [DEBUG] batch['orig_hw'] content: [[334, 500], [480, 640]]
+08/24/2025 17:37:00 - DEBUG - __main__ - Using orig_hw from batch list: (480, 640)
+08/24/2025 17:37:00 - DEBUG - __main__ - pred_mask shape before postprocess: torch.Size([1, 1, 448, 448]), orig_hw: (480, 640)
+08/24/2025 17:37:00 - DEBUG - __main__ - [DEBUG] Checking for original_images in batch...
+08/24/2025 17:37:00 - ERROR - __main__ - Failed to create visualization at step 5: Image shape (336, 448) != expected (480, 640)
+08/24/2025 17:37:00 - ERROR - __main__ - Traceback (most recent call last):
+  File "/home/soya/SAM2_1_Qwen_2_5_Integration_2/minimal_train.py", line 1329, in save_visualization
+    assert original_image_np.shape[:2] == (orig_h, orig_w), \
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: Image shape (336, 448) != expected (480, 640)
+
+08/24/2025 17:37:00 - INFO - src.utils.checkpoint_io - Saving checkpoint to outputs/minimal_train_20250824_173619/checkpoints/step_5
+08/24/2025 17:37:00 - INFO - src.utils.checkpoint_io - Saved processor to outputs/minimal_train_20250824_173619/checkpoints/step_5/processor
+08/24/2025 17:37:01 - DEBUG - urllib3.connectionpool - https://huggingface.co:443 "HEAD /Qwen/Qwen2.5-VL-3B-Instruct/resolve/main/config.json HTTP/1.1" 307 0
+08/24/2025 17:37:01 - DEBUG - urllib3.connectionpool - https://huggingface.co:443 "HEAD /api/resolve-cache/models/Qwen/Qwen2.5-VL-3B-Instruct/66285546d2b821cf421d4f5eb2576359d3770cd3/config.json HTTP/1.1" 200 0
+08/24/2025 17:37:01 - DEBUG - urllib3.connectionpool - https://huggingface.co:443 "HEAD /Qwen/Qwen2.5-VL-3B-Instruct/resolve/main/config.json HTTP/1.1" 307 0
+08/24/2025 17:37:01 - DEBUG - urllib3.connectionpool - https://huggingface.co:443 "HEAD /api/resolve-cache/models/Qwen/Qwen2.5-VL-3B-Instruct/66285546d2b821cf421d4f5eb2576359d3770cd3/config.json HTTP/1.1" 200 0
+08/24/2025 17:37:01 - INFO - src.utils.checkpoint_io - Saved Qwen LoRA adapter
+08/24/2025 17:37:01 - INFO - src.utils.checkpoint_io - Saved SEG token embedding for ID 151665
+08/24/2025 17:37:01 - INFO - src.utils.checkpoint_io - Saved prompt_beta: 0.010000
+08/24/2025 17:37:01 - INFO - src.utils.checkpoint_io - Saved SAM LoRA weights: 54 tensors
+08/24/2025 17:37:01 - INFO - src.utils.checkpoint_io - Saved image_adapter
+08/24/2025 17:37:01 - INFO - src.utils.checkpoint_io - Saved text_prompt_proj
+08/24/2025 17:37:01 - INFO - src.utils.checkpoint_io - Saved token_fpn
+08/24/2025 17:37:01 - INFO - src.utils.checkpoint_io - Saved training state at step 5, epoch 0
+08/24/2025 17:37:01 - INFO - src.utils.checkpoint_io - Checkpoint saved successfully to outputs/minimal_train_20250824_173619/checkpoints/step_5
+08/24/2025 17:37:01 - INFO - __main__ - チェックポイント保存完了: outputs/minimal_train_20250824_173619/checkpoints/step_5
+08/24/2025 17:37:01 - INFO - __main__ - 🔍 チェックポイント step_5 の推論評価を開始...
+08/24/2025 17:37:01 - DEBUG - urllib3.connectionpool - Starting new HTTPS connection (1): raw.githubusercontent.com:443
+08/24/2025 17:37:01 - DEBUG - urllib3.connectionpool - https://raw.githubusercontent.com:443 "GET /facebookresearch/segment-anything/main/notebooks/images/truck.jpg HTTP/1.1" 200 271475
+08/24/2025 17:37:01 - DEBUG - urllib3.connectionpool - Starting new HTTPS connection (1): raw.githubusercontent.com:443
+08/24/2025 17:37:01 - DEBUG - urllib3.connectionpool - https://raw.githubusercontent.com:443 "GET /facebookresearch/segment-anything/main/notebooks/images/groceries.jpg HTTP/1.1" 200 168066
+08/24/2025 17:37:01 - DEBUG - urllib3.connectionpool - Starting new HTTPS connection (1): raw.githubusercontent.com:443
+08/24/2025 17:37:02 - DEBUG - urllib3.connectionpool - https://raw.githubusercontent.com:443 "GET /facebookresearch/segment-anything/main/notebooks/images/dog.jpg HTTP/1.1" 200 99846
 /home/soya/.local/lib/python3.12/site-packages/transformers/tokenization_utils_base.py:2714: UserWarning: `max_length` is ignored when `padding`=`True` and there is no truncation strategy. To pad to max length, use `padding='max_length'`.
   warnings.warn(
 🔥[MODEL] Forward pass - sam_images: torch.Size([1, 3, 1024, 1024])
-08/24/2025 17:27:42 - DEBUG - src.models.lisa_model - [FORWARD] Starting forward pass
-08/24/2025 17:27:42 - DEBUG - src.models.lisa_model -   input_ids: torch.Size([1, 2783])
-08/24/2025 17:27:42 - DEBUG - src.models.lisa_model -   pixel_values: torch.Size([11008, 1176])
-08/24/2025 17:27:42 - DEBUG - src.models.lisa_model -   image_grid_thw: tensor([[  1,  86, 128]], device='cuda:0')
-08/24/2025 17:27:42 - DEBUG - src.models.lisa_model -   sam_images: torch.Size([1, 3, 1024, 1024])
-08/24/2025 17:27:42 - DEBUG - src.models.lisa_model -   labels: None
-08/24/2025 17:27:42 - DEBUG - src.models.lisa_model -   mask_labels: <class 'NoneType'> with None
-08/24/2025 17:27:42 - DEBUG - src.models.lisa_model - [FORWARD] Running Qwen forward pass...
-08/24/2025 17:28:14 - DEBUG - src.models.lisa_model - [FORWARD] Qwen outputs - logits: torch.Size([1, 2783, 151936]), hidden_states: torch.Size([1, 2783, 2048])
-08/24/2025 17:28:14 - DEBUG - src.models.lisa_model - [FORWARD] Extracting Qwen vision features...
-08/24/2025 17:28:14 - DEBUG - src.models.lisa_model - [extract_vision_features] Start - pixel_values shape: torch.Size([11008, 1176]), image_grid_thw shape: torch.Size([1, 3])
-08/24/2025 17:29:00 - DEBUG - src.models.lisa_model - [extract_vision_features] End - vision_features shape: torch.Size([1, 2752, 2048]), dtype: torch.bfloat16
-08/24/2025 17:29:00 - DEBUG - src.models.lisa_model - [SAM ViT] Processing SAM images with shape: torch.Size([1, 3, 1024, 1024]), dtype: torch.float32
-08/24/2025 17:29:00 - DEBUG - src.models.lisa_model - [SAM INPUT] min=-2.099, max=2.640, mean=0.370, std=1.171
-08/24/2025 17:29:00 - DEBUG - src.models.lisa_model - [SAM ViT] Converting input from torch.float32 to torch.float32
-08/24/2025 17:29:00 - DEBUG - src.models.lisa_model - [SAM OUTPUT] shape=torch.Size([1, 256, 64, 64]), dtype=torch.float32
-08/24/2025 17:29:00 - DEBUG - src.models.lisa_model - [SAM OUTPUT] min=-7.087, max=7.945, mean=0.029, std=0.910
-08/24/2025 17:29:00 - DEBUG - src.models.lisa_model - [FUSION] Fusing Qwen features torch.Size([1, 256, 43, 64]) with SAM features torch.Size([1, 256, 64, 64])
-08/24/2025 17:29:00 - DEBUG - src.models.lisa_model - [FUSION] Resized Qwen features to torch.Size([1, 256, 64, 64])
-08/24/2025 17:29:00 - DEBUG - src.models.lisa_model - [FUSION] Using image_fusion_beta=0.0000, scaled=0.5000
-08/24/2025 17:29:00 - DEBUG - src.models.lisa_model - [FUSION] Created fused embeddings with shape: torch.Size([1, 256, 64, 64]), dtype: torch.float32
-08/24/2025 17:29:00 - DEBUG - src.models.lisa_model - [HIGH RES] Generating high-res features from embeddings shape: torch.Size([1, 256, 64, 64]), dtype: torch.float32
-08/24/2025 17:29:00 - DEBUG - src.models.lisa_model - [HIGH RES] use_token_fpn = True
-08/24/2025 17:29:00 - DEBUG - src.models.lisa_model - [HIGH RES] Converting features from torch.float32 to FPN dtype torch.bfloat16
-08/24/2025 17:29:00 - DEBUG - src.models.lisa_model - [HIGH RES] Generated fused high-res features: s0=torch.Size([1, 256, 256, 256]), s1=torch.Size([1, 256, 128, 128])
-08/24/2025 17:29:00 - DEBUG - src.models.lisa_model - [SEG SEARCH] Batch 0: Found 1 SEG tokens at positions [2777]
-08/24/2025 17:29:00 - DEBUG - src.models.lisa_model - [MASK GEN] Total seg_positions: [[2777]]
-08/24/2025 17:29:00 - DEBUG - src.models.lisa_model - [MASK GEN] Total batches: 1
-08/24/2025 17:29:00 - DEBUG - src.models.lisa_model - [MASK GEN] Batch 0: seg_positions = [2777]
-08/24/2025 17:29:00 - DEBUG - src.models.lisa_model - [MASK GEN] image_features_sam shape: torch.Size([1, 256, 64, 64])
-08/24/2025 17:29:00 - DEBUG - src.models.lisa_model - [MASK GEN] Batch 0: Processing 1 SEG tokens
-08/24/2025 17:29:00 - DEBUG - src.models.lisa_model - [MASK GEN] Batch 0, SEG 0: Starting mask generation
-08/24/2025 17:29:00 - DEBUG - src.models.lisa_model - [CENTROID] Batch 0, SEG 0: Inference mode - using image center (512, 512)
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: Matching sans\-serif:style=normal:variant=normal:weight=normal:stretch=normal:size=10.0.
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/home/soya/.local/lib/python3.12/site-packages/matplotlib/mpl-data/fonts/ttf/DejaVuSansMono-BoldOblique.ttf', name='DejaVu Sans Mono', style='oblique', variant='normal', weight=700, stretch='normal', size='scalable')) = 11.335
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/home/soya/.local/lib/python3.12/site-packages/matplotlib/mpl-data/fonts/ttf/STIXSizTwoSymReg.ttf', name='STIXSizeTwoSym', style='normal', variant='normal', weight=400, stretch='normal', size='scalable')) = 10.05
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/home/soya/.local/lib/python3.12/site-packages/matplotlib/mpl-data/fonts/ttf/STIXSizFourSymReg.ttf', name='STIXSizeFourSym', style='normal', variant='normal', weight=400, stretch='normal', size='scalable')) = 10.05
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/home/soya/.local/lib/python3.12/site-packages/matplotlib/mpl-data/fonts/ttf/DejaVuSerif-BoldItalic.ttf', name='DejaVu Serif', style='italic', variant='normal', weight=700, stretch='normal', size='scalable')) = 11.335
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/home/soya/.local/lib/python3.12/site-packages/matplotlib/mpl-data/fonts/ttf/DejaVuSerif-Italic.ttf', name='DejaVu Serif', style='italic', variant='normal', weight=400, stretch='normal', size='scalable')) = 11.05
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/home/soya/.local/lib/python3.12/site-packages/matplotlib/mpl-data/fonts/ttf/DejaVuSerifDisplay.ttf', name='DejaVu Serif Display', style='normal', variant='normal', weight=400, stretch='normal', size='scalable')) = 10.05
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/home/soya/.local/lib/python3.12/site-packages/matplotlib/mpl-data/fonts/ttf/cmmi10.ttf', name='cmmi10', style='normal', variant='normal', weight=400, stretch='normal', size='scalable')) = 10.05
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/home/soya/.local/lib/python3.12/site-packages/matplotlib/mpl-data/fonts/ttf/STIXNonUni.ttf', name='STIXNonUnicode', style='normal', variant='normal', weight=400, stretch='normal', size='scalable')) = 10.05
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/home/soya/.local/lib/python3.12/site-packages/matplotlib/mpl-data/fonts/ttf/DejaVuSans.ttf', name='DejaVu Sans', style='normal', variant='normal', weight=400, stretch='normal', size='scalable')) = 0.05
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/home/soya/.local/lib/python3.12/site-packages/matplotlib/mpl-data/fonts/ttf/cmsy10.ttf', name='cmsy10', style='normal', variant='normal', weight=400, stretch='normal', size='scalable')) = 10.05
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/home/soya/.local/lib/python3.12/site-packages/matplotlib/mpl-data/fonts/ttf/cmtt10.ttf', name='cmtt10', style='normal', variant='normal', weight=400, stretch='normal', size='scalable')) = 10.05
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/home/soya/.local/lib/python3.12/site-packages/matplotlib/mpl-data/fonts/ttf/cmex10.ttf', name='cmex10', style='normal', variant='normal', weight=400, stretch='normal', size='scalable')) = 10.05
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/home/soya/.local/lib/python3.12/site-packages/matplotlib/mpl-data/fonts/ttf/STIXSizThreeSymReg.ttf', name='STIXSizeThreeSym', style='normal', variant='normal', weight=400, stretch='normal', size='scalable')) = 10.05
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/home/soya/.local/lib/python3.12/site-packages/matplotlib/mpl-data/fonts/ttf/STIXGeneral.ttf', name='STIXGeneral', style='normal', variant='normal', weight=400, stretch='normal', size='scalable')) = 10.05
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/home/soya/.local/lib/python3.12/site-packages/matplotlib/mpl-data/fonts/ttf/STIXSizOneSymReg.ttf', name='STIXSizeOneSym', style='normal', variant='normal', weight=400, stretch='normal', size='scalable')) = 10.05
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/home/soya/.local/lib/python3.12/site-packages/matplotlib/mpl-data/fonts/ttf/DejaVuSans-BoldOblique.ttf', name='DejaVu Sans', style='oblique', variant='normal', weight=700, stretch='normal', size='scalable')) = 1.335
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/home/soya/.local/lib/python3.12/site-packages/matplotlib/mpl-data/fonts/ttf/cmb10.ttf', name='cmb10', style='normal', variant='normal', weight=400, stretch='normal', size='scalable')) = 10.05
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/home/soya/.local/lib/python3.12/site-packages/matplotlib/mpl-data/fonts/ttf/DejaVuSansMono-Bold.ttf', name='DejaVu Sans Mono', style='normal', variant='normal', weight=700, stretch='normal', size='scalable')) = 10.335
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/home/soya/.local/lib/python3.12/site-packages/matplotlib/mpl-data/fonts/ttf/STIXSizFourSymBol.ttf', name='STIXSizeFourSym', style='normal', variant='normal', weight=700, stretch='normal', size='scalable')) = 10.335
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/home/soya/.local/lib/python3.12/site-packages/matplotlib/mpl-data/fonts/ttf/DejaVuSansDisplay.ttf', name='DejaVu Sans Display', style='normal', variant='normal', weight=400, stretch='normal', size='scalable')) = 10.05
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/home/soya/.local/lib/python3.12/site-packages/matplotlib/mpl-data/fonts/ttf/cmr10.ttf', name='cmr10', style='normal', variant='normal', weight=400, stretch='normal', size='scalable')) = 10.05
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/home/soya/.local/lib/python3.12/site-packages/matplotlib/mpl-data/fonts/ttf/DejaVuSerif-Bold.ttf', name='DejaVu Serif', style='normal', variant='normal', weight=700, stretch='normal', size='scalable')) = 10.335
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/home/soya/.local/lib/python3.12/site-packages/matplotlib/mpl-data/fonts/ttf/cmss10.ttf', name='cmss10', style='normal', variant='normal', weight=400, stretch='normal', size='scalable')) = 10.05
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/home/soya/.local/lib/python3.12/site-packages/matplotlib/mpl-data/fonts/ttf/STIXNonUniIta.ttf', name='STIXNonUnicode', style='italic', variant='normal', weight=400, stretch='normal', size='scalable')) = 11.05
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/home/soya/.local/lib/python3.12/site-packages/matplotlib/mpl-data/fonts/ttf/DejaVuSansMono-Oblique.ttf', name='DejaVu Sans Mono', style='oblique', variant='normal', weight=400, stretch='normal', size='scalable')) = 11.05
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/home/soya/.local/lib/python3.12/site-packages/matplotlib/mpl-data/fonts/ttf/STIXSizFiveSymReg.ttf', name='STIXSizeFiveSym', style='normal', variant='normal', weight=400, stretch='normal', size='scalable')) = 10.05
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/home/soya/.local/lib/python3.12/site-packages/matplotlib/mpl-data/fonts/ttf/STIXGeneralBol.ttf', name='STIXGeneral', style='normal', variant='normal', weight=700, stretch='normal', size='scalable')) = 10.335
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/home/soya/.local/lib/python3.12/site-packages/matplotlib/mpl-data/fonts/ttf/DejaVuSans-Oblique.ttf', name='DejaVu Sans', style='oblique', variant='normal', weight=400, stretch='normal', size='scalable')) = 1.05
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/home/soya/.local/lib/python3.12/site-packages/matplotlib/mpl-data/fonts/ttf/STIXSizThreeSymBol.ttf', name='STIXSizeThreeSym', style='normal', variant='normal', weight=700, stretch='normal', size='scalable')) = 10.335
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/home/soya/.local/lib/python3.12/site-packages/matplotlib/mpl-data/fonts/ttf/STIXSizTwoSymBol.ttf', name='STIXSizeTwoSym', style='normal', variant='normal', weight=700, stretch='normal', size='scalable')) = 10.335
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/home/soya/.local/lib/python3.12/site-packages/matplotlib/mpl-data/fonts/ttf/STIXGeneralItalic.ttf', name='STIXGeneral', style='italic', variant='normal', weight=400, stretch='normal', size='scalable')) = 11.05
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/home/soya/.local/lib/python3.12/site-packages/matplotlib/mpl-data/fonts/ttf/STIXNonUniBolIta.ttf', name='STIXNonUnicode', style='italic', variant='normal', weight=700, stretch='normal', size='scalable')) = 11.335
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/home/soya/.local/lib/python3.12/site-packages/matplotlib/mpl-data/fonts/ttf/STIXGeneralBolIta.ttf', name='STIXGeneral', style='italic', variant='normal', weight=700, stretch='normal', size='scalable')) = 11.335
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/home/soya/.local/lib/python3.12/site-packages/matplotlib/mpl-data/fonts/ttf/DejaVuSansMono.ttf', name='DejaVu Sans Mono', style='normal', variant='normal', weight=400, stretch='normal', size='scalable')) = 10.05
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/home/soya/.local/lib/python3.12/site-packages/matplotlib/mpl-data/fonts/ttf/DejaVuSans-Bold.ttf', name='DejaVu Sans', style='normal', variant='normal', weight=700, stretch='normal', size='scalable')) = 0.33499999999999996
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/home/soya/.local/lib/python3.12/site-packages/matplotlib/mpl-data/fonts/ttf/DejaVuSerif.ttf', name='DejaVu Serif', style='normal', variant='normal', weight=400, stretch='normal', size='scalable')) = 10.05
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/home/soya/.local/lib/python3.12/site-packages/matplotlib/mpl-data/fonts/ttf/STIXNonUniBol.ttf', name='STIXNonUnicode', style='normal', variant='normal', weight=700, stretch='normal', size='scalable')) = 10.335
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/home/soya/.local/lib/python3.12/site-packages/matplotlib/mpl-data/fonts/ttf/STIXSizOneSymBol.ttf', name='STIXSizeOneSym', style='normal', variant='normal', weight=700, stretch='normal', size='scalable')) = 10.335
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/usr/share/fonts/truetype/ubuntu/Ubuntu-LI.ttf', name='Ubuntu', style='italic', variant='normal', weight=400, stretch='normal', size='scalable')) = 11.05
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/usr/share/fonts/truetype/ubuntu/UbuntuSans-Italic[wdth,wght].ttf', name='Ubuntu Sans', style='italic', variant='normal', weight=400, stretch='normal', size='scalable')) = 11.05
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/usr/share/fonts/truetype/ubuntu/UbuntuSansMono[wght].ttf', name='Ubuntu Sans Mono', style='normal', variant='normal', weight=400, stretch='normal', size='scalable')) = 10.05
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/usr/share/fonts/truetype/dejavu/DejaVuSerifCondensed-Bold.ttf', name='DejaVu Serif', style='normal', variant='normal', weight=700, stretch='condensed', size='scalable')) = 10.535
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/usr/share/fonts/truetype/ubuntu/Ubuntu-R.ttf', name='Ubuntu', style='normal', variant='normal', weight=400, stretch='normal', size='scalable')) = 10.05
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/usr/share/fonts/truetype/dejavu/DejaVuSerifCondensed-BoldItalic.ttf', name='DejaVu Serif', style='italic', variant='normal', weight=700, stretch='condensed', size='scalable')) = 11.535
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/usr/share/fonts/truetype/dejavu/DejaVuSansCondensed-Oblique.ttf', name='DejaVu Sans', style='oblique', variant='normal', weight=400, stretch='condensed', size='scalable')) = 1.25
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/usr/share/fonts/truetype/ubuntu/Ubuntu-MI.ttf', name='Ubuntu', style='italic', variant='normal', weight=400, stretch='normal', size='scalable')) = 11.05
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/usr/share/fonts/truetype/ubuntu/Ubuntu-L.ttf', name='Ubuntu', style='normal', variant='normal', weight=400, stretch='normal', size='scalable')) = 10.05
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/usr/share/fonts/truetype/dejavu/DejaVuSans-ExtraLight.ttf', name='DejaVu Sans', style='normal', variant='normal', weight=200, stretch='normal', size='scalable')) = 0.24
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/usr/share/fonts/truetype/ubuntu/Ubuntu-M.ttf', name='Ubuntu', style='normal', variant='normal', weight=400, stretch='normal', size='scalable')) = 10.05
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/usr/share/fonts/truetype/ubuntu/Ubuntu-Italic[wdth,wght].ttf', name='Ubuntu', style='italic', variant='normal', weight=400, stretch='normal', size='scalable')) = 11.05
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/usr/share/fonts/truetype/ubuntu/Ubuntu-C.ttf', name='Ubuntu', style='normal', variant='normal', weight=400, stretch='normal', size='scalable')) = 10.05
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/usr/share/fonts/truetype/ubuntu/UbuntuMono-B.ttf', name='Ubuntu Mono', style='normal', variant='normal', weight=400, stretch='normal', size='scalable')) = 10.05
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/usr/share/fonts/truetype/ubuntu/UbuntuMono-BI.ttf', name='Ubuntu Mono', style='italic', variant='normal', weight=400, stretch='normal', size='scalable')) = 11.05
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/usr/share/fonts/truetype/dejavu/DejaVuSansCondensed-BoldOblique.ttf', name='DejaVu Sans', style='oblique', variant='normal', weight=700, stretch='condensed', size='scalable')) = 1.535
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/usr/share/fonts/truetype/ubuntu/UbuntuMono-RI.ttf', name='Ubuntu Mono', style='italic', variant='normal', weight=400, stretch='normal', size='scalable')) = 11.05
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf', name='DejaVu Sans', style='normal', variant='normal', weight=400, stretch='normal', size='scalable')) = 0.05
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/usr/share/fonts/truetype/dejavu/DejaVuMathTeXGyre.ttf', name='DejaVu Math TeX Gyre', style='normal', variant='normal', weight=400, stretch='normal', size='scalable')) = 10.05
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/usr/share/fonts/truetype/ubuntu/Ubuntu[wdth,wght].ttf', name='Ubuntu', style='normal', variant='normal', weight=400, stretch='normal', size='scalable')) = 10.05
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/usr/share/fonts/truetype/ubuntu/UbuntuMono-R.ttf', name='Ubuntu Mono', style='normal', variant='normal', weight=400, stretch='normal', size='scalable')) = 10.05
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/usr/share/fonts/truetype/dejavu/DejaVuSans-Oblique.ttf', name='DejaVu Sans', style='oblique', variant='normal', weight=400, stretch='normal', size='scalable')) = 1.05
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/usr/share/fonts/truetype/dejavu/DejaVuSansCondensed-Bold.ttf', name='DejaVu Sans', style='normal', variant='normal', weight=700, stretch='condensed', size='scalable')) = 0.5349999999999999
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/usr/share/fonts/truetype/dejavu/DejaVuSansMono-Oblique.ttf', name='DejaVu Sans Mono', style='oblique', variant='normal', weight=400, stretch='normal', size='scalable')) = 11.05
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf', name='DejaVu Sans', style='normal', variant='normal', weight=700, stretch='normal', size='scalable')) = 0.33499999999999996
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/usr/share/fonts/truetype/dejavu/DejaVuSerifCondensed-Italic.ttf', name='DejaVu Serif', style='italic', variant='normal', weight=400, stretch='condensed', size='scalable')) = 11.25
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/usr/share/fonts/truetype/ubuntu/UbuntuSans[wdth,wght].ttf', name='Ubuntu Sans', style='normal', variant='normal', weight=400, stretch='normal', size='scalable')) = 10.05
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/usr/share/fonts/truetype/dejavu/DejaVuSansCondensed.ttf', name='DejaVu Sans', style='normal', variant='normal', weight=400, stretch='condensed', size='scalable')) = 0.25
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf', name='DejaVu Sans Mono', style='normal', variant='normal', weight=400, stretch='normal', size='scalable')) = 10.05
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/usr/share/fonts/truetype/dejavu/DejaVuSerif-Bold.ttf', name='DejaVu Serif', style='normal', variant='normal', weight=700, stretch='normal', size='scalable')) = 10.335
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/usr/share/fonts/truetype/ubuntu/UbuntuMono-Italic[wght].ttf', name='Ubuntu Mono', style='italic', variant='normal', weight=400, stretch='normal', size='scalable')) = 11.05
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/usr/share/fonts/truetype/ubuntu/Ubuntu-Th.ttf', name='Ubuntu', style='normal', variant='normal', weight=400, stretch='normal', size='scalable')) = 10.05
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/usr/share/fonts/truetype/dejavu/DejaVuSerif-BoldItalic.ttf', name='DejaVu Serif', style='italic', variant='normal', weight=700, stretch='normal', size='scalable')) = 11.335
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/usr/share/fonts/truetype/ubuntu/Ubuntu-B.ttf', name='Ubuntu', style='normal', variant='normal', weight=400, stretch='normal', size='scalable')) = 10.05
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf', name='DejaVu Serif', style='normal', variant='normal', weight=400, stretch='normal', size='scalable')) = 10.05
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/usr/share/fonts/truetype/dejavu/DejaVuSerif-Italic.ttf', name='DejaVu Serif', style='italic', variant='normal', weight=400, stretch='normal', size='scalable')) = 11.05
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/usr/share/fonts/truetype/ubuntu/UbuntuSansMono-Italic[wght].ttf', name='Ubuntu Sans Mono', style='italic', variant='normal', weight=400, stretch='normal', size='scalable')) = 11.05
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/usr/share/fonts/truetype/dejavu/DejaVuSansMono-BoldOblique.ttf', name='DejaVu Sans Mono', style='oblique', variant='normal', weight=700, stretch='normal', size='scalable')) = 11.335
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/usr/share/fonts/truetype/dejavu/DejaVuSerifCondensed.ttf', name='DejaVu Serif', style='normal', variant='normal', weight=400, stretch='condensed', size='scalable')) = 10.25
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/usr/share/fonts/truetype/ubuntu/UbuntuMono[wght].ttf', name='Ubuntu Mono', style='normal', variant='normal', weight=400, stretch='normal', size='scalable')) = 10.05
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/usr/share/fonts/truetype/dejavu/DejaVuSansMono-Bold.ttf', name='DejaVu Sans Mono', style='normal', variant='normal', weight=700, stretch='normal', size='scalable')) = 10.335
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/usr/share/fonts/truetype/dejavu/DejaVuSans-BoldOblique.ttf', name='DejaVu Sans', style='oblique', variant='normal', weight=700, stretch='normal', size='scalable')) = 1.335
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/usr/share/fonts/truetype/ubuntu/Ubuntu-RI.ttf', name='Ubuntu', style='italic', variant='normal', weight=400, stretch='normal', size='scalable')) = 11.05
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/usr/share/fonts/truetype/ubuntu/Ubuntu-BI.ttf', name='Ubuntu', style='italic', variant='normal', weight=400, stretch='normal', size='scalable')) = 11.05
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: Matching sans\-serif:style=normal:variant=normal:weight=normal:stretch=normal:size=10.0 to DejaVu Sans ('/home/soya/.local/lib/python3.12/site-packages/matplotlib/mpl-data/fonts/ttf/DejaVuSans.ttf') with score of 0.050000.
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: Matching sans\-serif:style=normal:variant=normal:weight=normal:stretch=normal:size=12.0.
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/home/soya/.local/lib/python3.12/site-packages/matplotlib/mpl-data/fonts/ttf/DejaVuSansMono-BoldOblique.ttf', name='DejaVu Sans Mono', style='oblique', variant='normal', weight=700, stretch='normal', size='scalable')) = 11.335
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/home/soya/.local/lib/python3.12/site-packages/matplotlib/mpl-data/fonts/ttf/STIXSizTwoSymReg.ttf', name='STIXSizeTwoSym', style='normal', variant='normal', weight=400, stretch='normal', size='scalable')) = 10.05
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/home/soya/.local/lib/python3.12/site-packages/matplotlib/mpl-data/fonts/ttf/STIXSizFourSymReg.ttf', name='STIXSizeFourSym', style='normal', variant='normal', weight=400, stretch='normal', size='scalable')) = 10.05
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/home/soya/.local/lib/python3.12/site-packages/matplotlib/mpl-data/fonts/ttf/DejaVuSerif-BoldItalic.ttf', name='DejaVu Serif', style='italic', variant='normal', weight=700, stretch='normal', size='scalable')) = 11.335
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/home/soya/.local/lib/python3.12/site-packages/matplotlib/mpl-data/fonts/ttf/DejaVuSerif-Italic.ttf', name='DejaVu Serif', style='italic', variant='normal', weight=400, stretch='normal', size='scalable')) = 11.05
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/home/soya/.local/lib/python3.12/site-packages/matplotlib/mpl-data/fonts/ttf/DejaVuSerifDisplay.ttf', name='DejaVu Serif Display', style='normal', variant='normal', weight=400, stretch='normal', size='scalable')) = 10.05
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/home/soya/.local/lib/python3.12/site-packages/matplotlib/mpl-data/fonts/ttf/cmmi10.ttf', name='cmmi10', style='normal', variant='normal', weight=400, stretch='normal', size='scalable')) = 10.05
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/home/soya/.local/lib/python3.12/site-packages/matplotlib/mpl-data/fonts/ttf/STIXNonUni.ttf', name='STIXNonUnicode', style='normal', variant='normal', weight=400, stretch='normal', size='scalable')) = 10.05
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/home/soya/.local/lib/python3.12/site-packages/matplotlib/mpl-data/fonts/ttf/DejaVuSans.ttf', name='DejaVu Sans', style='normal', variant='normal', weight=400, stretch='normal', size='scalable')) = 0.05
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/home/soya/.local/lib/python3.12/site-packages/matplotlib/mpl-data/fonts/ttf/cmsy10.ttf', name='cmsy10', style='normal', variant='normal', weight=400, stretch='normal', size='scalable')) = 10.05
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/home/soya/.local/lib/python3.12/site-packages/matplotlib/mpl-data/fonts/ttf/cmtt10.ttf', name='cmtt10', style='normal', variant='normal', weight=400, stretch='normal', size='scalable')) = 10.05
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/home/soya/.local/lib/python3.12/site-packages/matplotlib/mpl-data/fonts/ttf/cmex10.ttf', name='cmex10', style='normal', variant='normal', weight=400, stretch='normal', size='scalable')) = 10.05
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/home/soya/.local/lib/python3.12/site-packages/matplotlib/mpl-data/fonts/ttf/STIXSizThreeSymReg.ttf', name='STIXSizeThreeSym', style='normal', variant='normal', weight=400, stretch='normal', size='scalable')) = 10.05
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/home/soya/.local/lib/python3.12/site-packages/matplotlib/mpl-data/fonts/ttf/STIXGeneral.ttf', name='STIXGeneral', style='normal', variant='normal', weight=400, stretch='normal', size='scalable')) = 10.05
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/home/soya/.local/lib/python3.12/site-packages/matplotlib/mpl-data/fonts/ttf/STIXSizOneSymReg.ttf', name='STIXSizeOneSym', style='normal', variant='normal', weight=400, stretch='normal', size='scalable')) = 10.05
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/home/soya/.local/lib/python3.12/site-packages/matplotlib/mpl-data/fonts/ttf/DejaVuSans-BoldOblique.ttf', name='DejaVu Sans', style='oblique', variant='normal', weight=700, stretch='normal', size='scalable')) = 1.335
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/home/soya/.local/lib/python3.12/site-packages/matplotlib/mpl-data/fonts/ttf/cmb10.ttf', name='cmb10', style='normal', variant='normal', weight=400, stretch='normal', size='scalable')) = 10.05
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/home/soya/.local/lib/python3.12/site-packages/matplotlib/mpl-data/fonts/ttf/DejaVuSansMono-Bold.ttf', name='DejaVu Sans Mono', style='normal', variant='normal', weight=700, stretch='normal', size='scalable')) = 10.335
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/home/soya/.local/lib/python3.12/site-packages/matplotlib/mpl-data/fonts/ttf/STIXSizFourSymBol.ttf', name='STIXSizeFourSym', style='normal', variant='normal', weight=700, stretch='normal', size='scalable')) = 10.335
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/home/soya/.local/lib/python3.12/site-packages/matplotlib/mpl-data/fonts/ttf/DejaVuSansDisplay.ttf', name='DejaVu Sans Display', style='normal', variant='normal', weight=400, stretch='normal', size='scalable')) = 10.05
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/home/soya/.local/lib/python3.12/site-packages/matplotlib/mpl-data/fonts/ttf/cmr10.ttf', name='cmr10', style='normal', variant='normal', weight=400, stretch='normal', size='scalable')) = 10.05
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/home/soya/.local/lib/python3.12/site-packages/matplotlib/mpl-data/fonts/ttf/DejaVuSerif-Bold.ttf', name='DejaVu Serif', style='normal', variant='normal', weight=700, stretch='normal', size='scalable')) = 10.335
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/home/soya/.local/lib/python3.12/site-packages/matplotlib/mpl-data/fonts/ttf/cmss10.ttf', name='cmss10', style='normal', variant='normal', weight=400, stretch='normal', size='scalable')) = 10.05
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/home/soya/.local/lib/python3.12/site-packages/matplotlib/mpl-data/fonts/ttf/STIXNonUniIta.ttf', name='STIXNonUnicode', style='italic', variant='normal', weight=400, stretch='normal', size='scalable')) = 11.05
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/home/soya/.local/lib/python3.12/site-packages/matplotlib/mpl-data/fonts/ttf/DejaVuSansMono-Oblique.ttf', name='DejaVu Sans Mono', style='oblique', variant='normal', weight=400, stretch='normal', size='scalable')) = 11.05
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/home/soya/.local/lib/python3.12/site-packages/matplotlib/mpl-data/fonts/ttf/STIXSizFiveSymReg.ttf', name='STIXSizeFiveSym', style='normal', variant='normal', weight=400, stretch='normal', size='scalable')) = 10.05
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/home/soya/.local/lib/python3.12/site-packages/matplotlib/mpl-data/fonts/ttf/STIXGeneralBol.ttf', name='STIXGeneral', style='normal', variant='normal', weight=700, stretch='normal', size='scalable')) = 10.335
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/home/soya/.local/lib/python3.12/site-packages/matplotlib/mpl-data/fonts/ttf/DejaVuSans-Oblique.ttf', name='DejaVu Sans', style='oblique', variant='normal', weight=400, stretch='normal', size='scalable')) = 1.05
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/home/soya/.local/lib/python3.12/site-packages/matplotlib/mpl-data/fonts/ttf/STIXSizThreeSymBol.ttf', name='STIXSizeThreeSym', style='normal', variant='normal', weight=700, stretch='normal', size='scalable')) = 10.335
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/home/soya/.local/lib/python3.12/site-packages/matplotlib/mpl-data/fonts/ttf/STIXSizTwoSymBol.ttf', name='STIXSizeTwoSym', style='normal', variant='normal', weight=700, stretch='normal', size='scalable')) = 10.335
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/home/soya/.local/lib/python3.12/site-packages/matplotlib/mpl-data/fonts/ttf/STIXGeneralItalic.ttf', name='STIXGeneral', style='italic', variant='normal', weight=400, stretch='normal', size='scalable')) = 11.05
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/home/soya/.local/lib/python3.12/site-packages/matplotlib/mpl-data/fonts/ttf/STIXNonUniBolIta.ttf', name='STIXNonUnicode', style='italic', variant='normal', weight=700, stretch='normal', size='scalable')) = 11.335
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/home/soya/.local/lib/python3.12/site-packages/matplotlib/mpl-data/fonts/ttf/STIXGeneralBolIta.ttf', name='STIXGeneral', style='italic', variant='normal', weight=700, stretch='normal', size='scalable')) = 11.335
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/home/soya/.local/lib/python3.12/site-packages/matplotlib/mpl-data/fonts/ttf/DejaVuSansMono.ttf', name='DejaVu Sans Mono', style='normal', variant='normal', weight=400, stretch='normal', size='scalable')) = 10.05
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/home/soya/.local/lib/python3.12/site-packages/matplotlib/mpl-data/fonts/ttf/DejaVuSans-Bold.ttf', name='DejaVu Sans', style='normal', variant='normal', weight=700, stretch='normal', size='scalable')) = 0.33499999999999996
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/home/soya/.local/lib/python3.12/site-packages/matplotlib/mpl-data/fonts/ttf/DejaVuSerif.ttf', name='DejaVu Serif', style='normal', variant='normal', weight=400, stretch='normal', size='scalable')) = 10.05
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/home/soya/.local/lib/python3.12/site-packages/matplotlib/mpl-data/fonts/ttf/STIXNonUniBol.ttf', name='STIXNonUnicode', style='normal', variant='normal', weight=700, stretch='normal', size='scalable')) = 10.335
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/home/soya/.local/lib/python3.12/site-packages/matplotlib/mpl-data/fonts/ttf/STIXSizOneSymBol.ttf', name='STIXSizeOneSym', style='normal', variant='normal', weight=700, stretch='normal', size='scalable')) = 10.335
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/usr/share/fonts/truetype/ubuntu/Ubuntu-LI.ttf', name='Ubuntu', style='italic', variant='normal', weight=400, stretch='normal', size='scalable')) = 11.05
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/usr/share/fonts/truetype/ubuntu/UbuntuSans-Italic[wdth,wght].ttf', name='Ubuntu Sans', style='italic', variant='normal', weight=400, stretch='normal', size='scalable')) = 11.05
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/usr/share/fonts/truetype/ubuntu/UbuntuSansMono[wght].ttf', name='Ubuntu Sans Mono', style='normal', variant='normal', weight=400, stretch='normal', size='scalable')) = 10.05
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/usr/share/fonts/truetype/dejavu/DejaVuSerifCondensed-Bold.ttf', name='DejaVu Serif', style='normal', variant='normal', weight=700, stretch='condensed', size='scalable')) = 10.535
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/usr/share/fonts/truetype/ubuntu/Ubuntu-R.ttf', name='Ubuntu', style='normal', variant='normal', weight=400, stretch='normal', size='scalable')) = 10.05
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/usr/share/fonts/truetype/dejavu/DejaVuSerifCondensed-BoldItalic.ttf', name='DejaVu Serif', style='italic', variant='normal', weight=700, stretch='condensed', size='scalable')) = 11.535
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/usr/share/fonts/truetype/dejavu/DejaVuSansCondensed-Oblique.ttf', name='DejaVu Sans', style='oblique', variant='normal', weight=400, stretch='condensed', size='scalable')) = 1.25
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/usr/share/fonts/truetype/ubuntu/Ubuntu-MI.ttf', name='Ubuntu', style='italic', variant='normal', weight=400, stretch='normal', size='scalable')) = 11.05
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/usr/share/fonts/truetype/ubuntu/Ubuntu-L.ttf', name='Ubuntu', style='normal', variant='normal', weight=400, stretch='normal', size='scalable')) = 10.05
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/usr/share/fonts/truetype/dejavu/DejaVuSans-ExtraLight.ttf', name='DejaVu Sans', style='normal', variant='normal', weight=200, stretch='normal', size='scalable')) = 0.24
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/usr/share/fonts/truetype/ubuntu/Ubuntu-M.ttf', name='Ubuntu', style='normal', variant='normal', weight=400, stretch='normal', size='scalable')) = 10.05
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/usr/share/fonts/truetype/ubuntu/Ubuntu-Italic[wdth,wght].ttf', name='Ubuntu', style='italic', variant='normal', weight=400, stretch='normal', size='scalable')) = 11.05
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/usr/share/fonts/truetype/ubuntu/Ubuntu-C.ttf', name='Ubuntu', style='normal', variant='normal', weight=400, stretch='normal', size='scalable')) = 10.05
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/usr/share/fonts/truetype/ubuntu/UbuntuMono-B.ttf', name='Ubuntu Mono', style='normal', variant='normal', weight=400, stretch='normal', size='scalable')) = 10.05
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/usr/share/fonts/truetype/ubuntu/UbuntuMono-BI.ttf', name='Ubuntu Mono', style='italic', variant='normal', weight=400, stretch='normal', size='scalable')) = 11.05
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/usr/share/fonts/truetype/dejavu/DejaVuSansCondensed-BoldOblique.ttf', name='DejaVu Sans', style='oblique', variant='normal', weight=700, stretch='condensed', size='scalable')) = 1.535
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/usr/share/fonts/truetype/ubuntu/UbuntuMono-RI.ttf', name='Ubuntu Mono', style='italic', variant='normal', weight=400, stretch='normal', size='scalable')) = 11.05
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf', name='DejaVu Sans', style='normal', variant='normal', weight=400, stretch='normal', size='scalable')) = 0.05
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/usr/share/fonts/truetype/dejavu/DejaVuMathTeXGyre.ttf', name='DejaVu Math TeX Gyre', style='normal', variant='normal', weight=400, stretch='normal', size='scalable')) = 10.05
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/usr/share/fonts/truetype/ubuntu/Ubuntu[wdth,wght].ttf', name='Ubuntu', style='normal', variant='normal', weight=400, stretch='normal', size='scalable')) = 10.05
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/usr/share/fonts/truetype/ubuntu/UbuntuMono-R.ttf', name='Ubuntu Mono', style='normal', variant='normal', weight=400, stretch='normal', size='scalable')) = 10.05
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/usr/share/fonts/truetype/dejavu/DejaVuSans-Oblique.ttf', name='DejaVu Sans', style='oblique', variant='normal', weight=400, stretch='normal', size='scalable')) = 1.05
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/usr/share/fonts/truetype/dejavu/DejaVuSansCondensed-Bold.ttf', name='DejaVu Sans', style='normal', variant='normal', weight=700, stretch='condensed', size='scalable')) = 0.5349999999999999
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/usr/share/fonts/truetype/dejavu/DejaVuSansMono-Oblique.ttf', name='DejaVu Sans Mono', style='oblique', variant='normal', weight=400, stretch='normal', size='scalable')) = 11.05
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf', name='DejaVu Sans', style='normal', variant='normal', weight=700, stretch='normal', size='scalable')) = 0.33499999999999996
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/usr/share/fonts/truetype/dejavu/DejaVuSerifCondensed-Italic.ttf', name='DejaVu Serif', style='italic', variant='normal', weight=400, stretch='condensed', size='scalable')) = 11.25
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/usr/share/fonts/truetype/ubuntu/UbuntuSans[wdth,wght].ttf', name='Ubuntu Sans', style='normal', variant='normal', weight=400, stretch='normal', size='scalable')) = 10.05
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/usr/share/fonts/truetype/dejavu/DejaVuSansCondensed.ttf', name='DejaVu Sans', style='normal', variant='normal', weight=400, stretch='condensed', size='scalable')) = 0.25
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf', name='DejaVu Sans Mono', style='normal', variant='normal', weight=400, stretch='normal', size='scalable')) = 10.05
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/usr/share/fonts/truetype/dejavu/DejaVuSerif-Bold.ttf', name='DejaVu Serif', style='normal', variant='normal', weight=700, stretch='normal', size='scalable')) = 10.335
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/usr/share/fonts/truetype/ubuntu/UbuntuMono-Italic[wght].ttf', name='Ubuntu Mono', style='italic', variant='normal', weight=400, stretch='normal', size='scalable')) = 11.05
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/usr/share/fonts/truetype/ubuntu/Ubuntu-Th.ttf', name='Ubuntu', style='normal', variant='normal', weight=400, stretch='normal', size='scalable')) = 10.05
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/usr/share/fonts/truetype/dejavu/DejaVuSerif-BoldItalic.ttf', name='DejaVu Serif', style='italic', variant='normal', weight=700, stretch='normal', size='scalable')) = 11.335
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/usr/share/fonts/truetype/ubuntu/Ubuntu-B.ttf', name='Ubuntu', style='normal', variant='normal', weight=400, stretch='normal', size='scalable')) = 10.05
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf', name='DejaVu Serif', style='normal', variant='normal', weight=400, stretch='normal', size='scalable')) = 10.05
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/usr/share/fonts/truetype/dejavu/DejaVuSerif-Italic.ttf', name='DejaVu Serif', style='italic', variant='normal', weight=400, stretch='normal', size='scalable')) = 11.05
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/usr/share/fonts/truetype/ubuntu/UbuntuSansMono-Italic[wght].ttf', name='Ubuntu Sans Mono', style='italic', variant='normal', weight=400, stretch='normal', size='scalable')) = 11.05
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/usr/share/fonts/truetype/dejavu/DejaVuSansMono-BoldOblique.ttf', name='DejaVu Sans Mono', style='oblique', variant='normal', weight=700, stretch='normal', size='scalable')) = 11.335
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/usr/share/fonts/truetype/dejavu/DejaVuSerifCondensed.ttf', name='DejaVu Serif', style='normal', variant='normal', weight=400, stretch='condensed', size='scalable')) = 10.25
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/usr/share/fonts/truetype/ubuntu/UbuntuMono[wght].ttf', name='Ubuntu Mono', style='normal', variant='normal', weight=400, stretch='normal', size='scalable')) = 10.05
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/usr/share/fonts/truetype/dejavu/DejaVuSansMono-Bold.ttf', name='DejaVu Sans Mono', style='normal', variant='normal', weight=700, stretch='normal', size='scalable')) = 10.335
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/usr/share/fonts/truetype/dejavu/DejaVuSans-BoldOblique.ttf', name='DejaVu Sans', style='oblique', variant='normal', weight=700, stretch='normal', size='scalable')) = 1.335
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/usr/share/fonts/truetype/ubuntu/Ubuntu-RI.ttf', name='Ubuntu', style='italic', variant='normal', weight=400, stretch='normal', size='scalable')) = 11.05
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: score(FontEntry(fname='/usr/share/fonts/truetype/ubuntu/Ubuntu-BI.ttf', name='Ubuntu', style='italic', variant='normal', weight=400, stretch='normal', size='scalable')) = 11.05
-08/24/2025 17:29:00 - DEBUG - matplotlib.font_manager - findfont: Matching sans\-serif:style=normal:variant=normal:weight=normal:stretch=normal:size=12.0 to DejaVu Sans ('/home/soya/.local/lib/python3.12/site-packages/matplotlib/mpl-data/fonts/ttf/DejaVuSans.ttf') with score of 0.050000.
-08/24/2025 17:29:01 - INFO - __main__ -   ✓ truck: mean=0.259, positive=625413/2160000
-🔥[MODEL] Forward pass - sam_images: torch.Size([1, 3, 1024, 1024])
-08/24/2025 17:29:01 - DEBUG - src.models.lisa_model - [FORWARD] Starting forward pass
-08/24/2025 17:29:01 - DEBUG - src.models.lisa_model -   input_ids: torch.Size([1, 582])
-08/24/2025 17:29:01 - DEBUG - src.models.lisa_model -   pixel_values: torch.Size([2204, 1176])
-08/24/2025 17:29:01 - DEBUG - src.models.lisa_model -   image_grid_thw: tensor([[ 1, 38, 58]], device='cuda:0')
-08/24/2025 17:29:01 - DEBUG - src.models.lisa_model -   sam_images: torch.Size([1, 3, 1024, 1024])
-08/24/2025 17:29:01 - DEBUG - src.models.lisa_model -   labels: None
-08/24/2025 17:29:01 - DEBUG - src.models.lisa_model -   mask_labels: <class 'NoneType'> with None
-08/24/2025 17:29:01 - DEBUG - src.models.lisa_model - [FORWARD] Running Qwen forward pass...
-08/24/2025 17:29:02 - DEBUG - src.models.lisa_model - [FORWARD] Qwen outputs - logits: torch.Size([1, 582, 151936]), hidden_states: torch.Size([1, 582, 2048])
-08/24/2025 17:29:02 - DEBUG - src.models.lisa_model - [FORWARD] Extracting Qwen vision features...
-08/24/2025 17:29:02 - DEBUG - src.models.lisa_model - [extract_vision_features] Start - pixel_values shape: torch.Size([2204, 1176]), image_grid_thw shape: torch.Size([1, 3])
-08/24/2025 17:29:02 - DEBUG - src.models.lisa_model - [extract_vision_features] End - vision_features shape: torch.Size([1, 551, 2048]), dtype: torch.bfloat16
-08/24/2025 17:29:02 - DEBUG - src.models.lisa_model - [SAM ViT] Processing SAM images with shape: torch.Size([1, 3, 1024, 1024]), dtype: torch.float32
-08/24/2025 17:29:02 - DEBUG - src.models.lisa_model - [SAM INPUT] min=-2.118, max=2.640, mean=-0.146, std=1.137
-08/24/2025 17:29:02 - DEBUG - src.models.lisa_model - [SAM ViT] Converting input from torch.float32 to torch.float32
-08/24/2025 17:29:02 - DEBUG - src.models.lisa_model - [SAM OUTPUT] shape=torch.Size([1, 256, 64, 64]), dtype=torch.float32
-08/24/2025 17:29:02 - DEBUG - src.models.lisa_model - [SAM OUTPUT] min=-7.301, max=7.781, mean=0.017, std=0.931
-08/24/2025 17:29:02 - DEBUG - src.models.lisa_model - [FUSION] Fusing Qwen features torch.Size([1, 256, 19, 29]) with SAM features torch.Size([1, 256, 64, 64])
-08/24/2025 17:29:02 - DEBUG - src.models.lisa_model - [FUSION] Resized Qwen features to torch.Size([1, 256, 64, 64])
-08/24/2025 17:29:02 - DEBUG - src.models.lisa_model - [FUSION] Using image_fusion_beta=0.0000, scaled=0.5000
-08/24/2025 17:29:02 - DEBUG - src.models.lisa_model - [FUSION] Created fused embeddings with shape: torch.Size([1, 256, 64, 64]), dtype: torch.float32
-08/24/2025 17:29:02 - DEBUG - src.models.lisa_model - [HIGH RES] Generating high-res features from embeddings shape: torch.Size([1, 256, 64, 64]), dtype: torch.float32
-08/24/2025 17:29:02 - DEBUG - src.models.lisa_model - [HIGH RES] use_token_fpn = True
-08/24/2025 17:29:02 - DEBUG - src.models.lisa_model - [HIGH RES] Converting features from torch.float32 to FPN dtype torch.bfloat16
-08/24/2025 17:29:02 - DEBUG - src.models.lisa_model - [HIGH RES] Generated fused high-res features: s0=torch.Size([1, 256, 256, 256]), s1=torch.Size([1, 256, 128, 128])
-08/24/2025 17:29:02 - DEBUG - src.models.lisa_model - [SEG SEARCH] Batch 0: Found 1 SEG tokens at positions [576]
-08/24/2025 17:29:02 - DEBUG - src.models.lisa_model - [MASK GEN] Total seg_positions: [[576]]
-08/24/2025 17:29:02 - DEBUG - src.models.lisa_model - [MASK GEN] Total batches: 1
-08/24/2025 17:29:02 - DEBUG - src.models.lisa_model - [MASK GEN] Batch 0: seg_positions = [576]
-08/24/2025 17:29:02 - DEBUG - src.models.lisa_model - [MASK GEN] image_features_sam shape: torch.Size([1, 256, 64, 64])
-08/24/2025 17:29:02 - DEBUG - src.models.lisa_model - [MASK GEN] Batch 0: Processing 1 SEG tokens
-08/24/2025 17:29:02 - DEBUG - src.models.lisa_model - [MASK GEN] Batch 0, SEG 0: Starting mask generation
-08/24/2025 17:29:02 - DEBUG - src.models.lisa_model - [CENTROID] Batch 0, SEG 0: Inference mode - using image center (512, 512)
-08/24/2025 17:29:03 - INFO - __main__ -   ✓ groceries: mean=0.025, positive=9473/427200
-🔥[MODEL] Forward pass - sam_images: torch.Size([1, 3, 1024, 1024])
-08/24/2025 17:29:03 - DEBUG - src.models.lisa_model - [FORWARD] Starting forward pass
-08/24/2025 17:29:03 - DEBUG - src.models.lisa_model -   input_ids: torch.Size([1, 582])
-08/24/2025 17:29:03 - DEBUG - src.models.lisa_model -   pixel_values: torch.Size([2204, 1176])
-08/24/2025 17:29:03 - DEBUG - src.models.lisa_model -   image_grid_thw: tensor([[ 1, 38, 58]], device='cuda:0')
-08/24/2025 17:29:03 - DEBUG - src.models.lisa_model -   sam_images: torch.Size([1, 3, 1024, 1024])
-08/24/2025 17:29:03 - DEBUG - src.models.lisa_model -   labels: None
-08/24/2025 17:29:03 - DEBUG - src.models.lisa_model -   mask_labels: <class 'NoneType'> with None
-08/24/2025 17:29:03 - DEBUG - src.models.lisa_model - [FORWARD] Running Qwen forward pass...
-08/24/2025 17:29:03 - DEBUG - src.models.lisa_model - [FORWARD] Qwen outputs - logits: torch.Size([1, 582, 151936]), hidden_states: torch.Size([1, 582, 2048])
-08/24/2025 17:29:03 - DEBUG - src.models.lisa_model - [FORWARD] Extracting Qwen vision features...
-08/24/2025 17:29:03 - DEBUG - src.models.lisa_model - [extract_vision_features] Start - pixel_values shape: torch.Size([2204, 1176]), image_grid_thw shape: torch.Size([1, 3])
-08/24/2025 17:29:04 - DEBUG - src.models.lisa_model - [extract_vision_features] End - vision_features shape: torch.Size([1, 551, 2048]), dtype: torch.bfloat16
-08/24/2025 17:29:04 - DEBUG - src.models.lisa_model - [SAM ViT] Processing SAM images with shape: torch.Size([1, 3, 1024, 1024]), dtype: torch.float32
-08/24/2025 17:29:04 - DEBUG - src.models.lisa_model - [SAM INPUT] min=-2.118, max=2.640, mean=0.602, std=1.167
-08/24/2025 17:29:04 - DEBUG - src.models.lisa_model - [SAM ViT] Converting input from torch.float32 to torch.float32
-08/24/2025 17:29:04 - DEBUG - src.models.lisa_model - [SAM OUTPUT] shape=torch.Size([1, 256, 64, 64]), dtype=torch.float32
-08/24/2025 17:29:04 - DEBUG - src.models.lisa_model - [SAM OUTPUT] min=-7.119, max=7.231, mean=0.027, std=0.924
-08/24/2025 17:29:04 - DEBUG - src.models.lisa_model - [FUSION] Fusing Qwen features torch.Size([1, 256, 19, 29]) with SAM features torch.Size([1, 256, 64, 64])
-08/24/2025 17:29:04 - DEBUG - src.models.lisa_model - [FUSION] Resized Qwen features to torch.Size([1, 256, 64, 64])
-08/24/2025 17:29:04 - DEBUG - src.models.lisa_model - [FUSION] Using image_fusion_beta=0.0000, scaled=0.5000
-08/24/2025 17:29:04 - DEBUG - src.models.lisa_model - [FUSION] Created fused embeddings with shape: torch.Size([1, 256, 64, 64]), dtype: torch.float32
-08/24/2025 17:29:04 - DEBUG - src.models.lisa_model - [HIGH RES] Generating high-res features from embeddings shape: torch.Size([1, 256, 64, 64]), dtype: torch.float32
-08/24/2025 17:29:04 - DEBUG - src.models.lisa_model - [HIGH RES] use_token_fpn = True
-08/24/2025 17:29:04 - DEBUG - src.models.lisa_model - [HIGH RES] Converting features from torch.float32 to FPN dtype torch.bfloat16
-08/24/2025 17:29:04 - DEBUG - src.models.lisa_model - [HIGH RES] Generated fused high-res features: s0=torch.Size([1, 256, 256, 256]), s1=torch.Size([1, 256, 128, 128])
-08/24/2025 17:29:04 - DEBUG - src.models.lisa_model - [SEG SEARCH] Batch 0: Found 1 SEG tokens at positions [576]
-08/24/2025 17:29:04 - DEBUG - src.models.lisa_model - [MASK GEN] Total seg_positions: [[576]]
-08/24/2025 17:29:04 - DEBUG - src.models.lisa_model - [MASK GEN] Total batches: 1
-08/24/2025 17:29:04 - DEBUG - src.models.lisa_model - [MASK GEN] Batch 0: seg_positions = [576]
-08/24/2025 17:29:04 - DEBUG - src.models.lisa_model - [MASK GEN] image_features_sam shape: torch.Size([1, 256, 64, 64])
-08/24/2025 17:29:04 - DEBUG - src.models.lisa_model - [MASK GEN] Batch 0: Processing 1 SEG tokens
-08/24/2025 17:29:04 - DEBUG - src.models.lisa_model - [MASK GEN] Batch 0, SEG 0: Starting mask generation
-08/24/2025 17:29:04 - DEBUG - src.models.lisa_model - [CENTROID] Batch 0, SEG 0: Inference mode - using image center (512, 512)
-08/24/2025 17:29:04 - INFO - __main__ -   ✓ dog: mean=0.302, positive=107003/427200
-08/24/2025 17:29:04 - INFO - __main__ -   → 評価結果を保存: outputs/minimal_train_20250824_172700/checkpoints/step_5/inference_results/evaluation_results.json
-08/24/2025 17:29:04 - INFO - __main__ - ✅ 推論評価完了: 3/3 成功
-Epoch 1/2:  50%|███████████████▌               | 5/10 [01:31<02:38, 31.61s/it, loss=15.6536, lm=13.8750, seg=1.7786, lr=1.00e-03, β=0.502]08/24/2025 17:29:04 - DEBUG - PIL.PngImagePlugin - STREAM b'IHDR' 16 13
-08/24/2025 17:29:04 - DEBUG - PIL.PngImagePlugin - STREAM b'IDAT' 41 3367
-08/24/2025 17:29:04 - DEBUG - __main__ - Batch 5: img_tokens=900, txt_tokens=413, total=1313
-08/24/2025 17:29:04 - DEBUG - __main__ - pixel_values shape: torch.Size([2, 900, 1176])
-08/24/2025 17:29:04 - DEBUG - __main__ - input_ids shape: torch.Size([2, 413])
-08/24/2025 17:29:04 - DEBUG - __main__ - sam_images shape: torch.Size([2, 3, 1024, 1024])
-08/24/2025 17:29:04 - DEBUG - __main__ - image_grid_thw: tensor([[ 1, 30, 30],
-        [ 1, 30, 30]], device='cuda:0')
-🔥[MODEL] Forward pass - sam_images: torch.Size([2, 3, 1024, 1024])
-08/24/2025 17:29:04 - DEBUG - src.models.lisa_model - [FORWARD] Starting forward pass
-08/24/2025 17:29:04 - DEBUG - src.models.lisa_model -   input_ids: torch.Size([2, 413])
-08/24/2025 17:29:04 - DEBUG - src.models.lisa_model -   pixel_values: torch.Size([2, 900, 1176])
-08/24/2025 17:29:04 - DEBUG - src.models.lisa_model -   image_grid_thw: tensor([[ 1, 30, 30],
-        [ 1, 30, 30]], device='cuda:0')
-08/24/2025 17:29:04 - DEBUG - src.models.lisa_model -   sam_images: torch.Size([2, 3, 1024, 1024])
-08/24/2025 17:29:04 - DEBUG - src.models.lisa_model -   labels: torch.Size([2, 413])
-08/24/2025 17:29:04 - DEBUG - src.models.lisa_model -   mask_labels: <class 'list'> with 2
-08/24/2025 17:29:04 - DEBUG - src.models.lisa_model - [FORWARD] Running Qwen forward pass...
-08/24/2025 17:29:04 - DEBUG - src.models.lisa_model - [FORWARD] Qwen outputs - logits: torch.Size([2, 413, 151936]), hidden_states: torch.Size([2, 413, 2048])
-08/24/2025 17:29:04 - DEBUG - src.models.lisa_model - [FORWARD] Extracting Qwen vision features...
-08/24/2025 17:29:04 - DEBUG - src.models.lisa_model - [extract_vision_features] Start - pixel_values shape: torch.Size([2, 900, 1176]), image_grid_thw shape: torch.Size([2, 3])
-08/24/2025 17:29:05 - DEBUG - src.models.lisa_model - [extract_vision_features] End - vision_features shape: torch.Size([2, 225, 2048]), dtype: torch.bfloat16
-08/24/2025 17:29:05 - DEBUG - src.models.lisa_model - [SAM ViT] Processing SAM images with shape: torch.Size([2, 3, 1024, 1024]), dtype: torch.float32
-08/24/2025 17:29:05 - DEBUG - src.models.lisa_model - [SAM INPUT] min=-2.118, max=2.640, mean=0.097, std=1.087
-08/24/2025 17:29:05 - DEBUG - src.models.lisa_model - [SAM ViT] Converting input from torch.float32 to torch.float32
-08/24/2025 17:29:05 - DEBUG - src.models.lisa_model - [SAM OUTPUT] shape=torch.Size([2, 256, 64, 64]), dtype=torch.float32
-08/24/2025 17:29:05 - DEBUG - src.models.lisa_model - [SAM OUTPUT] min=-7.730, max=7.922, mean=0.030, std=0.882
-08/24/2025 17:29:05 - DEBUG - src.models.lisa_model - [FUSION] Fusing Qwen features torch.Size([2, 256, 15, 15]) with SAM features torch.Size([2, 256, 64, 64])
-08/24/2025 17:29:05 - DEBUG - src.models.lisa_model - [FUSION] Resized Qwen features to torch.Size([2, 256, 64, 64])
-08/24/2025 17:29:05 - DEBUG - src.models.lisa_model - [FUSION] Using image_fusion_beta=0.0000, scaled=0.5000
-08/24/2025 17:29:05 - DEBUG - src.models.lisa_model - [FUSION] Created fused embeddings with shape: torch.Size([2, 256, 64, 64]), dtype: torch.float32
-08/24/2025 17:29:05 - DEBUG - src.models.lisa_model - [HIGH RES] Generating high-res features from embeddings shape: torch.Size([2, 256, 64, 64]), dtype: torch.float32
-08/24/2025 17:29:05 - DEBUG - src.models.lisa_model - [HIGH RES] use_token_fpn = True
-08/24/2025 17:29:05 - DEBUG - src.models.lisa_model - [HIGH RES] Converting features from torch.float32 to FPN dtype torch.bfloat16
-08/24/2025 17:29:05 - DEBUG - src.models.lisa_model - [HIGH RES] Generated fused high-res features: s0=torch.Size([2, 256, 256, 256]), s1=torch.Size([2, 256, 128, 128])
-08/24/2025 17:29:05 - DEBUG - src.models.lisa_model - [MASK GEN] Total seg_positions: [[283], [262]]
-08/24/2025 17:29:05 - DEBUG - src.models.lisa_model - [MASK GEN] Total batches: 2
-08/24/2025 17:29:05 - DEBUG - src.models.lisa_model - [MASK GEN] Batch 0: seg_positions = [283]
-08/24/2025 17:29:05 - DEBUG - src.models.lisa_model - [MASK GEN] image_features_sam shape: torch.Size([2, 256, 64, 64])
-08/24/2025 17:29:05 - DEBUG - src.models.lisa_model - [MASK GEN] Batch 0: Processing 1 SEG tokens
-08/24/2025 17:29:05 - DEBUG - src.models.lisa_model - [MASK GEN] Batch 0, SEG 0: Starting mask generation
-08/24/2025 17:29:05 - DEBUG - src.models.lisa_model - [CENTROID] Batch 0, SEG 0: Computed centroid from GT mask - x=571.1, y=283.4 (image center would be 512, 512)
-08/24/2025 17:29:05 - DEBUG - src.models.lisa_model - [MASK GEN] Batch 1: seg_positions = [262]
-08/24/2025 17:29:05 - DEBUG - src.models.lisa_model - [MASK GEN] image_features_sam shape: torch.Size([2, 256, 64, 64])
-08/24/2025 17:29:05 - DEBUG - src.models.lisa_model - [MASK GEN] Batch 1: Processing 1 SEG tokens
-08/24/2025 17:29:05 - DEBUG - src.models.lisa_model - [MASK GEN] Batch 1, SEG 0: Starting mask generation
-08/24/2025 17:29:05 - DEBUG - src.models.lisa_model - [CENTROID] Batch 1, SEG 0: Computed centroid from GT mask - x=452.2, y=373.3 (image center would be 512, 512)
-08/24/2025 17:29:05 - DEBUG - __main__ - pred_mask shape: torch.Size([1, 420, 420])
-08/24/2025 17:29:05 - DEBUG - __main__ - gt_mask shape: torch.Size([1, 1024, 1024])
-08/24/2025 17:29:05 - DEBUG - __main__ - Warning: Mask size mismatch - pred: (420, 420), gt: (1024, 1024). This should not happen after fixes.
-08/24/2025 17:29:05 - DEBUG - __main__ - pred_mask shape: torch.Size([1, 420, 420])
-08/24/2025 17:29:05 - DEBUG - __main__ - gt_mask shape: torch.Size([1, 1024, 1024])
-08/24/2025 17:29:05 - DEBUG - __main__ - Warning: Mask size mismatch - pred: (420, 420), gt: (1024, 1024). This should not happen after fixes.
-Epoch 1/2:  50%|███████████████▌               | 5/10 [01:33<02:38, 31.61s/it, loss=13.1123, lm=11.5625, seg=1.5498, lr=1.00e-03, β=0.502]08/24/2025 17:29:05 - DEBUG - __main__ - Calling save_visualization at step 6
-08/24/2025 17:29:05 - DEBUG - __main__ - Skipping visualization at step 6 (not a visualization step)
-Epoch 1/2:  60%|██████████████████▌            | 6/10 [01:33<01:25, 21.35s/it, loss=13.1123, lm=11.5625, seg=1.5498, lr=1.00e-03, β=0.502]08/24/2025 17:29:05 - DEBUG - __main__ - Batch 6: img_tokens=1024, txt_tokens=302, total=1326
-08/24/2025 17:29:05 - DEBUG - __main__ - pixel_values shape: torch.Size([2, 1024, 1176])
-08/24/2025 17:29:05 - DEBUG - __main__ - input_ids shape: torch.Size([2, 302])
-08/24/2025 17:29:05 - DEBUG - __main__ - sam_images shape: torch.Size([2, 3, 1024, 1024])
-08/24/2025 17:29:05 - DEBUG - __main__ - image_grid_thw: tensor([[ 1, 32, 32],
-        [ 1, 32, 32]], device='cuda:0')
-🔥[MODEL] Forward pass - sam_images: torch.Size([2, 3, 1024, 1024])
-08/24/2025 17:29:05 - DEBUG - src.models.lisa_model - [FORWARD] Starting forward pass
-08/24/2025 17:29:05 - DEBUG - src.models.lisa_model -   input_ids: torch.Size([2, 302])
-08/24/2025 17:29:05 - DEBUG - src.models.lisa_model -   pixel_values: torch.Size([2, 1024, 1176])
-08/24/2025 17:29:05 - DEBUG - src.models.lisa_model -   image_grid_thw: tensor([[ 1, 32, 32],
-        [ 1, 32, 32]], device='cuda:0')
-08/24/2025 17:29:05 - DEBUG - src.models.lisa_model -   sam_images: torch.Size([2, 3, 1024, 1024])
-08/24/2025 17:29:05 - DEBUG - src.models.lisa_model -   labels: torch.Size([2, 302])
-08/24/2025 17:29:05 - DEBUG - src.models.lisa_model -   mask_labels: <class 'list'> with 2
-08/24/2025 17:29:05 - DEBUG - src.models.lisa_model - [FORWARD] Running Qwen forward pass...
-08/24/2025 17:29:06 - DEBUG - src.models.lisa_model - [FORWARD] Qwen outputs - logits: torch.Size([2, 302, 151936]), hidden_states: torch.Size([2, 302, 2048])
-08/24/2025 17:29:06 - DEBUG - src.models.lisa_model - [FORWARD] Extracting Qwen vision features...
-08/24/2025 17:29:06 - DEBUG - src.models.lisa_model - [extract_vision_features] Start - pixel_values shape: torch.Size([2, 1024, 1176]), image_grid_thw shape: torch.Size([2, 3])
-08/24/2025 17:29:06 - DEBUG - src.models.lisa_model - [extract_vision_features] End - vision_features shape: torch.Size([2, 256, 2048]), dtype: torch.bfloat16
-08/24/2025 17:29:06 - DEBUG - src.models.lisa_model - [SAM ViT] Processing SAM images with shape: torch.Size([2, 3, 1024, 1024]), dtype: torch.float32
-08/24/2025 17:29:06 - DEBUG - src.models.lisa_model - [SAM INPUT] min=-2.118, max=2.640, mean=-1.229, std=1.221
-08/24/2025 17:29:06 - DEBUG - src.models.lisa_model - [SAM ViT] Converting input from torch.float32 to torch.float32
-08/24/2025 17:29:06 - DEBUG - src.models.lisa_model - [SAM OUTPUT] shape=torch.Size([2, 256, 64, 64]), dtype=torch.float32
-08/24/2025 17:29:07 - DEBUG - src.models.lisa_model - [SAM OUTPUT] min=-7.941, max=7.878, mean=0.028, std=0.899
-08/24/2025 17:29:07 - DEBUG - src.models.lisa_model - [FUSION] Fusing Qwen features torch.Size([2, 256, 16, 16]) with SAM features torch.Size([2, 256, 64, 64])
-08/24/2025 17:29:07 - DEBUG - src.models.lisa_model - [FUSION] Resized Qwen features to torch.Size([2, 256, 64, 64])
-08/24/2025 17:29:07 - DEBUG - src.models.lisa_model - [FUSION] Using image_fusion_beta=0.0000, scaled=0.5000
-08/24/2025 17:29:07 - DEBUG - src.models.lisa_model - [FUSION] Created fused embeddings with shape: torch.Size([2, 256, 64, 64]), dtype: torch.float32
-08/24/2025 17:29:07 - DEBUG - src.models.lisa_model - [HIGH RES] Generating high-res features from embeddings shape: torch.Size([2, 256, 64, 64]), dtype: torch.float32
-08/24/2025 17:29:07 - DEBUG - src.models.lisa_model - [HIGH RES] use_token_fpn = True
-08/24/2025 17:29:07 - DEBUG - src.models.lisa_model - [HIGH RES] Converting features from torch.float32 to FPN dtype torch.bfloat16
-08/24/2025 17:29:07 - DEBUG - src.models.lisa_model - [HIGH RES] Generated fused high-res features: s0=torch.Size([2, 256, 256, 256]), s1=torch.Size([2, 256, 128, 128])
-08/24/2025 17:29:07 - DEBUG - src.models.lisa_model - [MASK GEN] Total seg_positions: [[], [298]]
-08/24/2025 17:29:07 - DEBUG - src.models.lisa_model - [MASK GEN] Total batches: 2
-08/24/2025 17:29:07 - DEBUG - src.models.lisa_model - [MASK GEN] Batch 0: seg_positions = []
-08/24/2025 17:29:07 - DEBUG - src.models.lisa_model - [MASK GEN] image_features_sam shape: torch.Size([2, 256, 64, 64])
-08/24/2025 17:29:07 - DEBUG - src.models.lisa_model - [MASK GEN] Batch 1: seg_positions = [298]
-08/24/2025 17:29:07 - DEBUG - src.models.lisa_model - [MASK GEN] image_features_sam shape: torch.Size([2, 256, 64, 64])
-08/24/2025 17:29:07 - DEBUG - src.models.lisa_model - [MASK GEN] Batch 1: Processing 1 SEG tokens
-08/24/2025 17:29:07 - DEBUG - src.models.lisa_model - [MASK GEN] Batch 1, SEG 0: Starting mask generation
-08/24/2025 17:29:07 - DEBUG - src.models.lisa_model - [CENTROID] Batch 1, SEG 0: Computed centroid from GT mask - x=459.9, y=563.5 (image center would be 512, 512)
-08/24/2025 17:29:07 - DEBUG - __main__ - pred_mask shape: torch.Size([1, 448, 448])
-08/24/2025 17:29:07 - DEBUG - __main__ - gt_mask shape: torch.Size([1, 1024, 1024])
-08/24/2025 17:29:07 - DEBUG - __main__ - Warning: Mask size mismatch - pred: (448, 448), gt: (1024, 1024). This should not happen after fixes.
-Epoch 1/2:  60%|██████████████████▌            | 6/10 [01:34<01:25, 21.35s/it, loss=16.4530, lm=14.0000, seg=2.4530, lr=1.00e-03, β=0.502]08/24/2025 17:29:07 - DEBUG - __main__ - Calling save_visualization at step 7
-08/24/2025 17:29:07 - DEBUG - __main__ - Skipping visualization at step 7 (not a visualization step)
-Epoch 1/2:  70%|█████████████████████▋         | 7/10 [01:34<00:44, 14.80s/it, loss=16.4530, lm=14.0000, seg=2.4530, lr=1.00e-03, β=0.502]08/24/2025 17:29:07 - DEBUG - PIL.PngImagePlugin - STREAM b'IHDR' 16 13
-08/24/2025 17:29:07 - DEBUG - PIL.PngImagePlugin - STREAM b'tIME' 41 7
-08/24/2025 17:29:07 - DEBUG - PIL.PngImagePlugin - b'tIME' 41 7 (unknown)
-08/24/2025 17:29:07 - DEBUG - PIL.PngImagePlugin - STREAM b'IDAT' 60 5343
-08/24/2025 17:29:07 - DEBUG - PIL.PngImagePlugin - STREAM b'IHDR' 16 13
-08/24/2025 17:29:07 - DEBUG - PIL.PngImagePlugin - STREAM b'IDAT' 41 4483
-08/24/2025 17:29:07 - DEBUG - __main__ - Batch 7: img_tokens=784, txt_tokens=233, total=1017
-08/24/2025 17:29:07 - DEBUG - __main__ - pixel_values shape: torch.Size([2, 784, 1176])
-08/24/2025 17:29:07 - DEBUG - __main__ - input_ids shape: torch.Size([2, 233])
-08/24/2025 17:29:07 - DEBUG - __main__ - sam_images shape: torch.Size([2, 3, 1024, 1024])
-08/24/2025 17:29:07 - DEBUG - __main__ - image_grid_thw: tensor([[ 1, 28, 28],
-        [ 1, 28, 28]], device='cuda:0')
-🔥[MODEL] Forward pass - sam_images: torch.Size([2, 3, 1024, 1024])
-08/24/2025 17:29:07 - DEBUG - src.models.lisa_model - [FORWARD] Starting forward pass
-08/24/2025 17:29:07 - DEBUG - src.models.lisa_model -   input_ids: torch.Size([2, 233])
-08/24/2025 17:29:07 - DEBUG - src.models.lisa_model -   pixel_values: torch.Size([2, 784, 1176])
-08/24/2025 17:29:07 - DEBUG - src.models.lisa_model -   image_grid_thw: tensor([[ 1, 28, 28],
-        [ 1, 28, 28]], device='cuda:0')
-08/24/2025 17:29:07 - DEBUG - src.models.lisa_model -   sam_images: torch.Size([2, 3, 1024, 1024])
-08/24/2025 17:29:07 - DEBUG - src.models.lisa_model -   labels: torch.Size([2, 233])
-08/24/2025 17:29:07 - DEBUG - src.models.lisa_model -   mask_labels: <class 'list'> with 2
-08/24/2025 17:29:07 - DEBUG - src.models.lisa_model - [FORWARD] Running Qwen forward pass...
-08/24/2025 17:29:07 - DEBUG - src.models.lisa_model - [FORWARD] Qwen outputs - logits: torch.Size([2, 233, 151936]), hidden_states: torch.Size([2, 233, 2048])
-08/24/2025 17:29:07 - DEBUG - src.models.lisa_model - [FORWARD] Extracting Qwen vision features...
-08/24/2025 17:29:07 - DEBUG - src.models.lisa_model - [extract_vision_features] Start - pixel_values shape: torch.Size([2, 784, 1176]), image_grid_thw shape: torch.Size([2, 3])
-08/24/2025 17:29:08 - DEBUG - src.models.lisa_model - [extract_vision_features] End - vision_features shape: torch.Size([2, 196, 2048]), dtype: torch.bfloat16
-08/24/2025 17:29:08 - DEBUG - src.models.lisa_model - [SAM ViT] Processing SAM images with shape: torch.Size([2, 3, 1024, 1024]), dtype: torch.float32
-08/24/2025 17:29:08 - DEBUG - src.models.lisa_model - [SAM INPUT] min=-2.118, max=2.640, mean=-0.548, std=1.356
-08/24/2025 17:29:08 - DEBUG - src.models.lisa_model - [SAM ViT] Converting input from torch.float32 to torch.float32
-08/24/2025 17:29:08 - DEBUG - src.models.lisa_model - [SAM OUTPUT] shape=torch.Size([2, 256, 64, 64]), dtype=torch.float32
-08/24/2025 17:29:08 - DEBUG - src.models.lisa_model - [SAM OUTPUT] min=-7.845, max=8.500, mean=0.028, std=0.900
-08/24/2025 17:29:08 - DEBUG - src.models.lisa_model - [FUSION] Fusing Qwen features torch.Size([2, 256, 14, 14]) with SAM features torch.Size([2, 256, 64, 64])
-08/24/2025 17:29:08 - DEBUG - src.models.lisa_model - [FUSION] Resized Qwen features to torch.Size([2, 256, 64, 64])
-08/24/2025 17:29:08 - DEBUG - src.models.lisa_model - [FUSION] Using image_fusion_beta=0.0000, scaled=0.5000
-08/24/2025 17:29:08 - DEBUG - src.models.lisa_model - [FUSION] Created fused embeddings with shape: torch.Size([2, 256, 64, 64]), dtype: torch.float32
-08/24/2025 17:29:08 - DEBUG - src.models.lisa_model - [HIGH RES] Generating high-res features from embeddings shape: torch.Size([2, 256, 64, 64]), dtype: torch.float32
-08/24/2025 17:29:08 - DEBUG - src.models.lisa_model - [HIGH RES] use_token_fpn = True
-08/24/2025 17:29:08 - DEBUG - src.models.lisa_model - [HIGH RES] Converting features from torch.float32 to FPN dtype torch.bfloat16
-08/24/2025 17:29:08 - DEBUG - src.models.lisa_model - [HIGH RES] Generated fused high-res features: s0=torch.Size([2, 256, 256, 256]), s1=torch.Size([2, 256, 128, 128])
-08/24/2025 17:29:08 - DEBUG - src.models.lisa_model - [MASK GEN] Total seg_positions: [[229], [225]]
-08/24/2025 17:29:08 - DEBUG - src.models.lisa_model - [MASK GEN] Total batches: 2
-08/24/2025 17:29:08 - DEBUG - src.models.lisa_model - [MASK GEN] Batch 0: seg_positions = [229]
-08/24/2025 17:29:08 - DEBUG - src.models.lisa_model - [MASK GEN] image_features_sam shape: torch.Size([2, 256, 64, 64])
-08/24/2025 17:29:08 - DEBUG - src.models.lisa_model - [MASK GEN] Batch 0: Processing 1 SEG tokens
-08/24/2025 17:29:08 - DEBUG - src.models.lisa_model - [MASK GEN] Batch 0, SEG 0: Starting mask generation
-08/24/2025 17:29:08 - DEBUG - src.models.lisa_model - [CENTROID] Batch 0, SEG 0: Computed centroid from GT mask - x=482.8, y=111.1 (image center would be 512, 512)
-08/24/2025 17:29:08 - DEBUG - src.models.lisa_model - [MASK GEN] Batch 1: seg_positions = [225]
-08/24/2025 17:29:08 - DEBUG - src.models.lisa_model - [MASK GEN] image_features_sam shape: torch.Size([2, 256, 64, 64])
-08/24/2025 17:29:08 - DEBUG - src.models.lisa_model - [MASK GEN] Batch 1: Processing 1 SEG tokens
-08/24/2025 17:29:08 - DEBUG - src.models.lisa_model - [MASK GEN] Batch 1, SEG 0: Starting mask generation
-08/24/2025 17:29:08 - DEBUG - src.models.lisa_model - [CENTROID] Batch 1, SEG 0: Computed centroid from GT mask - x=534.7, y=345.4 (image center would be 512, 512)
-08/24/2025 17:29:08 - DEBUG - __main__ - pred_mask shape: torch.Size([1, 392, 392])
-08/24/2025 17:29:08 - DEBUG - __main__ - gt_mask shape: torch.Size([1, 1024, 1024])
-08/24/2025 17:29:08 - DEBUG - __main__ - Warning: Mask size mismatch - pred: (392, 392), gt: (1024, 1024). This should not happen after fixes.
-08/24/2025 17:29:08 - DEBUG - __main__ - pred_mask shape: torch.Size([1, 392, 392])
-08/24/2025 17:29:08 - DEBUG - __main__ - gt_mask shape: torch.Size([1, 1024, 1024])
-08/24/2025 17:29:08 - DEBUG - __main__ - Warning: Mask size mismatch - pred: (392, 392), gt: (1024, 1024). This should not happen after fixes.
-Epoch 1/2:  70%|█████████████████████▋         | 7/10 [01:35<00:44, 14.80s/it, loss=15.0330, lm=13.2500, seg=1.7830, lr=1.00e-03, β=0.502]08/24/2025 17:29:08 - DEBUG - __main__ - Calling save_visualization at step 8
-08/24/2025 17:29:08 - DEBUG - __main__ - Skipping visualization at step 8 (not a visualization step)
-Epoch 1/2:  80%|████████████████████████▊      | 8/10 [01:35<00:20, 10.50s/it, loss=15.0330, lm=13.2500, seg=1.7830, lr=1.00e-03, β=0.502]08/24/2025 17:29:08 - DEBUG - PIL.PngImagePlugin - STREAM b'IHDR' 16 13
-08/24/2025 17:29:08 - DEBUG - PIL.PngImagePlugin - STREAM b'IDAT' 41 2250
-08/24/2025 17:29:08 - DEBUG - PIL.PngImagePlugin - STREAM b'IHDR' 16 13
-08/24/2025 17:29:08 - DEBUG - PIL.PngImagePlugin - STREAM b'tIME' 41 7
-08/24/2025 17:29:08 - DEBUG - PIL.PngImagePlugin - b'tIME' 41 7 (unknown)
-08/24/2025 17:29:08 - DEBUG - PIL.PngImagePlugin - STREAM b'IDAT' 60 1288
-08/24/2025 17:29:08 - DEBUG - __main__ - Batch 8: img_tokens=1024, txt_tokens=295, total=1319
-08/24/2025 17:29:08 - DEBUG - __main__ - pixel_values shape: torch.Size([2, 1024, 1176])
-08/24/2025 17:29:08 - DEBUG - __main__ - input_ids shape: torch.Size([2, 295])
-08/24/2025 17:29:08 - DEBUG - __main__ - sam_images shape: torch.Size([2, 3, 1024, 1024])
-08/24/2025 17:29:08 - DEBUG - __main__ - image_grid_thw: tensor([[ 1, 32, 32],
-        [ 1, 32, 32]], device='cuda:0')
-🔥[MODEL] Forward pass - sam_images: torch.Size([2, 3, 1024, 1024])
-08/24/2025 17:29:08 - DEBUG - src.models.lisa_model - [FORWARD] Starting forward pass
-08/24/2025 17:29:08 - DEBUG - src.models.lisa_model -   input_ids: torch.Size([2, 295])
-08/24/2025 17:29:08 - DEBUG - src.models.lisa_model -   pixel_values: torch.Size([2, 1024, 1176])
-08/24/2025 17:29:08 - DEBUG - src.models.lisa_model -   image_grid_thw: tensor([[ 1, 32, 32],
-        [ 1, 32, 32]], device='cuda:0')
-08/24/2025 17:29:08 - DEBUG - src.models.lisa_model -   sam_images: torch.Size([2, 3, 1024, 1024])
-08/24/2025 17:29:08 - DEBUG - src.models.lisa_model -   labels: torch.Size([2, 295])
-08/24/2025 17:29:08 - DEBUG - src.models.lisa_model -   mask_labels: <class 'list'> with 2
-08/24/2025 17:29:08 - DEBUG - src.models.lisa_model - [FORWARD] Running Qwen forward pass...
-08/24/2025 17:29:09 - DEBUG - src.models.lisa_model - [FORWARD] Qwen outputs - logits: torch.Size([2, 295, 151936]), hidden_states: torch.Size([2, 295, 2048])
-08/24/2025 17:29:09 - DEBUG - src.models.lisa_model - [FORWARD] Extracting Qwen vision features...
-08/24/2025 17:29:09 - DEBUG - src.models.lisa_model - [extract_vision_features] Start - pixel_values shape: torch.Size([2, 1024, 1176]), image_grid_thw shape: torch.Size([2, 3])
-08/24/2025 17:29:09 - DEBUG - src.models.lisa_model - [extract_vision_features] End - vision_features shape: torch.Size([2, 256, 2048]), dtype: torch.bfloat16
-08/24/2025 17:29:09 - DEBUG - src.models.lisa_model - [SAM ViT] Processing SAM images with shape: torch.Size([2, 3, 1024, 1024]), dtype: torch.float32
-08/24/2025 17:29:09 - DEBUG - src.models.lisa_model - [SAM INPUT] min=-2.118, max=2.640, mean=0.286, std=1.312
-08/24/2025 17:29:09 - DEBUG - src.models.lisa_model - [SAM ViT] Converting input from torch.float32 to torch.float32
-08/24/2025 17:29:09 - DEBUG - src.models.lisa_model - [SAM OUTPUT] shape=torch.Size([2, 256, 64, 64]), dtype=torch.float32
-08/24/2025 17:29:09 - DEBUG - src.models.lisa_model - [SAM OUTPUT] min=-7.715, max=8.246, mean=0.029, std=0.907
-08/24/2025 17:29:09 - DEBUG - src.models.lisa_model - [FUSION] Fusing Qwen features torch.Size([2, 256, 16, 16]) with SAM features torch.Size([2, 256, 64, 64])
-08/24/2025 17:29:09 - DEBUG - src.models.lisa_model - [FUSION] Resized Qwen features to torch.Size([2, 256, 64, 64])
-08/24/2025 17:29:09 - DEBUG - src.models.lisa_model - [FUSION] Using image_fusion_beta=0.0000, scaled=0.5000
-08/24/2025 17:29:09 - DEBUG - src.models.lisa_model - [FUSION] Created fused embeddings with shape: torch.Size([2, 256, 64, 64]), dtype: torch.float32
-08/24/2025 17:29:09 - DEBUG - src.models.lisa_model - [HIGH RES] Generating high-res features from embeddings shape: torch.Size([2, 256, 64, 64]), dtype: torch.float32
-08/24/2025 17:29:09 - DEBUG - src.models.lisa_model - [HIGH RES] use_token_fpn = True
-08/24/2025 17:29:09 - DEBUG - src.models.lisa_model - [HIGH RES] Converting features from torch.float32 to FPN dtype torch.bfloat16
-08/24/2025 17:29:09 - DEBUG - src.models.lisa_model - [HIGH RES] Generated fused high-res features: s0=torch.Size([2, 256, 256, 256]), s1=torch.Size([2, 256, 128, 128])
-08/24/2025 17:29:09 - DEBUG - src.models.lisa_model - [MASK GEN] Total seg_positions: [[291], [289]]
-08/24/2025 17:29:09 - DEBUG - src.models.lisa_model - [MASK GEN] Total batches: 2
-08/24/2025 17:29:09 - DEBUG - src.models.lisa_model - [MASK GEN] Batch 0: seg_positions = [291]
-08/24/2025 17:29:09 - DEBUG - src.models.lisa_model - [MASK GEN] image_features_sam shape: torch.Size([2, 256, 64, 64])
-08/24/2025 17:29:09 - DEBUG - src.models.lisa_model - [MASK GEN] Batch 0: Processing 1 SEG tokens
-08/24/2025 17:29:09 - DEBUG - src.models.lisa_model - [MASK GEN] Batch 0, SEG 0: Starting mask generation
-08/24/2025 17:29:09 - DEBUG - src.models.lisa_model - [CENTROID] Batch 0, SEG 0: Computed centroid from GT mask - x=494.0, y=824.2 (image center would be 512, 512)
-08/24/2025 17:29:09 - DEBUG - src.models.lisa_model - [MASK GEN] Batch 1: seg_positions = [289]
-08/24/2025 17:29:09 - DEBUG - src.models.lisa_model - [MASK GEN] image_features_sam shape: torch.Size([2, 256, 64, 64])
-08/24/2025 17:29:09 - DEBUG - src.models.lisa_model - [MASK GEN] Batch 1: Processing 1 SEG tokens
-08/24/2025 17:29:09 - DEBUG - src.models.lisa_model - [MASK GEN] Batch 1, SEG 0: Starting mask generation
-08/24/2025 17:29:09 - DEBUG - src.models.lisa_model - [CENTROID] Batch 1, SEG 0: Computed centroid from GT mask - x=520.0, y=544.7 (image center would be 512, 512)
-08/24/2025 17:29:09 - DEBUG - __main__ - pred_mask shape: torch.Size([1, 448, 448])
-08/24/2025 17:29:09 - DEBUG - __main__ - gt_mask shape: torch.Size([1, 1024, 1024])
-08/24/2025 17:29:09 - DEBUG - __main__ - Warning: Mask size mismatch - pred: (448, 448), gt: (1024, 1024). This should not happen after fixes.
-08/24/2025 17:29:09 - DEBUG - __main__ - pred_mask shape: torch.Size([1, 448, 448])
-08/24/2025 17:29:09 - DEBUG - __main__ - gt_mask shape: torch.Size([1, 1024, 1024])
-08/24/2025 17:29:09 - DEBUG - __main__ - Warning: Mask size mismatch - pred: (448, 448), gt: (1024, 1024). This should not happen after fixes.
-Epoch 1/2:  80%|████████████████████████▊      | 8/10 [01:37<00:20, 10.50s/it, loss=15.3756, lm=12.2500, seg=3.1256, lr=1.00e-03, β=0.502]08/24/2025 17:29:09 - DEBUG - __main__ - Calling save_visualization at step 9
-08/24/2025 17:29:09 - DEBUG - __main__ - Skipping visualization at step 9 (not a visualization step)
-Epoch 1/2:  90%|███████████████████████████▉   | 9/10 [01:37<00:07,  7.65s/it, loss=15.3756, lm=12.2500, seg=3.1256, lr=1.00e-03, β=0.502]08/24/2025 17:29:09 - DEBUG - __main__ - Batch 9: img_tokens=1024, txt_tokens=430, total=1454
-08/24/2025 17:29:09 - DEBUG - __main__ - pixel_values shape: torch.Size([2, 1024, 1176])
-08/24/2025 17:29:09 - DEBUG - __main__ - input_ids shape: torch.Size([2, 430])
-08/24/2025 17:29:09 - DEBUG - __main__ - sam_images shape: torch.Size([2, 3, 1024, 1024])
-08/24/2025 17:29:09 - DEBUG - __main__ - image_grid_thw: tensor([[ 1, 32, 32],
-        [ 1, 32, 32]], device='cuda:0')
-🔥[MODEL] Forward pass - sam_images: torch.Size([2, 3, 1024, 1024])
-08/24/2025 17:29:09 - DEBUG - src.models.lisa_model - [FORWARD] Starting forward pass
-08/24/2025 17:29:09 - DEBUG - src.models.lisa_model -   input_ids: torch.Size([2, 430])
-08/24/2025 17:29:09 - DEBUG - src.models.lisa_model -   pixel_values: torch.Size([2, 1024, 1176])
-08/24/2025 17:29:09 - DEBUG - src.models.lisa_model -   image_grid_thw: tensor([[ 1, 32, 32],
-        [ 1, 32, 32]], device='cuda:0')
-08/24/2025 17:29:09 - DEBUG - src.models.lisa_model -   sam_images: torch.Size([2, 3, 1024, 1024])
-08/24/2025 17:29:09 - DEBUG - src.models.lisa_model -   labels: torch.Size([2, 430])
-08/24/2025 17:29:09 - DEBUG - src.models.lisa_model -   mask_labels: <class 'list'> with 2
-08/24/2025 17:29:09 - DEBUG - src.models.lisa_model - [FORWARD] Running Qwen forward pass...
-08/24/2025 17:29:10 - DEBUG - src.models.lisa_model - [FORWARD] Qwen outputs - logits: torch.Size([2, 430, 151936]), hidden_states: torch.Size([2, 430, 2048])
-08/24/2025 17:29:10 - DEBUG - src.models.lisa_model - [FORWARD] Extracting Qwen vision features...
-08/24/2025 17:29:10 - DEBUG - src.models.lisa_model - [extract_vision_features] Start - pixel_values shape: torch.Size([2, 1024, 1176]), image_grid_thw shape: torch.Size([2, 3])
-08/24/2025 17:29:10 - DEBUG - src.models.lisa_model - [extract_vision_features] End - vision_features shape: torch.Size([2, 256, 2048]), dtype: torch.bfloat16
-08/24/2025 17:29:10 - DEBUG - src.models.lisa_model - [SAM ViT] Processing SAM images with shape: torch.Size([2, 3, 1024, 1024]), dtype: torch.float32
-08/24/2025 17:29:10 - DEBUG - src.models.lisa_model - [SAM INPUT] min=-2.118, max=2.640, mean=-1.315, std=1.109
-08/24/2025 17:29:10 - DEBUG - src.models.lisa_model - [SAM ViT] Converting input from torch.float32 to torch.float32
-08/24/2025 17:29:10 - DEBUG - src.models.lisa_model - [SAM OUTPUT] shape=torch.Size([2, 256, 64, 64]), dtype=torch.float32
-08/24/2025 17:29:11 - DEBUG - src.models.lisa_model - [SAM OUTPUT] min=-7.628, max=7.868, mean=0.030, std=0.890
-08/24/2025 17:29:11 - DEBUG - src.models.lisa_model - [FUSION] Fusing Qwen features torch.Size([2, 256, 16, 16]) with SAM features torch.Size([2, 256, 64, 64])
-08/24/2025 17:29:11 - DEBUG - src.models.lisa_model - [FUSION] Resized Qwen features to torch.Size([2, 256, 64, 64])
-08/24/2025 17:29:11 - DEBUG - src.models.lisa_model - [FUSION] Using image_fusion_beta=0.0000, scaled=0.5000
-08/24/2025 17:29:11 - DEBUG - src.models.lisa_model - [FUSION] Created fused embeddings with shape: torch.Size([2, 256, 64, 64]), dtype: torch.float32
-08/24/2025 17:29:11 - DEBUG - src.models.lisa_model - [HIGH RES] Generating high-res features from embeddings shape: torch.Size([2, 256, 64, 64]), dtype: torch.float32
-08/24/2025 17:29:11 - DEBUG - src.models.lisa_model - [HIGH RES] use_token_fpn = True
-08/24/2025 17:29:11 - DEBUG - src.models.lisa_model - [HIGH RES] Converting features from torch.float32 to FPN dtype torch.bfloat16
-08/24/2025 17:29:11 - DEBUG - src.models.lisa_model - [HIGH RES] Generated fused high-res features: s0=torch.Size([2, 256, 256, 256]), s1=torch.Size([2, 256, 128, 128])
-08/24/2025 17:29:11 - DEBUG - src.models.lisa_model - [MASK GEN] Total seg_positions: [[], [293]]
-08/24/2025 17:29:11 - DEBUG - src.models.lisa_model - [MASK GEN] Total batches: 2
-08/24/2025 17:29:11 - DEBUG - src.models.lisa_model - [MASK GEN] Batch 0: seg_positions = []
-08/24/2025 17:29:11 - DEBUG - src.models.lisa_model - [MASK GEN] image_features_sam shape: torch.Size([2, 256, 64, 64])
-08/24/2025 17:29:11 - DEBUG - src.models.lisa_model - [MASK GEN] Batch 1: seg_positions = [293]
-08/24/2025 17:29:11 - DEBUG - src.models.lisa_model - [MASK GEN] image_features_sam shape: torch.Size([2, 256, 64, 64])
-08/24/2025 17:29:11 - DEBUG - src.models.lisa_model - [MASK GEN] Batch 1: Processing 1 SEG tokens
-08/24/2025 17:29:11 - DEBUG - src.models.lisa_model - [MASK GEN] Batch 1, SEG 0: Starting mask generation
-08/24/2025 17:29:11 - DEBUG - src.models.lisa_model - [CENTROID] Batch 1, SEG 0: Computed centroid from GT mask - x=180.9, y=426.3 (image center would be 512, 512)
-08/24/2025 17:29:11 - DEBUG - __main__ - pred_mask shape: torch.Size([1, 448, 448])
-08/24/2025 17:29:11 - DEBUG - __main__ - gt_mask shape: torch.Size([1, 1024, 1024])
-08/24/2025 17:29:11 - DEBUG - __main__ - Warning: Mask size mismatch - pred: (448, 448), gt: (1024, 1024). This should not happen after fixes.
-Epoch 1/2:  90%|███████████████████████████▉   | 9/10 [01:38<00:07,  7.65s/it, loss=16.9225, lm=15.1875, seg=1.7350, lr=5.00e-04, β=0.503]08/24/2025 17:29:11 - DEBUG - __main__ - Calling save_visualization at step 10
-08/24/2025 17:29:11 - DEBUG - __main__ - Creating visualization at step 10 for sample 1
-08/24/2025 17:29:11 - DEBUG - __main__ - Using orig_hw from batch: (1024, 1024)
-08/24/2025 17:29:11 - DEBUG - __main__ - pred_mask shape before postprocess: torch.Size([1, 1, 448, 448]), orig_hw: (1024, 1024)
-08/24/2025 17:29:11 - ERROR - __main__ - Failed to create visualization at step 10: name 'F' is not defined
-08/24/2025 17:29:11 - ERROR - __main__ - Traceback (most recent call last):
-  File "/home/soya/SAM2_1_Qwen_2_5_Integration_2/minimal_train.py", line 1245, in save_visualization
-    pred_mask_processed = F.interpolate(
-                          ^
-NameError: name 'F' is not defined
-
-08/24/2025 17:29:11 - INFO - src.utils.checkpoint_io - Saving checkpoint to outputs/minimal_train_20250824_172700/checkpoints/step_10
-08/24/2025 17:29:11 - INFO - src.utils.checkpoint_io - Saved processor to outputs/minimal_train_20250824_172700/checkpoints/step_10/processor
-08/24/2025 17:29:12 - DEBUG - urllib3.connectionpool - https://huggingface.co:443 "HEAD /Qwen/Qwen2.5-VL-3B-Instruct/resolve/main/config.json HTTP/1.1" 307 0
-08/24/2025 17:29:12 - DEBUG - urllib3.connectionpool - https://huggingface.co:443 "HEAD /api/resolve-cache/models/Qwen/Qwen2.5-VL-3B-Instruct/66285546d2b821cf421d4f5eb2576359d3770cd3/config.json HTTP/1.1" 200 0
-08/24/2025 17:29:12 - DEBUG - urllib3.connectionpool - https://huggingface.co:443 "HEAD /Qwen/Qwen2.5-VL-3B-Instruct/resolve/main/config.json HTTP/1.1" 307 0
-08/24/2025 17:29:12 - DEBUG - urllib3.connectionpool - https://huggingface.co:443 "HEAD /api/resolve-cache/models/Qwen/Qwen2.5-VL-3B-Instruct/66285546d2b821cf421d4f5eb2576359d3770cd3/config.json HTTP/1.1" 200 0
-08/24/2025 17:29:12 - INFO - src.utils.checkpoint_io - Saved Qwen LoRA adapter
-08/24/2025 17:29:12 - INFO - src.utils.checkpoint_io - Saved SEG token embedding for ID 151665
-08/24/2025 17:29:12 - INFO - src.utils.checkpoint_io - Saved prompt_beta: 0.011000
-08/24/2025 17:29:12 - INFO - src.utils.checkpoint_io - Saved SAM LoRA weights: 54 tensors
-08/24/2025 17:29:12 - INFO - src.utils.checkpoint_io - Saved image_adapter
-08/24/2025 17:29:12 - INFO - src.utils.checkpoint_io - Saved text_prompt_proj
-08/24/2025 17:29:12 - INFO - src.utils.checkpoint_io - Saved token_fpn
-08/24/2025 17:29:12 - INFO - src.utils.checkpoint_io - Saved training state at step 10, epoch 0
-08/24/2025 17:29:12 - INFO - src.utils.checkpoint_io - Checkpoint saved successfully to outputs/minimal_train_20250824_172700/checkpoints/step_10
-08/24/2025 17:29:12 - INFO - __main__ - チェックポイント保存完了: outputs/minimal_train_20250824_172700/checkpoints/step_10
-08/24/2025 17:29:12 - INFO - __main__ - 🔍 チェックポイント step_10 の推論評価を開始...
-/home/soya/.local/lib/python3.12/site-packages/transformers/tokenization_utils_base.py:2714: UserWarning: `max_length` is ignored when `padding`=`True` and there is no truncation strategy. To pad to max length, use `padding='max_length'`.
-  warnings.warn(
-🔥[MODEL] Forward pass - sam_images: torch.Size([1, 3, 1024, 1024])
-08/24/2025 17:29:12 - DEBUG - src.models.lisa_model - [FORWARD] Starting forward pass
-08/24/2025 17:29:12 - DEBUG - src.models.lisa_model -   input_ids: torch.Size([1, 2783])
-08/24/2025 17:29:12 - DEBUG - src.models.lisa_model -   pixel_values: torch.Size([11008, 1176])
-08/24/2025 17:29:12 - DEBUG - src.models.lisa_model -   image_grid_thw: tensor([[  1,  86, 128]], device='cuda:0')
-08/24/2025 17:29:12 - DEBUG - src.models.lisa_model -   sam_images: torch.Size([1, 3, 1024, 1024])
-08/24/2025 17:29:12 - DEBUG - src.models.lisa_model -   labels: None
-08/24/2025 17:29:12 - DEBUG - src.models.lisa_model -   mask_labels: <class 'NoneType'> with None
-08/24/2025 17:29:12 - DEBUG - src.models.lisa_model - [FORWARD] Running Qwen forward pass...
-08/24/2025 17:29:57 - DEBUG - src.models.lisa_model - [FORWARD] Qwen outputs - logits: torch.Size([1, 2783, 151936]), hidden_states: torch.Size([1, 2783, 2048])
-08/24/2025 17:29:57 - DEBUG - src.models.lisa_model - [FORWARD] Extracting Qwen vision features...
-08/24/2025 17:29:57 - DEBUG - src.models.lisa_model - [extract_vision_features] Start - pixel_values shape: torch.Size([11008, 1176]), image_grid_thw shape: torch.Size([1, 3])
-Epoch 1/2:  90%|███████████████████████████▉   | 9/10 [02:58<00:19, 19.87s/it, loss=16.9225, lm=15.1875, seg=1.7350, lr=5.00e-04, β=0.503]
-Traceback (most recent call last):
-  File "/home/soya/SAM2_1_Qwen_2_5_Integration_2/minimal_train.py", line 1966, in <module>
-    main()
-  File "/home/soya/SAM2_1_Qwen_2_5_Integration_2/minimal_train.py", line 1958, in main
-    trainer.train()
-  File "/home/soya/SAM2_1_Qwen_2_5_Integration_2/minimal_train.py", line 1824, in train
-    avg_loss = self.train_epoch(epoch)
-               ^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/soya/SAM2_1_Qwen_2_5_Integration_2/minimal_train.py", line 1118, in train_epoch
-    self.save_checkpoint(f"step_{self.global_step}")
-  File "/home/soya/SAM2_1_Qwen_2_5_Integration_2/minimal_train.py", line 1448, in save_checkpoint
-    self.run_inference_evaluation(save_path, name)
-  File "/home/soya/SAM2_1_Qwen_2_5_Integration_2/minimal_train.py", line 1485, in run_inference_evaluation
-    result = self.run_single_inference(
-             ^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/soya/SAM2_1_Qwen_2_5_Integration_2/minimal_train.py", line 1665, in run_single_inference
-    outputs = self.model(
-              ^^^^^^^^^^^
-  File "/home/soya/.local/lib/python3.12/site-packages/torch/nn/modules/module.py", line 1773, in _wrapped_call_impl
-    return self._call_impl(*args, **kwargs)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/soya/.local/lib/python3.12/site-packages/torch/nn/modules/module.py", line 1784, in _call_impl
-    return forward_call(*args, **kwargs)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/soya/SAM2_1_Qwen_2_5_Integration_2/src/models/lisa_model.py", line 813, in forward
-    vision_features = self.extract_vision_features(pixel_values, image_grid_thw)
-                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/soya/SAM2_1_Qwen_2_5_Integration_2/src/models/lisa_model.py", line 639, in extract_vision_features
-    image_embeds = self.qwen.model.model.get_image_features(pixel_values, image_grid_thw)
-                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/soya/.local/lib/python3.12/site-packages/transformers/models/qwen2_5_vl/modeling_qwen2_5_vl.py", line 1614, in get_image_features
-    image_embeds = self.visual(pixel_values, grid_thw=image_grid_thw)
-                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/soya/.local/lib/python3.12/site-packages/torch/nn/modules/module.py", line 1773, in _wrapped_call_impl
-    return self._call_impl(*args, **kwargs)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/soya/.local/lib/python3.12/site-packages/torch/nn/modules/module.py", line 1784, in _call_impl
-    return forward_call(*args, **kwargs)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/soya/.local/lib/python3.12/site-packages/transformers/models/qwen2_5_vl/modeling_qwen2_5_vl.py", line 530, in forward
-    hidden_states = blk(hidden_states, cu_seqlens=cu_seqlens_now, position_embeddings=position_embeddings)
-                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/soya/.local/lib/python3.12/site-packages/torch/nn/modules/module.py", line 1773, in _wrapped_call_impl
-    return self._call_impl(*args, **kwargs)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/soya/.local/lib/python3.12/site-packages/torch/nn/modules/module.py", line 1784, in _call_impl
-    return forward_call(*args, **kwargs)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/soya/.local/lib/python3.12/site-packages/transformers/models/qwen2_5_vl/modeling_qwen2_5_vl.py", line 341, in forward
-    hidden_states = hidden_states + self.attn(
-                                    ^^^^^^^^^^
-  File "/home/soya/.local/lib/python3.12/site-packages/torch/nn/modules/module.py", line 1773, in _wrapped_call_impl
-    return self._call_impl(*args, **kwargs)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/soya/.local/lib/python3.12/site-packages/torch/nn/modules/module.py", line 1784, in _call_impl
-    return forward_call(*args, **kwargs)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/soya/.local/lib/python3.12/site-packages/transformers/models/qwen2_5_vl/modeling_qwen2_5_vl.py", line 257, in forward
-    attention_mask[..., cu_seqlens[i - 1] : cu_seqlens[i], cu_seqlens[i - 1] : cu_seqlens[i]] = 0
-    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-KeyboardInterrupt
-
-soya@DESKTOP-45J3R3T:~/SAM2_1_Qwen_2_5_Integration_2$ 
+08/24/2025 17:37:02 - DEBUG - src.models.lisa_model - [FORWARD] Starting forward pass
+08/24/2025 17:37:02 - DEBUG - src.models.lisa_model -   input_ids: torch.Size([1, 2783])
+08/24/2025 17:37:02 - DEBUG - src.models.lisa_model -   pixel_values: torch.Size([11008, 1176])
+08/24/2025 17:37:02 - DEBUG - src.models.lisa_model -   image_grid_thw: tensor([[  1,  86, 128]], device='cuda:0')
+08/24/2025 17:37:02 - DEBUG - src.models.lisa_model -   sam_images: torch.Size([1, 3, 1024, 1024])
+08/24/2025 17:37:02 - DEBUG - src.models.lisa_model -   labels: None
+08/24/2025 17:37:02 - DEBUG - src.models.lisa_model -   mask_labels: <class 'NoneType'> with None

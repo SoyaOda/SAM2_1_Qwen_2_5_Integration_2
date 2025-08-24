@@ -12,14 +12,25 @@ from src.data.dataset import HybridDataset
 from src.data.collators import MultiModalDataCollator
 from torch.utils.data import DataLoader
 
+# トークナイザーとプロセッサーをロード
+from transformers import AutoTokenizer, AutoProcessor
+
+tokenizer = AutoTokenizer.from_pretrained(
+    "Qwen/Qwen2.5-VL-3B-Instruct",
+    trust_remote_code=True
+)
+processor = AutoProcessor.from_pretrained(
+    "Qwen/Qwen2.5-VL-3B-Instruct",
+    trust_remote_code=True
+)
+
 # データセットの設定
 dataset = HybridDataset(
-    dataset_list=["sem_seg||ade20k"],
-    tokenizer=None,  # 後で設定
-    qwen_processor=None,  # 後で設定
-    num_classes_per_sample=1,
-    use_quality_score=False,
-    use_dynamic_resolution=True
+    base_image_dir="dataset",
+    qwen_processor=processor,
+    dataset="sem_seg",  # ADE20Kだけ使う
+    sem_seg_data="ade20k",
+    num_classes_per_sample=1
 )
 
 # 1サンプルだけ取得
