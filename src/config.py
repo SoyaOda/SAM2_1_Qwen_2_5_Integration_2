@@ -163,7 +163,7 @@ class LISAConfig:
     sem_seg_data: str = "ade20k||cocostuff"
     refer_seg_data: str = "refcoco||refcoco+||refcocog"
     vqa_data: str = "llava_instruct_150k"
-    reason_seg_data: str = "ReasonSeg|train"
+    reason_seg_data: str = "reason_seg/ReasonSeg|train"  # 正しいパスに修正
     
     # Token-FPN configuration
     use_token_fpn: bool = True  # Enable Token-FPN for multi-scale feature extraction
