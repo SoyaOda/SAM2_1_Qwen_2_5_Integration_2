@@ -875,6 +875,20 @@ class MinimalTrainer:
                 self.loss_history['seg_loss'].append(seg_loss.item() if torch.is_tensor(seg_loss) else seg_loss)
                 self.loss_history['learning_rate'].append(self.scheduler.get_last_lr()[0])
                 
+                # WandBログ（重要！）
+                if self.config.use_wandb:
+                    import wandb
+                    wandb.log({
+                        'train/loss': total_loss.item(),
+                        'train/lm_loss': lm_loss.item(),
+                        'train/seg_loss': seg_loss.item() if torch.is_tensor(seg_loss) else seg_loss,
+                        'train/learning_rate': self.scheduler.get_last_lr()[0],
+                        'train/epoch': epoch,
+                        'train/step': self.global_step,
+                        'train/beta': self.model.prompt_beta.item() if hasattr(self.model, 'prompt_beta') else 0.0,
+                        'train/image_fusion_beta': self.model.image_fusion_beta.item() if hasattr(self.model, 'image_fusion_beta') else 0.0
+                    }, step=self.global_step)
+                
                 # チェックポイント保存
                 if self.global_step % self.save_steps == 0:
                     self.save_checkpoint(self.global_step)
@@ -884,28 +898,38 @@ class MinimalTrainer:
                     if self.debug and logger.isEnabledFor(logging.DEBUG):
                         logger.debug(f"Calling save_visualization at step {self.global_step}")
                     self.save_visualization(batch, outputs, self.global_step)
-                elif self.debug and logger.isEnabledFor(logging.DEBUG) and mask_labels is None:
-                    logger.debug(f"Skipping save_visualization at step {self.global_step}: mask_labels not found or None")
             
-            # 統計更新
+            # 累積損失の計算
             epoch_loss += total_loss.item()
             epoch_lm_loss += lm_loss.item()
             epoch_seg_loss += seg_loss.item() if torch.is_tensor(seg_loss) else seg_loss
             
             # プログレスバー更新
             pbar.set_postfix({
-                'loss': f'{total_loss.item():.4f}',
-                'lm': f'{lm_loss.item():.4f}',
-                'seg': f'{seg_loss.item() if torch.is_tensor(seg_loss) else seg_loss:.4f}',
-                'lr': f'{self.scheduler.get_last_lr()[0]:.6f}'
+                'loss': f"{total_loss.item():.4f}",
+                'lm': f"{lm_loss.item():.4f}",
+                'seg': f"{seg_loss.item() if torch.is_tensor(seg_loss) else seg_loss:.4f}",
+                'lr': f"{self.scheduler.get_last_lr()[0]:.2e}"
             })
         
-        # エポック統計
-        avg_loss = epoch_loss / len(self.train_loader)
-        avg_lm_loss = epoch_lm_loss / len(self.train_loader)
-        avg_seg_loss = epoch_seg_loss / len(self.train_loader)
+        # エポック平均損失
+        num_batches = len(self.train_loader)
+        avg_loss = epoch_loss / num_batches
+        avg_lm_loss = epoch_lm_loss / num_batches  
+        avg_seg_loss = epoch_seg_loss / num_batches
         
-        logger.info(f"Epoch {epoch+1} - Avg Loss: {avg_loss:.4f}, LM: {avg_lm_loss:.4f}, Seg: {avg_seg_loss:.4f}")
+        logger.info(f"Epoch {epoch+1}/{self.num_epochs} - Avg Loss: {avg_loss:.4f} "
+                   f"(LM: {avg_lm_loss:.4f}, Seg: {avg_seg_loss:.4f})")
+        
+        # WandBにエポック平均もログ
+        if self.config.use_wandb:
+            import wandb
+            wandb.log({
+                'epoch/avg_loss': avg_loss,
+                'epoch/avg_lm_loss': avg_lm_loss,
+                'epoch/avg_seg_loss': avg_seg_loss,
+                'epoch/number': epoch + 1
+            }, step=self.global_step)
         
         return avg_loss
 
