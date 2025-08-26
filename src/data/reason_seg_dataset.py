@@ -113,11 +113,7 @@ class ReasonSegDataset(torch.utils.data.Dataset):
         ori_size = image.shape[:2]
 
         # デュアルエンコーダ対応: Qwen用とSAM用の画像前処理
-        # Qwen用画像前処理（448x448）
-        image_for_qwen = cv2.resize(image, (448, 448))
-        image_for_qwen = torch.from_numpy(image_for_qwen).permute(2, 0, 1).float() / 255.0
-        
-        # SAM用画像前処理（1024x1024）
+        # SAM用画像前処理（1024x1024、アスペクト比維持）
         # ResizeLongestSideの代わりにcv2.resizeを使用
         scale = self.image_size / max(image.shape[:2])
         new_h = int(image.shape[0] * scale)
@@ -134,9 +130,39 @@ class ReasonSegDataset(torch.utils.data.Dataset):
         
         resize = image_for_sam.shape[:2]
         image_for_sam = self.preprocess(torch.from_numpy(image_for_sam).permute(2, 0, 1).contiguous())
+        
+        # Qwen用画像前処理（448x448、アスペクト比維持に変更）
+        # アスペクト比を維持したリサイズ
+        scale_qwen = 448 / max(image.shape[:2])
+        new_h_qwen = int(image.shape[0] * scale_qwen)
+        new_w_qwen = int(image.shape[1] * scale_qwen)
+        image_for_qwen = cv2.resize(image, (new_w_qwen, new_h_qwen))
+        
+        # 14の倍数にパディング
+        pad_h_qwen = (-new_h_qwen) % 14
+        pad_w_qwen = (-new_w_qwen) % 14
+        top, bottom = pad_h_qwen // 2, pad_h_qwen - pad_h_qwen // 2
+        left, right = pad_w_qwen // 2, pad_w_qwen - pad_w_qwen // 2
+        
+        image_for_qwen = cv2.copyMakeBorder(
+            image_for_qwen, top, bottom, left, right, 
+            cv2.BORDER_CONSTANT, value=(0, 0, 0)
+        )
+        
+        image_for_qwen = torch.from_numpy(image_for_qwen).permute(2, 0, 1).float() / 255.0
 
         # マスクとテキストの取得（オリジナル準拠）
         mask, sents, is_sentence = get_mask_from_json(json_path, image)
+        
+        # マスクをSAM画像と同じ変換で処理（修正点）
+        if mask is not None:
+            # アスペクト比維持リサイズ
+            mask_resized = cv2.resize(mask.astype(np.float32), (new_w, new_h), interpolation=cv2.INTER_NEAREST)
+            # パディング（SAM画像と同じ）
+            mask_padded = np.zeros((self.image_size, self.image_size), dtype=np.float32)
+            mask_padded[:h, :w] = mask_resized
+            mask = mask_padded
+        
         # 1会話1マスクに統一 - 1つの説明のみを選択
         if len(sents) > 0:
             sampled_inds = [np.random.choice(len(sents))]
@@ -202,14 +228,15 @@ class ReasonSegDataset(torch.utils.data.Dataset):
             ]
             conversations.append(messages)
 
-        # マスクの処理
+        # マスクの処理（SAMと同じ座標系に統一済み）
         if len(sampled_masks) > 0:
             masks = np.stack(sampled_masks, axis=0)
             masks = torch.from_numpy(masks)
         else:
-            masks = torch.zeros(1, *ori_size)
+            # SAMサイズのゼロマスク
+            masks = torch.zeros(1, self.image_size, self.image_size)
 
-        label = torch.ones(ori_size) * self.ignore_label
+        label = torch.ones((self.image_size, self.image_size)) * self.ignore_label
 
         # オリジナルLISA準拠の返り値形式（9要素）
         return (
@@ -217,7 +244,7 @@ class ReasonSegDataset(torch.utils.data.Dataset):
             image_for_sam,     # 1: SAM用前処理済み画像 (torch.Tensor)
             image_for_qwen,   # 2: Qwen用前処理済み画像 (torch.Tensor)
             conversations,     # 3: 会話形式のテキスト (List[str])
-            masks,             # 4: マスク (torch.Tensor)
+            masks,             # 4: マスク (torch.Tensor) - SAMと同じ変換適用済み
             label,             # 5: ラベル (torch.Tensor)
             resize,            # 6: リサイズ情報 (Tuple)
             questions,         # 7: 質問リスト (List[str])
