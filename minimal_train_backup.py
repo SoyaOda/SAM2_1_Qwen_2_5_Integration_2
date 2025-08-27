@@ -332,15 +332,29 @@ class MinimalTrainer:
         logger.info(f"データセットタイプ: {dataset_types}")
         logger.info(f"サンプルレート: {sample_rates}")
         
-        self.train_dataset = HybridDataset(
-            base_image_dir=data_dir,
-            qwen_processor=self.processor,
-            samples_per_epoch=self.config.samples_per_epoch,
-            dataset='||'.join(dataset_types),
-            sample_rate=sample_rates,
-            qwen_image_size=self.lisa_config.qwen_image_size,
-            sam_image_size=self.lisa_config.sam_image_size,
-        )
+        # データセットタイプを個別のパラメータに変換
+        dataset_params = {
+            'base_image_dir': data_dir,
+            'qwen_processor': self.processor,
+            'samples_per_epoch': self.config.samples_per_epoch,
+            'sample_rate': sample_rates,
+            'qwen_image_size': self.lisa_config.qwen_image_size,
+            'sam_image_size': self.lisa_config.sam_image_size,
+        }
+        
+        # 各データセットタイプを個別に設定
+        for dt in dataset_types:
+            if dt == 'sem_seg':
+                dataset_params['sem_seg_data'] = 'ade20k||cocostuff||partimagenet||pascal_part||paco_lvis||mapillary'
+            elif dt == 'refer_seg':
+                dataset_params['refer_seg_data'] = 'refclef||refcoco||refcoco+||refcocog'
+            elif dt == 'vqa':
+                dataset_params['vqa_data'] = 'llava_instruct_150k'
+            elif dt == 'reason_seg':
+                dataset_params['reason_seg_data'] = 'reason_seg/ReasonSeg|train'
+        
+        # データセットの作成
+        self.train_dataset = HybridDataset(**dataset_params)
         
         # DataLoaderの作成
         self.collator = MultiModalDataCollator(
@@ -884,10 +898,16 @@ class MinimalTrainer:
         # SAM座標系のサイズ（1024x1024）
         sam_size = 1024
         
-        if outputs.mask_logits is not None:
+        if outputs.mask_logits is not None and mask_labels is not None:
             for batch_idx, batch_masks in enumerate(outputs.mask_logits):
                 if batch_masks is not None and len(batch_masks) > 0:
+                    # mask_labelsがバッチ内に存在し、該当インデックスのマスクも存在する場合のみ処理
+                    if batch_idx >= len(mask_labels):
+                        continue
                     gt_mask = mask_labels[batch_idx]
+                    if gt_mask is None:
+                        # VQAなどマスクがないタスクの場合はスキップ
+                        continue
                     
                     # 1会話1マスクなので、最初のマスクのみを使用
                     pred_mask = batch_masks[0] if isinstance(batch_masks, list) else batch_masks
@@ -1165,10 +1185,17 @@ class MinimalTrainer:
                 logger.debug(f"Skipping visualization at step {step} (not a visualization step)")
                 return
             
-            # マスクを持つサンプルを探す
+            # has_maskフラグをチェックしてセグメンテーションサンプルを探す
             valid_idx = None
+            has_mask_list = batch.get('has_mask', [])
+            
             if hasattr(outputs, 'mask_logits') and outputs.mask_logits is not None:
                 for i in range(len(outputs.mask_logits)):
+                    # has_maskフラグを確認
+                    if i < len(has_mask_list) and not has_mask_list[i]:
+                        # VQAサンプルの場合はスキップ
+                        continue
+                    
                     if outputs.mask_logits[i] is not None:
                         # 有効なマスクを持つ最初のサンプルを使用
                         valid_idx = i
@@ -1176,7 +1203,7 @@ class MinimalTrainer:
             
             # マスク出力がない場合はスキップ
             if valid_idx is None:
-                logger.debug(f"No valid mask outputs found at step {step}")
+                logger.debug(f"No valid mask outputs found at step {step} (might be VQA-only batch)")
                 return
             
             # SAM imagesがない場合はスキップ
@@ -1303,8 +1330,15 @@ class MinimalTrainer:
             if 'mask_labels' in batch and batch['mask_labels'] is not None:
                 if torch.is_tensor(batch['mask_labels']):
                     # mask_labelsがテンソルの場合
+                    # VQAとセグメンテーションが混在する場合、mask_labelsのサイズがバッチサイズより小さい可能性
                     if batch['mask_labels'].dim() >= 3:  # [B, ...]の形式
-                        gt_mask = batch['mask_labels'][valid_idx]
+                        # mask_labelsのバッチサイズを確認
+                        mask_batch_size = batch['mask_labels'].shape[0]
+                        if valid_idx < mask_batch_size:
+                            gt_mask = batch['mask_labels'][valid_idx]
+                        else:
+                            # VQAサンプルの場合、マスクがない
+                            logger.debug(f"No mask for sample {valid_idx} (likely VQA sample)")
                     else:
                         logger.warning(f"Unexpected mask_labels shape: {batch['mask_labels'].shape}")
                 elif isinstance(batch['mask_labels'], list):

@@ -37,8 +37,8 @@ FoodLMM改や最終目標モデルは将来的な目標なので、一旦は事�
 
 [命令]
 上記の方針で実装を進めてきた。
-事前タスク：詳細はminimal_train.py（学習Script）, test_inference_v2.py（推論Script）とその関連ファイルを全て読んで統合モデルの詳細を把握して。
-本番タスク：md_files/current/sam_vit_sigma_add_fusion20250814.mdを参考にして実装を進めて
+事前タスク：詳細はminimal_train_backup.pyとその関連ファイルを全て読んで統合モデルの詳細を把握して。
+本番タスク：md_files/current/improve_preprocessing_spec.mdを参考にして実装を進めて
 
 
 ※作業の途中で不適切なコードや冗長なコードを発見したら報告して修正すること。
