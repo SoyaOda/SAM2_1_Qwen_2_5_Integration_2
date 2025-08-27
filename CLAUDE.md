@@ -35,16 +35,10 @@ FoodLMM改や最終目標モデルは将来的な目標なので、一旦は事�
 ・おおまかな方針として、Qwen2.5-VLは高度なViTを持っているらしいので、既存のQwenの能力を活用すべく、Qwen2.5-VLベースに、SAM2.1のマスクデコーダー, プロンプトエンコーダーを必要部分にアダプターなどを用いて統合する方針（LISAを参考にこの実装方針を採用）
 
 
-<<<<<<< Updated upstream
 [命令]
 上記の方針で実装を進めてきた。
-事前タスク：詳細はminimal_train.py（学習Script）, test_inference_v2.py（推論Script）とその関連ファイル、md_files/current/sam_vit_sigma_add_fusion20250814.md、test_sam_vit_fusion.pyやその関連ファイルを全て読んで統合モデルの詳細を把握して。
-本番タスク：現状md_files/current/sam_vit_sigma_add_fusion20250814.mdの実装が終わり、test_sam_vit_fusion.pyでTestが完了したところである。SAM2.1のViTの統合方法として、sigma_add_fusionの代わりに、Cross Attentionを用いた統合方法も選べるようにしたい。md_files/current/sam_vit_cross_attention20250814.mdを参考に実装を進めていって。
-=======
-
->>>>>>> Stashed changes
-
-※統合においてモデルの詳細が知りたいときは、sam_vit_sigma_add_fusion20250814.mdで実装した部分、特にtest_sam_vit_fusion.pyとその関連ファイルが参考になるかもしれない。
+事前タスク：詳細はminimal_train_backup.pyとその関連ファイルを全て読んで統合モデルの詳細を把握して。
+本番タスク：md_files/current/improve_preprocessing_spec.mdを参考にして実装を進めて
 
 ※作業の途中で不適切なコードや冗長なコードを発見したら報告して修正すること。
 

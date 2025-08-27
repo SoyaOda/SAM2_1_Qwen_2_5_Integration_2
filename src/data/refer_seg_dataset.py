@@ -195,7 +195,7 @@ class ReferSegDataset(torch.utils.data.Dataset):
         image = cv2.imread(image_path)
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
         
-        # 座標変換システムの初期化
+        # 元画像サイズを記録
         orig_h, orig_w = image.shape[:2]
         coord_transform = CoordinateTransform(orig_size=(orig_h, orig_w))
 
@@ -228,25 +228,9 @@ class ReferSegDataset(torch.utils.data.Dataset):
         qwen_std = torch.tensor([0.26862954, 0.26130258, 0.27577711]).view(3, 1, 1)
         image_for_qwen = (image_for_qwen - qwen_mean) / qwen_std
 
-        # SAM用の前処理（1024x1024）
-        # ResizeLongestSideの代わりにcv2.resizeを使用
-        sam_size = 1024
-        scale = sam_size / max(image.shape[:2])
-        new_h = int(image.shape[0] * scale)
-        new_w = int(image.shape[1] * scale)
-        # 補間方法を明示（縮小時はINTER_AREA、拡大時はINTER_LINEAR）
-        interpolation = cv2.INTER_AREA if scale < 1 else cv2.INTER_LINEAR
-        image_for_sam = cv2.resize(image, (new_w, new_h), interpolation=interpolation)
-        
-        # パディングして正方形にする（32の倍数を考慮）
-        h, w = image_for_sam.shape[:2]
-        pad_h = sam_size - h
-        pad_w = sam_size - w
-        image_for_sam = cv2.copyMakeBorder(
-            image_for_sam, 0, pad_h, 0, pad_w, cv2.BORDER_CONSTANT, value=(0, 0, 0)
-        )
-        
-        resize = image_for_sam.shape[:2]
+        # SAM用の前処理（1024x1024） - apply_sam_transform_to_imageを使用
+        from src.transforms.geometry import apply_sam_transform_to_image, apply_sam_transform_to_mask
+        image_for_sam, sam_meta = apply_sam_transform_to_image(image)
         
         # テンソル化と正規化（SAM2.1の正しいパラメータ）
         image_for_sam = torch.from_numpy(image_for_sam).permute(2, 0, 1).float() / 255.0
@@ -254,6 +238,9 @@ class ReferSegDataset(torch.utils.data.Dataset):
         sam_mean = torch.tensor([0.485, 0.456, 0.406]).view(3, 1, 1)
         sam_std = torch.tensor([0.229, 0.224, 0.225]).view(3, 1, 1)
         image_for_sam = (image_for_sam - sam_mean) / sam_std
+        
+        # resize情報を保存（SAM変換後のサイズ）
+        resize = (sam_meta.new_h, sam_meta.new_w)
 
         # 質問と回答の生成
         questions = []
@@ -311,12 +298,16 @@ class ReferSegDataset(torch.utils.data.Dataset):
                             m = m.astype(np.uint8)
                         m_final = m_final | m
                     m = m_final
+                # マスクにもSAM変換を適用
+                m = apply_sam_transform_to_mask(m, sam_meta, ignore_value=0)
                 masks.append(m)
                 continue
 
             ann = annotations[ann_id]
             if len(ann["segmentation"]) == 0:
                 m = np.zeros((image_info["height"], image_info["width"])).astype(np.uint8)
+                # マスクにもSAM変換を適用
+                m = apply_sam_transform_to_mask(m, sam_meta, ignore_value=0)
                 masks.append(m)
                 continue
 
@@ -330,22 +321,24 @@ class ReferSegDataset(torch.utils.data.Dataset):
             m = mask.decode(rle)
             m = np.sum(m, axis=2)
             m = m.astype(np.uint8)
+            # マスクにもSAM変換を適用
+            m = apply_sam_transform_to_mask(m, sam_meta, ignore_value=0)
             masks.append(m)
 
         masks = np.stack(masks, axis=0)
         masks = torch.from_numpy(masks)
         label = torch.ones(masks.shape[1], masks.shape[2]) * self.ignore_label
 
-        # オリジナルLISA準拠の返り値形式（10要素 - coord_transform追加）
+        # オリジナルLISA準拠の返り値形式（10要素 - sam_meta追加）
         return (
             image_path,        # 0: 画像パス
             image_for_sam,     # 1: SAM用前処理済み画像 (torch.Tensor)
-            image_for_qwen,   # 2: Qwen用前処理済み画像 (torch.Tensor)
+            image_for_qwen,    # 2: Qwen用前処理済み画像 (torch.Tensor)
             conversations,     # 3: 会話形式のテキスト (List[str])
-            masks,             # 4: マスク (torch.Tensor)
+            masks,             # 4: マスク (torch.Tensor) - SAM変換適用済み
             label,             # 5: ラベル (torch.Tensor)
             resize,            # 6: リサイズ情報 (Tuple)
             questions,         # 7: 質問リスト (List[str])
             sampled_classes,   # 8: クラス名リスト (List[str])
-            coord_transform    # 9: 座標変換オブジェクト
+            sam_meta           # 9: SAM変換メタデータ
         )

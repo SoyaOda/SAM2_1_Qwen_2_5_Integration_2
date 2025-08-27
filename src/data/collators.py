@@ -367,24 +367,25 @@ class MultiModalDataCollator:
         
         # Handle mask labels - test_a1準拠のキー名変換
         # HybridDatasetは'ground_truth_mask'を返すが、モデルは'mask_labels'を期待
-        if 'ground_truth_mask' in features[0] and features[0]['ground_truth_mask'] is not None:
-            mask_labels = []
-            for f in features:
-                if f.get('ground_truth_mask') is not None:
-                    mask_labels.append(f['ground_truth_mask'])
-                else:
-                    # Create dummy mask with default size
-                    mask_labels.append(torch.zeros(1, 1024, 1024))
+        # VQAなどマスクを使わないタスクも混在するため、適切に処理
+        has_any_mask = False
+        mask_labels = []
+        
+        for f in features:
+            gt_mask = f.get('ground_truth_mask')
+            if gt_mask is not None:
+                has_any_mask = True
+                mask_labels.append(gt_mask)
+            elif f.get('mask_labels') is not None:
+                has_any_mask = True
+                mask_labels.append(f['mask_labels'])
+        
+        # マスクが1つでも存在する場合のみ、mask_labelsをセット
+        if has_any_mask and len(mask_labels) > 0:
             batch['mask_labels'] = torch.stack(mask_labels)
-        elif 'mask_labels' in features[0] and features[0]['mask_labels'] is not None:
-            # 既に'mask_labels'として存在する場合
-            mask_labels = []
-            for f in features:
-                if f.get('mask_labels') is not None:
-                    mask_labels.append(f['mask_labels'])
-                else:
-                    mask_labels.append(torch.zeros(1, 1024, 1024))
-            batch['mask_labels'] = torch.stack(mask_labels)
+        else:
+            # VQAのみのバッチなど、マスクが全くない場合はNone
+            batch['mask_labels'] = None
         
         # Handle SAM images for high-resolution processing
         if 'sam_images' in features[0] and features[0]['sam_images'] is not None:
@@ -407,6 +408,10 @@ class MultiModalDataCollator:
         # Preserve original image sizes for SAM postprocessing
         if any('orig_hw' in f for f in features):
             batch['orig_hw'] = [f.get('orig_hw') for f in features]
+        
+        # Preserve has_mask flags for each sample
+        if any('has_mask' in f for f in features):
+            batch['has_mask'] = [f.get('has_mask', False) for f in features]
         
         return batch
 

@@ -178,10 +178,9 @@ class VQADataset(torch.utils.data.Dataset):
             conversations.append(conv_messages)
             i += 2
 
-        # VQAデータセットではマスクは不要（オリジナル準拠）
-        # 空のマスクではなく、適切なサイズのゼロマスクを作成
-        masks = torch.zeros(1, *ori_size)  # (1, H, W) 形式のゼロマスク
-        label = torch.ones(ori_size) * self.ignore_label
+        # VQAデータセットではマスクは不要なのでNoneを返す
+        masks = None  # VQAタスクはセグメンテーションマスクを使用しない
+        label = None  # 同様にラベルも不要
 
         # 質問と回答の抽出（Original-LISA-Code準拠）
         questions = conversations  # オリジナルと同様

@@ -421,65 +421,79 @@ class HybridDataset(torch.utils.data.Dataset):
 
     def __init__(
         self,
-        base_image_dir: Optional[str] = None,
-        qwen_processor: Optional[AutoProcessor] = None,
+        qwen_processor: AutoProcessor,
+        base_image_dir: str,
         samples_per_epoch: int = 500 * 8 * 2 * 10,
-        precision: str = "bf16",
-        qwen_image_size: Optional[int] = None,
-        sam_image_size: Optional[int] = None,
-        num_classes_per_sample: int = 1,  # 1会話1マスクに統一
+        precision: str = "fp32",
+        num_classes_per_sample: int = 3,
         exclude_val: bool = False,
-        dataset: str = "sem_seg||refer_seg||vqa||reason_seg",
+        sem_seg_data: str = None,
+        refer_seg_data: str = None,
+        vqa_data: str = None,
+        reason_seg_data: str = None,
+        explanatory: float = -1,
         sample_rate: List[float] = [9, 3, 3, 1],
-        sem_seg_data: Optional[str] = None,
-        refer_seg_data: Optional[str] = None,
-        vqa_data: Optional[str] = None,
-        reason_seg_data: Optional[str] = None,
-        explanatory: float = 0.1,
-        use_cache: bool = True,  # キャッシュ使用フラグ
-        cache_dir: str = ".cache/datasets",  # キャッシュディレクトリ
+        val_dataset: str = None,
+        sam_image_size: int = 1024,
+        qwen_image_size: int = 448,  # Qwen2.5-VLの基本解像度
+        use_quality_score: bool = False,
+        use_dynamic_resolution: bool = False,
+        cache_dir: str = None,
+        persistent_cache: bool = False,
+        seg_token: str = "<SEG>",
     ):
-        # 設定ファイルからパラメータを取得（引数で指定されていない場合）
-        self.base_image_dir = base_image_dir or getattr(config, 'DATASET_BASE_DIR', './dataset')
+        """
+        ハイブリッドデータセット
+        
+        Args:
+            qwen_processor: QwenのプロセッサAutoProcessor.from_pretrained()で取得)
+            base_image_dir: ベースとなる画像ディレクトリ
+            samples_per_epoch: エポックあたりのサンプル数
+            precision: 精度設定
+            num_classes_per_sample: サンプルあたりのクラス数
+            exclude_val: 検証データを除外するか
+            sem_seg_data: セマンティックセグメンテーションデータの設定
+            refer_seg_data: 参照セグメンテーションデータの設定
+            vqa_data: VQAデータの設定
+            reason_seg_data: Reason Segmentationデータの設定
+            explanatory: 説明付き回答の確率
+            sample_rate: 各データセットのサンプリング比率
+            val_dataset: 検証データセット
+            sam_image_size: SAMの画像サイズ（1024固定）
+            qwen_image_size: Qwenの画像サイズ（448固定）
+            use_quality_score: 品質スコア最適化の有効化
+            use_dynamic_resolution: 動的解像度モードの有効化
+            cache_dir: キャッシュディレクトリ（Noneの場合はメモリキャッシュ）
+            persistent_cache: 永続化キャッシュを使用するか
+            seg_token: セグメンテーショントークン
+        """
+        super().__init__()
+        
+        # プロセッサとパラメータの保存
         self.qwen_processor = qwen_processor
+        self.base_image_dir = base_image_dir
         self.samples_per_epoch = samples_per_epoch
         self.precision = precision
-        self.qwen_image_size = qwen_image_size or getattr(config, 'QWEN_IMAGE_SIZE', 448)
-        self.sam_image_size = sam_image_size or getattr(config, 'SAM_IMAGE_SIZE', 1024)
         self.num_classes_per_sample = num_classes_per_sample
         self.exclude_val = exclude_val
+        self.sam_image_size = sam_image_size
+        self.qwen_image_size = qwen_image_size
+        self.use_quality_score = use_quality_score
+        self.use_dynamic_resolution = use_dynamic_resolution
+        
+        # データセット設定の保存
+        self.sem_seg_data = sem_seg_data
+        self.refer_seg_data = refer_seg_data
+        self.vqa_data = vqa_data
+        self.reason_seg_data = reason_seg_data
         self.explanatory = explanatory
+        self.sample_rate = sample_rate
+        self.seg_token = seg_token
         
-        # データセット設定を設定ファイルから取得
-        self.sem_seg_data = sem_seg_data or getattr(config, 'SEM_SEG_DATA', "ade20k||cocostuff")
-        self.refer_seg_data = refer_seg_data or getattr(config, 'REFER_SEG_DATA', "refcoco||refcoco+||refcocog")
-        self.vqa_data = vqa_data or getattr(config, 'VQA_DATA', "llava_instruct_150k")
-        self.reason_seg_data = reason_seg_data or getattr(config, 'REASON_SEG_DATA', "ReasonSeg|train")
-        
-        # サンプルレートの正規化
-        sample_rate = np.array(sample_rate)
-        self.sample_rate = sample_rate / sample_rate.sum()
-
-        # <SEG>トークンの一元セットアップ（オリジナルLISA準拠）
-        if self.qwen_processor and self.qwen_processor.tokenizer:
-            self.seg_token = getattr(config, 'SEG_TOKEN', '[SEG]')
-            self.seg_token_idx = setup_seg_token(self.qwen_processor.tokenizer, self.seg_token)
-            self.max_length = getattr(config, 'MODEL_MAX_LENGTH', 2048)
-            
-            # 動的解像度とQwen2.5-VL最適化機能の初期化
-            from src.config import LISAConfig
-            lisa_config = LISAConfig()
-            self.bucket_manager = ResolutionBucketManager(lisa_config)
-            self.quality_calculator = QualityScoreCalculator(lisa_config)
-            self.use_quality_score = getattr(lisa_config, 'use_quality_score', True)
-            self.use_dynamic_resolution = getattr(lisa_config, 'use_dynamic_resolution', True)
-            
-        else:
-            raise ValueError("qwen_processor は必須です")
-
-        # キャッシュの初期化
-        self.use_cache = use_cache
-        self.cache = DatasetCache(cache_dir) if use_cache else None
+        # <SEG>トークンIDを取得
+        self.seg_token_idx = self.qwen_processor.tokenizer.convert_tokens_to_ids(seg_token)
+        if self.seg_token_idx is None:
+            raise ValueError(f"トークナイザーに{seg_token}トークンが見つかりません")
         
         # SAM2公式Transformsの初期化
         self.sam_transforms = SAM2Transforms(
@@ -489,50 +503,72 @@ class HybridDataset(torch.utils.data.Dataset):
             max_sprinkle_area=0.0
         )
         
-        # データセットの初期化
-        self.datasets = dataset.split("||")
+        # 品質スコア最適化の初期化
+        if self.use_quality_score:
+            from ..quality import ImageQualityCalculator
+            self.quality_calculator = ImageQualityCalculator()
+        else:
+            self.quality_calculator = None
+        
+        # データセットキャッシュの初期化
+        if cache_dir and persistent_cache:
+            from .dataset_cache import PersistentDatasetCache
+            self.cache = PersistentDatasetCache(cache_dir)
+        elif cache_dir:
+            from .dataset_cache import DatasetCache
+            self.cache = DatasetCache(max_size=100, ttl_seconds=3600)
+        else:
+            self.cache = None
+        
+        # データセット初期化
         self.all_datasets = []
+        print(f"\n{'='*50}")
+        print(f"🚀 HybridDataset初期化開始")
+        print(f"{'='*50}")
+        print(f"📁 ベースディレクトリ: {base_image_dir}")
+        print(f"⚙️  設定:")
+        print(f"   - サンプル数/エポック: {samples_per_epoch}")
+        print(f"   - 精度: {precision}")
+        print(f"   - クラス数/サンプル: {num_classes_per_sample}")
+        print(f"   - SAM画像サイズ: {sam_image_size}")
+        print(f"   - Qwen画像サイズ: {qwen_image_size}")
+        print(f"   - 動的解像度: {use_dynamic_resolution}")
+        print(f"   - 品質スコア最適化: {use_quality_score}")
+        print(f"   - キャッシュ: {'永続化' if persistent_cache else 'メモリ' if cache_dir else '無効'}")
+        print(f"{'='*50}\n")
         
-        print(f"HybridDataset初期化:")
-        print(f"  - ベースディレクトリ: {self.base_image_dir}")
-        print(f"  - Qwen画像サイズ: {self.qwen_image_size}")
-        print(f"  - SAM画像サイズ: {self.sam_image_size}")
-        print(f"  - 対象データセット: {self.datasets}")
-        
-        # Semantic Segmentation Dataset
-        if "sem_seg" in self.datasets:
-            print(f"  - Semantic Segmentation: {self.sem_seg_data}")
+        # 各データセットタイプの初期化
+        # 1. Semantic Segmentation
+        if sem_seg_data is not None:
+            print("📊 Semantic Segmentation データセット:")
+            print(f"   設定: {sem_seg_data}")
             try:
-                # キャッシュから読み込みを試みる
                 if self.cache:
                     cache_params = {
                         'dataset_type': 'sem_seg',
-                        'data': self.sem_seg_data,
+                        'data': sem_seg_data,
                         'samples_per_epoch': samples_per_epoch,
-                        'image_size': self.qwen_image_size,
+                        'precision': precision,
+                        'image_size': self.sam_image_size,  # 修正: SAM画像サイズを使用
+                        'num_classes_per_sample': num_classes_per_sample,
                         'exclude_val': exclude_val
                     }
-                    cached_dataset = self.cache.get('sem_seg', cache_params)
-                    if cached_dataset:
-                        self.all_datasets.append(cached_dataset)
-                        print(f"    ✅ キャッシュから高速読み込み完了")
-                    else:
-                        # キャッシュにない場合は通常読み込み
+                    dataset = self.cache.get('sem_seg', cache_params)
+                    if dataset is None:
                         dataset = SemSegDataset(
                             self.base_image_dir,
                             self.qwen_processor.tokenizer,
                             None,  # vision_tower は使用しない
                             samples_per_epoch,
                             precision,
-                            self.qwen_image_size,
+                            self.sam_image_size,  # 修正: SAM画像サイズを使用
                             num_classes_per_sample,
                             exclude_val,
-                            self.sem_seg_data,
+                            sem_seg_data,
                         )
                         self.all_datasets.append(dataset)
                         # キャッシュに保存
-                        if self.cache:
-                            self.cache.set('sem_seg', cache_params, dataset)
+                        self.cache.set('sem_seg', cache_params, dataset)
                 else:
                     # キャッシュを使用しない場合
                     self.all_datasets.append(
@@ -542,49 +578,48 @@ class HybridDataset(torch.utils.data.Dataset):
                             None,  # vision_tower は使用しない
                             samples_per_epoch,
                             precision,
-                            self.qwen_image_size,
+                            self.sam_image_size,  # 修正: SAM画像サイズを使用
                             num_classes_per_sample,
                             exclude_val,
-                            self.sem_seg_data,
+                            sem_seg_data,
                         )
                     )
             except Exception as e:
-                print(f"    警告: Semantic Segmentationデータセットの初期化に失敗: {e}")
+                print(f"   警告: Semantic Segmentationデータセットの初期化に失敗: {e}")
+                import traceback
+                traceback.print_exc()
         
-        # Referring Segmentation Dataset
-        if "refer_seg" in self.datasets:
-            print(f"  - Referring Segmentation: {self.refer_seg_data}")
+        # 2. Referring Segmentation
+        if refer_seg_data is not None:
+            print("🎯 Referring Segmentation データセット:")
+            print(f"   設定: {refer_seg_data}")
             try:
-                # キャッシュから読み込みを試みる
                 if self.cache:
                     cache_params = {
                         'dataset_type': 'refer_seg',
-                        'data': self.refer_seg_data,
+                        'data': refer_seg_data,
                         'samples_per_epoch': samples_per_epoch,
-                        'image_size': self.qwen_image_size,
+                        'precision': precision,
+                        'image_size': self.sam_image_size,  # 修正: SAM画像サイズを使用
+                        'num_classes_per_sample': num_classes_per_sample,
                         'exclude_val': exclude_val
                     }
-                    cached_dataset = self.cache.get('refer_seg', cache_params)
-                    if cached_dataset:
-                        self.all_datasets.append(cached_dataset)
-                        print(f"    ✅ キャッシュから高速読み込み完了")
-                    else:
-                        # キャッシュにない場合は通常読み込み
+                    dataset = self.cache.get('refer_seg', cache_params)
+                    if dataset is None:
                         dataset = ReferSegDataset(
                             self.base_image_dir,
                             self.qwen_processor.tokenizer,
                             None,  # vision_tower は使用しない
                             samples_per_epoch,
                             precision,
-                            self.qwen_image_size,
+                            self.sam_image_size,  # 修正: SAM画像サイズを使用
                             num_classes_per_sample,
                             exclude_val,
-                            self.refer_seg_data,
+                            refer_seg_data,
                         )
                         self.all_datasets.append(dataset)
                         # キャッシュに保存
-                        if self.cache:
-                            self.cache.set('refer_seg', cache_params, dataset)
+                        self.cache.set('refer_seg', cache_params, dataset)
                 else:
                     # キャッシュを使用しない場合
                     self.all_datasets.append(
@@ -594,48 +629,46 @@ class HybridDataset(torch.utils.data.Dataset):
                             None,  # vision_tower は使用しない
                             samples_per_epoch,
                             precision,
-                            self.qwen_image_size,
+                            self.sam_image_size,  # 修正: SAM画像サイズを使用
                             num_classes_per_sample,
                             exclude_val,
-                            self.refer_seg_data,
+                            refer_seg_data,
                         )
                     )
             except Exception as e:
-                print(f"    警告: Referring Segmentationデータセットの初期化に失敗: {e}")
+                print(f"   警告: Referring Segmentationデータセットの初期化に失敗: {e}")
+                import traceback
+                traceback.print_exc()
         
-        # VQA Dataset
-        if "vqa" in self.datasets:
-            print(f"  - VQA: {self.vqa_data}")
+        # 3. VQA Dataset
+        if vqa_data is not None:
+            print("💬 VQA データセット:")
+            print(f"   設定: {vqa_data}")
             try:
-                # キャッシュから読み込みを試みる
                 if self.cache:
                     cache_params = {
                         'dataset_type': 'vqa',
-                        'data': self.vqa_data,
+                        'data': vqa_data,
                         'samples_per_epoch': samples_per_epoch,
-                        'image_size': self.qwen_image_size,
+                        'precision': precision,
+                        'image_size': self.sam_image_size,  # 修正: SAM画像サイズを使用（VQAも1024x1024のSAM画像を生成）
                         'exclude_val': exclude_val
                     }
-                    cached_dataset = self.cache.get('vqa', cache_params)
-                    if cached_dataset:
-                        self.all_datasets.append(cached_dataset)
-                        print(f"    ✅ キャッシュから高速読み込み完了")
-                    else:
-                        # キャッシュにない場合は通常読み込み
+                    dataset = self.cache.get('vqa', cache_params)
+                    if dataset is None:
                         dataset = VQADataset(
                             self.base_image_dir,
                             self.qwen_processor.tokenizer,
                             None,  # vision_tower は使用しない
                             samples_per_epoch,
                             precision,
-                            self.qwen_image_size,
+                            self.sam_image_size,  # 修正: SAM画像サイズを使用
                             exclude_val,
-                            self.vqa_data,
+                            vqa_data,
                         )
                         self.all_datasets.append(dataset)
                         # キャッシュに保存
-                        if self.cache:
-                            self.cache.set('vqa', cache_params, dataset)
+                        self.cache.set('vqa', cache_params, dataset)
                 else:
                     # キャッシュを使用しない場合
                     self.all_datasets.append(
@@ -645,41 +678,41 @@ class HybridDataset(torch.utils.data.Dataset):
                             None,  # vision_tower は使用しない
                             samples_per_epoch,
                             precision,
-                            self.qwen_image_size,
+                            self.sam_image_size,  # 修正: SAM画像サイズを使用
                             exclude_val,
-                            self.vqa_data,
+                            vqa_data,
                         )
                     )
             except Exception as e:
                 print(f"    警告: VQAデータセットの初期化に失敗: {e}")
+                import traceback
+                traceback.print_exc()
         
-        # Reasoning Segmentation Dataset
-        if "reason_seg" in self.datasets:
-            print(f"  - Reasoning Segmentation: {self.reason_seg_data}")
+        # 4. Reasoning Segmentation
+        if reason_seg_data is not None:
+            print("🧠 Reasoning Segmentation データセット:")
+            print(f"   設定: {reason_seg_data}")
             try:
-                # キャッシュから読み込みを試みる
                 if self.cache:
                     cache_params = {
                         'dataset_type': 'reason_seg',
-                        'data': self.reason_seg_data,
+                        'data': reason_seg_data,
                         'samples_per_epoch': samples_per_epoch,
-                        'image_size': self.qwen_image_size,
+                        'precision': precision,
+                        'image_size': self.sam_image_size,  # 修正: SAM画像サイズを使用
+                        'num_classes_per_sample': num_classes_per_sample,
                         'exclude_val': exclude_val,
                         'explanatory': explanatory
                     }
-                    cached_dataset = self.cache.get('reason_seg', cache_params)
-                    if cached_dataset:
-                        self.all_datasets.append(cached_dataset)
-                        print(f"    ✅ キャッシュから高速読み込み完了")
-                    else:
-                        # キャッシュにない場合は通常読み込み
+                    dataset = self.cache.get('reason_seg', cache_params)
+                    if dataset is None:
                         dataset = ReasonSegDataset(
                             base_image_dir=self.base_image_dir,
                             tokenizer=self.qwen_processor.tokenizer,
                             vision_tower=None,  # vision_tower は使用しない
                             samples_per_epoch=samples_per_epoch,
                             precision=precision,
-                            image_size=self.qwen_image_size,
+                            image_size=self.sam_image_size,  # 修正: SAM画像サイズを使用
                             num_classes_per_sample=num_classes_per_sample,
                             exclude_val=exclude_val,
                             reason_seg_data=self.reason_seg_data,
@@ -698,7 +731,7 @@ class HybridDataset(torch.utils.data.Dataset):
                             vision_tower=None,  # vision_tower は使用しない
                             samples_per_epoch=samples_per_epoch,
                             precision=precision,
-                            image_size=self.qwen_image_size,
+                            image_size=self.sam_image_size,  # 修正: SAM画像サイズを使用
                             num_classes_per_sample=num_classes_per_sample,
                             exclude_val=exclude_val,
                             reason_seg_data=self.reason_seg_data,
@@ -724,6 +757,15 @@ class HybridDataset(torch.utils.data.Dataset):
                 original_sample_rate = self.sample_rate[:len(self.all_datasets)]
                 total_rate = sum(original_sample_rate)
                 self.sample_rate = [rate / total_rate for rate in original_sample_rate]
+        else:
+            # sample_rateが既に正しい長さの場合も正規化が必要
+            total_rate = sum(self.sample_rate)
+            if abs(total_rate - 1.0) > 1e-6:  # 浮動小数点の誤差を考慮
+                print(f"⚠️  sample_rate正規化: 合計 {total_rate} -> 1.0")
+                self.sample_rate = [rate / total_rate for rate in self.sample_rate]
+        
+        # 最終的なsample_rateを確認
+        print(f"📊 最終的なsample_rate: {self.sample_rate} (合計: {sum(self.sample_rate)})")
 
     def __len__(self):
         return self.samples_per_epoch
@@ -1047,38 +1089,21 @@ class HybridDataset(torch.utils.data.Dataset):
                     if ground_truth_mask.dim() == 2:
                         ground_truth_mask = ground_truth_mask.unsqueeze(0)
                 else:
-                    ground_truth_mask = torch.zeros(1, self.sam_image_size, self.sam_image_size)
+                    # マスクがない場合（VQAなど）
+                    ground_truth_mask = None
                     has_mask = False
             
-            # マスクのサイズ調整 - アスペクト比を維持した変換を使用
-            if ground_truth_mask.size(-1) != self.sam_image_size or ground_truth_mask.size(-2) != self.sam_image_size:
-                # orig_hwを使用してアスペクト比を維持
-                if 'orig_hw' in locals() and orig_hw is not None:
-                    # numpy配列に変換
-                    if isinstance(ground_truth_mask, torch.Tensor):
-                        mask_np = ground_truth_mask.cpu().numpy()
-                    else:
-                        mask_np = ground_truth_mask
-                    
-                    # 最初の2次元を取得
-                    if mask_np.ndim == 3:
-                        mask_np = mask_np[0]
-                    
-                    # アスペクト比維持版の前処理を使用
-                    ground_truth_mask = preprocess_mask_with_aspect_ratio(
-                        mask_np,
-                        orig_hw=orig_hw,
-                        target_size=self.sam_image_size
+            # すべてのセグメンテーションデータセットは1024x1024のマスクを返すべき
+            if has_mask and ground_truth_mask is not None:
+                if ground_truth_mask.size(-1) != self.sam_image_size or ground_truth_mask.size(-2) != self.sam_image_size:
+                    raise ValueError(
+                        f"マスクサイズが不正です: {ground_truth_mask.shape} "
+                        f"(期待値: {self.sam_image_size}x{self.sam_image_size})\n"
+                        f"データセット: {selected_dataset.__class__.__name__}"
                     )
-                else:
-                    # フォールバック：従来の単純リサイズ
-                    ground_truth_mask = F.interpolate(
-                        ground_truth_mask.unsqueeze(0).float(),
-                        size=(self.sam_image_size, self.sam_image_size),
-                        mode='nearest'
-                    ).squeeze(0)
         else:
-            ground_truth_mask = torch.zeros(1, self.sam_image_size, self.sam_image_size)
+            # VQAなどマスクを使用しないタスクの場合
+            ground_truth_mask = None
 
         # 品質スコアの計算（動的解像度モード時）
         quality_score = 1.0  # デフォルト値
