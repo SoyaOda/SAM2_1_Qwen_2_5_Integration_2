@@ -231,20 +231,40 @@ def init_pascal_part(base_image_dir):
         if len(class_map_pascal_part) == 0:
             raise ValueError("Pascal Partデータセットに有効なクラスがありません")
         
-        # アノテーションの有効性確認
+        # 画像ディレクトリ
+        image_dir = os.path.join(base_image_dir, "vlpart", "pascal_part", "VOCdevkit", "VOC2010", "JPEGImages")
+        
+        # 実際に存在するファイルのみをフィルタリング
         valid_img_ids = []
+        missing_count = 0
+        
         for img_id in img_ids:
+            # 画像情報を取得
+            image_info = coco_api_pascal_part.loadImgs([img_id])[0]
+            file_name = image_info["file_name"]
+            image_path = os.path.join(image_dir, file_name)
+            
+            # ファイルが存在するかチェック
+            if not os.path.exists(image_path):
+                missing_count += 1
+                continue
+            
+            # アノテーションの有効性確認
             ann_ids = coco_api_pascal_part.getAnnIds(imgIds=[img_id])
             anns = coco_api_pascal_part.loadAnns(ann_ids)
             # セグメンテーション情報があるアノテーションのみ使用
             valid_anns = [ann for ann in anns if ann.get('segmentation') and len(ann['segmentation']) > 0]
+            
             if len(valid_anns) > 0:
                 valid_img_ids.append(img_id)
+        
+        if missing_count > 0:
+            print(f"警告: Pascal Partデータセットで{missing_count}個のファイルが見つかりません")
         
         if len(valid_img_ids) == 0:
             raise ValueError("Pascal Partデータセットに有効なセグメンテーションアノテーションがありません")
         
-        print(f"pascal_part: {len(valid_img_ids)} サンプル")
+        print(f"pascal_part: {len(valid_img_ids)} サンプル（元データ: {len(img_ids)}、欠落: {missing_count}）")
         return class_map_pascal_part, valid_img_ids, coco_api_pascal_part
         
     except Exception as e:
@@ -390,9 +410,21 @@ class SemSegDataset(torch.utils.data.Dataset):
         else:  # paco_lvis
             image_path = os.path.join(self.base_image_dir, "coco", file_name)
 
-        # 画像の読み込み（オリジナルのようにエラーチェック最小限）
+        # 画像の読み込み（エラーハンドリング付き）
+        if not os.path.exists(image_path):
+            print(f"警告: 画像ファイルが見つかりません: {image_path}")
+            return self.__getitem__(0)
+        
         image = cv2.imread(image_path)
-        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        if image is None:
+            print(f"警告: 画像の読み込みに失敗しました: {image_path}")
+            return self.__getitem__(0)
+        
+        try:
+            image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        except Exception as e:
+            print(f"警告: 画像の色変換に失敗しました: {image_path}, エラー: {e}")
+            return self.__getitem__(0)
 
         # 元画像サイズを記録
         orig_h, orig_w = image.shape[:2]
