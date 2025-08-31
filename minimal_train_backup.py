@@ -80,6 +80,14 @@ class MinimalTrainer:
         self.global_step = 0
         self.best_loss = float('inf')  # ベスト損失の初期化
         
+        # AMP（Automatic Mixed Precision）の設定
+        self.use_fp16 = getattr(config, 'fp16', False)
+        self.max_grad_norm = getattr(config, 'max_grad_norm', 1.0)
+        # BFloat16は勾配スケーリングが不要なため、GradScalerは使用しない
+        self.scaler = None
+        if self.use_fp16:
+            logger.info("Automatic Mixed Precision (BFloat16) を有効化")
+        
         # 損失履歴
         self.loss_history = {
             'steps': [],
@@ -340,6 +348,8 @@ class MinimalTrainer:
             'sample_rate': sample_rates,
             'qwen_image_size': self.lisa_config.qwen_image_size,
             'sam_image_size': self.lisa_config.sam_image_size,
+            'cache_dir': '.cache/datasets',  # キャッシュディレクトリを設定
+            'persistent_cache': False,  # メモリキャッシュを使用（永続化は未実装）
         }
         
         # 各データセットタイプを個別に設定
@@ -407,10 +417,17 @@ class MinimalTrainer:
         
         # スケジューラ
         # Gradient Accumulationを考慮した実際の最適化ステップ数
-        # 切り上げ処理で最後のバッチも含める
+        # 重要: スケジューラのステップは「optimizer.step()が呼ばれる回数」と一致させる
         import math
-        num_training_steps = math.ceil(len(self.train_loader) / self.config.gradient_accumulation_steps) * self.config.num_epochs
-        num_warmup_steps = int(num_training_steps * self.config.warmup_ratio)
+        
+        # 1エポックあたりの実際の更新回数（gradient accumulation考慮）
+        num_update_steps_per_epoch = math.ceil(len(self.train_loader) / self.config.gradient_accumulation_steps)
+        
+        # 総更新回数
+        num_training_steps = num_update_steps_per_epoch * self.config.num_epochs
+        
+        # ウォームアップステップ数（更新回数ベース）
+        num_warmup_steps = max(1, int(num_training_steps * self.config.warmup_ratio))
         
         self.scheduler = get_linear_schedule_with_warmup(
             self.optimizer,
@@ -418,8 +435,11 @@ class MinimalTrainer:
             num_training_steps=num_training_steps
         )
         
-        logger.info(f"総ステップ数: {num_training_steps}")
-        logger.info(f"ウォームアップステップ数: {num_warmup_steps}")
+        logger.info(f"バッチ数/エポック: {len(self.train_loader)}")
+        logger.info(f"Gradient Accumulation Steps: {self.config.gradient_accumulation_steps}")
+        logger.info(f"実際の更新回数/エポック: {num_update_steps_per_epoch}")
+        logger.info(f"総更新回数: {num_training_steps}")
+        logger.info(f"ウォームアップ更新回数: {num_warmup_steps}")
 
     def get_alignment_checkpoint_path(self):
         """アライメントチェックポイントのパスを取得"""
@@ -1057,56 +1077,66 @@ class MinimalTrainer:
                         percentage = (count / self.config.samples_per_epoch) * 100
                         logger.info(f"  {ds_name}: {count} ({percentage:.1f}%)")
             
-            # Forward pass
-            forward_kwargs = {
-                'input_ids': batch['input_ids'],
-                'pixel_values': batch['pixel_values'],
-                'attention_mask': batch['attention_mask'],
-                'labels': batch['labels'],
-            }
-            
-            # mask_labelsの処理（テンソルまたはリストに対応）
-            if 'mask_labels' in batch and batch['mask_labels'] is not None:
-                if torch.is_tensor(batch['mask_labels']):
-                    # テンソルの場合はリストに変換
-                    forward_kwargs['mask_labels'] = [batch['mask_labels'][i] for i in range(batch['mask_labels'].size(0))]
+            # Forward pass with optional AMP
+            # BFloat16を使用（Qwen2.5-VLがBF16で学習されているため）
+            amp_dtype = torch.bfloat16 if self.use_fp16 else torch.float32
+            with torch.amp.autocast(device_type='cuda', enabled=self.use_fp16, dtype=amp_dtype):
+                forward_kwargs = {
+                    'input_ids': batch['input_ids'],
+                    'pixel_values': batch['pixel_values'],
+                    'attention_mask': batch['attention_mask'],
+                    'labels': batch['labels'],
+                }
+                
+                # mask_labelsの処理（テンソルまたはリストに対応）
+                if 'mask_labels' in batch and batch['mask_labels'] is not None:
+                    if torch.is_tensor(batch['mask_labels']):
+                        # テンソルの場合はリストに変換
+                        forward_kwargs['mask_labels'] = [batch['mask_labels'][i] for i in range(batch['mask_labels'].size(0))]
+                    else:
+                        # すでにリストの場合はそのまま使用
+                        forward_kwargs['mask_labels'] = batch['mask_labels']
                 else:
-                    # すでにリストの場合はそのまま使用
-                    forward_kwargs['mask_labels'] = batch['mask_labels']
-            else:
-                forward_kwargs['mask_labels'] = None
+                    forward_kwargs['mask_labels'] = None
+                
+                # image_grid_thwがある場合は追加
+                if 'image_grid_thw' in batch:
+                    forward_kwargs['image_grid_thw'] = batch['image_grid_thw']
+                
+                # sam_imagesがある場合は追加
+                if 'sam_images' in batch and batch['sam_images'] is not None:
+                    forward_kwargs['sam_images'] = batch['sam_images']
+                
+                outputs = self.model(**forward_kwargs)
+                
+                # 損失計算
+                total_loss, lm_loss, seg_loss = self.compute_loss(
+                    outputs, batch['labels'], batch['mask_labels']
+                )
+                
+                # Gradient Accumulationを考慮したloss
+                # 各ミニバッチの損失を累積ステップ数で割る
+                scaled_loss = total_loss / accumulation_steps
             
-            # image_grid_thwがある場合は追加
-            if 'image_grid_thw' in batch:
-                forward_kwargs['image_grid_thw'] = batch['image_grid_thw']
-            
-            # sam_imagesがある場合は追加
-            if 'sam_images' in batch and batch['sam_images'] is not None:
-                forward_kwargs['sam_images'] = batch['sam_images']
-            
-            outputs = self.model(**forward_kwargs)
-            
-            # 損失計算
-            total_loss, lm_loss, seg_loss = self.compute_loss(
-                outputs, batch['labels'], batch['mask_labels']
-            )
-            
-            # Gradient Accumulationを考慮したloss
-            # 各ミニバッチの損失を累積ステップ数で割る
-            scaled_loss = total_loss / accumulation_steps
-            
-            # Backward pass
+            # Backward pass (BFloat16は自動的に処理される)
             scaled_loss.backward()
+            
             accumulated_loss += total_loss.item()
             
-            # Gradient Accumulation: 指定ステップごとに最適化
+            # ===== 重要: Gradient Accumulation境界でのみ最適化とスケジューラ更新 =====
+            # これにより、スケジューラの更新回数がoptimizer.step()の回数と一致する
             if (batch_idx + 1) % accumulation_steps == 0 or (batch_idx + 1) == len(self.train_loader):
                 # 勾配クリッピング
-                torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
-                
+                torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=self.max_grad_norm)
                 # 最適化ステップ
                 self.optimizer.step()
+                
+                # スケジューラ更新（optimizer.step()の直後）
+                # 重要: gradient accumulationを考慮したnum_training_stepsと
+                # 実際のoptimizer.step()呼び出し回数が一致するようにする
                 self.scheduler.step()
+                
+                # 勾配をリセット
                 self.optimizer.zero_grad()
                 
                 # 累積損失をリセット
@@ -2034,6 +2064,12 @@ def main():
     # シード設定
     parser.add_argument('--seed', type=int, default=42,
                        help='ランダムシード（再現性のため）')
+    
+    # AMPサポート設定  
+    parser.add_argument('--fp16', action='store_true',
+                       help='Automatic Mixed Precision（FP16）を使用')
+    parser.add_argument('--max_grad_norm', type=float, default=1.0,
+                       help='勾配クリッピングの最大ノルム')
     
     args = parser.parse_args()
     

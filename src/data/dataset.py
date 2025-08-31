@@ -516,7 +516,7 @@ class HybridDataset(torch.utils.data.Dataset):
             self.cache = PersistentDatasetCache(cache_dir)
         elif cache_dir:
             from .dataset_cache import DatasetCache
-            self.cache = DatasetCache(max_size=100, ttl_seconds=3600)
+            self.cache = DatasetCache(cache_dir=cache_dir)
         else:
             self.cache = None
         
@@ -566,9 +566,10 @@ class HybridDataset(torch.utils.data.Dataset):
                             exclude_val,
                             sem_seg_data,
                         )
-                        self.all_datasets.append(dataset)
                         # キャッシュに保存
                         self.cache.set('sem_seg', cache_params, dataset)
+                    # キャッシュから読み込んだ場合も追加
+                    self.all_datasets.append(dataset)
                 else:
                     # キャッシュを使用しない場合
                     self.all_datasets.append(
@@ -617,9 +618,10 @@ class HybridDataset(torch.utils.data.Dataset):
                             exclude_val,
                             refer_seg_data,
                         )
-                        self.all_datasets.append(dataset)
                         # キャッシュに保存
                         self.cache.set('refer_seg', cache_params, dataset)
+                    # キャッシュから読み込んだ場合も追加
+                    self.all_datasets.append(dataset)
                 else:
                     # キャッシュを使用しない場合
                     self.all_datasets.append(
@@ -666,9 +668,10 @@ class HybridDataset(torch.utils.data.Dataset):
                             exclude_val,
                             vqa_data,
                         )
-                        self.all_datasets.append(dataset)
                         # キャッシュに保存
                         self.cache.set('vqa', cache_params, dataset)
+                    # キャッシュから読み込んだ場合も追加
+                    self.all_datasets.append(dataset)
                 else:
                     # キャッシュを使用しない場合
                     self.all_datasets.append(
@@ -718,10 +721,11 @@ class HybridDataset(torch.utils.data.Dataset):
                             reason_seg_data=self.reason_seg_data,
                             explanatory=explanatory,
                         )
-                        self.all_datasets.append(dataset)
                         # キャッシュに保存
                         if self.cache:
                             self.cache.set('reason_seg', cache_params, dataset)
+                    # キャッシュから読み込んだ場合も追加
+                    self.all_datasets.append(dataset)
                 else:
                     # キャッシュを使用しない場合
                     self.all_datasets.append(
