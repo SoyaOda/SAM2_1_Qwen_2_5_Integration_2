@@ -122,7 +122,8 @@ def compute_pos_weight(masks: torch.Tensor, min_ratio: float = 0.01) -> torch.Te
     Returns:
         pos_weight tensor
     """
-    pos_frac = masks.mean().clamp(min=min_ratio).item()
+    # floatに変換してから計算
+    pos_frac = masks.float().mean().clamp(min=min_ratio).item()
     neg_frac = 1.0 - pos_frac
     pos_weight = torch.tensor([neg_frac / pos_frac], device=masks.device)
     return pos_weight
