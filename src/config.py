@@ -124,6 +124,13 @@ class LISAConfig:
     language_loss_weight: float = 1.0      # 言語モデリング損失の重み
     segmentation_loss_weight: float = 1.0  # セグメンテーション損失の重み
     
+    # 4-2の要件に従った損失関数パラメータ
+    lambda_lm: float = 1.0             # 言語モデリング損失の重み（後方互換のためlanguage_loss_weightと同じ）
+    lambda_seg: float = 1.0            # セグメンテーション損失の重み（後方互換のためsegmentation_loss_weightと同じ）
+    dice_weight: float = 1.0           # Dice損失の重み係数
+    bce_weight: float = 1.0            # BCE損失の重み係数
+    seg_loss_weight: float = 1.0       # 後方互換性のため（lambda_segが優先）
+    
     # Device settings
     device_map: str = "auto"
     torch_dtype: str = "auto"

@@ -906,7 +906,9 @@ class MinimalTrainer:
         self._restore_training_freeze_settings()
     
     def compute_loss(self, outputs, labels, mask_labels):
-        """損失計算（1会話1マスクに最適化） - SAM座標系（1024x1024）で統一"""
+        """損失計算（安定化版） - SAM座標系（1024x1024）で統一"""
+        from src.losses.segmentation import safe_seg_loss, compute_pos_weight
+        
         # 言語モデリング損失
         vocab_size = outputs.logits.size(-1)
         lm_loss = nn.functional.cross_entropy(
@@ -915,8 +917,10 @@ class MinimalTrainer:
             ignore_index=-100
         )
         
-        # セグメンテーション損失（1会話1マスクに統一）
-        seg_loss = 0.0
+        # セグメンテーション損失（安定化版）
+        total_seg_loss = 0.0
+        total_bce_loss = 0.0  
+        total_dice_loss = 0.0
         seg_count = 0
         
         # SAM座標系のサイズ（1024x1024）
@@ -940,7 +944,7 @@ class MinimalTrainer:
                     logger.debug(f"pred_mask shape before upsampling: {pred_mask.shape}")
                     logger.debug(f"gt_mask shape: {gt_mask.shape}")
                     
-                    # 予測マスクをSAM座標系（1024x1024）にアップサンプル（bilinear）
+                    # 予測マスクをSAM座標系（1024x1024）にアップサンプル（bilinear for logits）
                     if pred_mask.dim() == 2:
                         pred_mask_4d = pred_mask.unsqueeze(0).unsqueeze(0)
                     elif pred_mask.dim() == 3:
@@ -973,7 +977,7 @@ class MinimalTrainer:
                         logger.warning(f"Unexpected GT mask shape: {gt_mask.shape}")
                         gt_mask_sam = gt_mask.view(sam_size, sam_size)
                     
-                    # GTマスクが1024x1024でない場合はリサイズ
+                    # GTマスクが1024x1024でない場合はリサイズ（nearest補間）
                     if gt_mask_sam.shape != (sam_size, sam_size):
                         logger.debug(f"GT mask resizing from {gt_mask_sam.shape} to {(sam_size, sam_size)}")
                         if gt_mask_sam.dim() == 2:
@@ -981,7 +985,7 @@ class MinimalTrainer:
                         else:
                             gt_mask_4d = gt_mask_sam.unsqueeze(0)
                         
-                        # GTは離散値なのでnearestモードを使用
+                        # GTは離散値なので必ずnearestモードを使用（エッジ保持）
                         # PyTorchバージョンにより'nearest-exact'がサポートされていない場合があるため適切に処理
                         if hasattr(torch, '__version__') and torch.__version__ >= '1.11.0':
                             interpolate_mode = 'nearest-exact'
@@ -995,33 +999,59 @@ class MinimalTrainer:
                         )
                         gt_mask_sam = gt_mask_resized.squeeze(0).squeeze(0)
                     
+                    # バイナリマスクの確認（0/1に正規化）
+                    if gt_mask_sam.max() > 1.0:
+                        # 0/255 → 0/1
+                        gt_mask_sam = (gt_mask_sam > 127.5).float()
+                    
                     # 最終的な形状確認
                     assert pred_mask_sam.shape == (sam_size, sam_size), f"pred_mask_sam shape: {pred_mask_sam.shape}"
                     assert gt_mask_sam.shape == (sam_size, sam_size), f"gt_mask_sam shape: {gt_mask_sam.shape}"
                     
-                    # BCE損失（SAM座標系で計算）
-                    bce_loss = nn.functional.binary_cross_entropy_with_logits(
+                    # クラス不均衡を考慮したpos_weight計算
+                    pos_weight = compute_pos_weight(gt_mask_sam, min_ratio=0.01)
+                    
+                    # 安定化されたセグメンテーション損失を計算
+                    seg_loss, bce_loss, dice_loss = safe_seg_loss(
                         pred_mask_sam,
-                        gt_mask_sam.float()
+                        gt_mask_sam,
+                        pos_weight=pos_weight,
+                        dice_weight=getattr(self.config, 'dice_weight', 1.0),
+                        bce_weight=getattr(self.config, 'bce_weight', 1.0)
                     )
                     
-                    # Dice損失（SAM座標系で計算）
-                    pred_sigmoid = torch.sigmoid(pred_mask_sam)
-                    intersection = (pred_sigmoid * gt_mask_sam).sum()
-                    dice = 2 * intersection / (pred_sigmoid.sum() + gt_mask_sam.sum() + 1e-8)
-                    dice_loss = 1 - dice
-                    
-                    seg_loss += bce_loss + dice_loss
+                    total_seg_loss += seg_loss
+                    total_bce_loss += bce_loss
+                    total_dice_loss += dice_loss
                     seg_count += 1
+                    
+                    # デバッグ情報（最初のバッチのみ）
+                    if batch_idx == 0 and self.config.debug:
+                        logger.debug(f"BCE loss: {bce_loss:.4f}, Dice loss: {dice_loss:.4f}")
+                        logger.debug(f"Pos weight: {pos_weight.item():.3f}")
         
         # 平均セグメンテーション損失
         if seg_count > 0:
-            seg_loss = seg_loss / seg_count
+            total_seg_loss = total_seg_loss / seg_count
+            total_bce_loss = total_bce_loss / seg_count
+            total_dice_loss = total_dice_loss / seg_count
+        else:
+            total_seg_loss = torch.tensor(0.0, device=lm_loss.device)
+            total_bce_loss = torch.tensor(0.0, device=lm_loss.device)
+            total_dice_loss = torch.tensor(0.0, device=lm_loss.device)
         
-        # 総合損失
-        total_loss = lm_loss + self.config.seg_loss_weight * seg_loss
+        # 総合損失（λ_lmとλ_segで重み付け）
+        lambda_lm = getattr(self.config, 'lambda_lm', 1.0)
+        lambda_seg = getattr(self.config, 'lambda_seg', 1.0)
         
-        return total_loss, lm_loss, seg_loss
+        # seg_loss_weightは後方互換性のため残す（lambda_segが優先）
+        if hasattr(self.config, 'seg_loss_weight') and not hasattr(self.config, 'lambda_seg'):
+            lambda_seg = self.config.seg_loss_weight
+            
+        total_loss = lambda_lm * lm_loss + lambda_seg * total_seg_loss
+        
+        # ログ用に詳細な損失情報を返す
+        return total_loss, lm_loss, total_seg_loss
     
     def train_epoch(self, epoch):
         """1エポックの学習"""
@@ -1405,12 +1435,20 @@ class MinimalTrainer:
                 # GTマスクもSAM postprocessを適用
                 # 1. 1024x1024にアップサンプル（必要な場合）
                 if gt_mask.shape[-1] != 1024:
-                    gt_mask_1024 = F.interpolate(
-                        gt_mask.float(),
-                        size=(1024, 1024),
-                        mode='bilinear',
-                        align_corners=False
-                    )
+                    # GTマスクは離散値なのでnearestモードを使用
+                    try:
+                        gt_mask_1024 = F.interpolate(
+                            gt_mask.float(),
+                            size=(1024, 1024),
+                            mode='nearest-exact'
+                        )
+                    except:
+                        # nearest-exactがサポートされていない場合
+                        gt_mask_1024 = F.interpolate(
+                            gt_mask.float(),
+                            size=(1024, 1024),
+                            mode='nearest'
+                        )
                 else:
                     gt_mask_1024 = gt_mask.float()
                 
