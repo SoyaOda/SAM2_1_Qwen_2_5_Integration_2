@@ -83,8 +83,7 @@ class MinimalTrainer:
         # AMP（Automatic Mixed Precision）の設定
         self.use_fp16 = getattr(config, 'fp16', False)
         self.max_grad_norm = getattr(config, 'max_grad_norm', 1.0)
-        # BFloat16は勾配スケーリングが不要なため、GradScalerは使用しない
-        self.scaler = None
+        # BFloat16はダイナミックレンジが広いため、GradScalerは不要
         if self.use_fp16:
             logger.info("Automatic Mixed Precision (BFloat16) を有効化")
         
@@ -416,8 +415,8 @@ class MinimalTrainer:
         )
         
         # スケジューラ
-        # Gradient Accumulationを考慮した実際の最適化ステップ数
-        # 重要: スケジューラのステップは「optimizer.step()が呼ばれる回数」と一致させる
+        # 重要: Gradient Accumulationを考慮した実際の最適化ステップ数
+        # スケジューラのステップは「optimizer.step()が呼ばれる回数」と一致させる
         import math
         
         # 1エポックあたりの実際の更新回数（gradient accumulation考慮）
@@ -435,11 +434,16 @@ class MinimalTrainer:
             num_training_steps=num_training_steps
         )
         
-        logger.info(f"バッチ数/エポック: {len(self.train_loader)}")
-        logger.info(f"Gradient Accumulation Steps: {self.config.gradient_accumulation_steps}")
-        logger.info(f"実際の更新回数/エポック: {num_update_steps_per_epoch}")
-        logger.info(f"総更新回数: {num_training_steps}")
-        logger.info(f"ウォームアップ更新回数: {num_warmup_steps}")
+        # 統計情報をログ出力
+        logger.info("=" * 60)
+        logger.info("スケジューラ設定:")
+        logger.info(f"  バッチ数/エポック: {len(self.train_loader)}")
+        logger.info(f"  Gradient Accumulation Steps: {self.config.gradient_accumulation_steps}")
+        logger.info(f"  実際の更新回数/エポック: {num_update_steps_per_epoch}")
+        logger.info(f"  総更新回数: {num_training_steps}")
+        logger.info(f"  ウォームアップ更新回数: {num_warmup_steps}")
+        logger.info(f"  実効バッチサイズ: {self.config.batch_size * self.config.gradient_accumulation_steps}")
+        logger.info("=" * 60)
 
     def get_alignment_checkpoint_path(self):
         """アライメントチェックポイントのパスを取得"""
@@ -977,20 +981,18 @@ class MinimalTrainer:
                         else:
                             gt_mask_4d = gt_mask_sam.unsqueeze(0)
                         
-                        # GTは離散値なのでnearest-exactを試み、サポートされていなければnearestを使用
-                        try:
-                            gt_mask_resized = nn.functional.interpolate(
-                                gt_mask_4d.float(),
-                                size=(sam_size, sam_size),
-                                mode='nearest-exact'
-                            )
-                        except:
-                            # nearest-exactがサポートされていない場合のフォールバック
-                            gt_mask_resized = nn.functional.interpolate(
-                                gt_mask_4d.float(),
-                                size=(sam_size, sam_size),
-                                mode='nearest'
-                            )
+                        # GTは離散値なのでnearestモードを使用
+                        # PyTorchバージョンにより'nearest-exact'がサポートされていない場合があるため適切に処理
+                        if hasattr(torch, '__version__') and torch.__version__ >= '1.11.0':
+                            interpolate_mode = 'nearest-exact'
+                        else:
+                            interpolate_mode = 'nearest'
+                            
+                        gt_mask_resized = nn.functional.interpolate(
+                            gt_mask_4d.float(),
+                            size=(sam_size, sam_size),
+                            mode=interpolate_mode
+                        )
                         gt_mask_sam = gt_mask_resized.squeeze(0).squeeze(0)
                     
                     # 最終的な形状確認
@@ -1118,16 +1120,22 @@ class MinimalTrainer:
                 # 各ミニバッチの損失を累積ステップ数で割る
                 scaled_loss = total_loss / accumulation_steps
             
-            # Backward pass (BFloat16は自動的に処理される)
+            # Backward pass
+            # BFloat16では勾配スケーリングは不要（ダイナミックレンジが広いため）
             scaled_loss.backward()
             
             accumulated_loss += total_loss.item()
             
             # ===== 重要: Gradient Accumulation境界でのみ最適化とスケジューラ更新 =====
             # これにより、スケジューラの更新回数がoptimizer.step()の回数と一致する
-            if (batch_idx + 1) % accumulation_steps == 0 or (batch_idx + 1) == len(self.train_loader):
+            is_accumulation_boundary = (batch_idx + 1) % accumulation_steps == 0
+            is_last_batch = (batch_idx + 1) == len(self.train_loader)
+            
+            if is_accumulation_boundary or is_last_batch:
                 # 勾配クリッピング
-                torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=self.max_grad_norm)
+                if self.max_grad_norm is not None:
+                    torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=self.max_grad_norm)
+                
                 # 最適化ステップ
                 self.optimizer.step()
                 
@@ -1137,7 +1145,7 @@ class MinimalTrainer:
                 self.scheduler.step()
                 
                 # 勾配をリセット
-                self.optimizer.zero_grad()
+                self.optimizer.zero_grad(set_to_none=True)
                 
                 # 累積損失をリセット
                 accumulated_loss = 0.0
@@ -1150,12 +1158,15 @@ class MinimalTrainer:
             # βパラメータの値を取得
             beta_value = torch.sigmoid(self.model.prompt_beta).item() if hasattr(self.model, 'prompt_beta') else 0.0
             
+            # 現在の学習率を取得
+            current_lr = self.scheduler.get_last_lr()[0]
+            
             # プログレスバーの更新
             progress_bar.set_postfix({
                 'loss': f"{total_loss.item():.4f}",
                 'lm': f"{lm_loss.item():.4f}",
-                'seg': f"{seg_loss:.4f}" if isinstance(seg_loss, torch.Tensor) else f"{seg_loss:.4f}",
-                'lr': f"{self.scheduler.get_last_lr()[0]:.2e}",
+                'seg': f"{seg_loss:.4f}",
+                'lr': f"{current_lr:.2e}",
                 'β': f"{beta_value:.3f}"
             })
             
@@ -1165,9 +1176,10 @@ class MinimalTrainer:
                     'train/loss': total_loss.item(),
                     'train/lm_loss': lm_loss.item(),
                     'train/seg_loss': seg_loss if isinstance(seg_loss, float) else seg_loss.item(),
-                    'train/learning_rate': self.scheduler.get_last_lr()[0],
+                    'train/learning_rate': current_lr,
                     'train/epoch': epoch,
-                    'train/step': self.global_step
+                    'train/step': self.global_step,
+                    'train/beta': beta_value
                 })
             
             # Loss履歴を記録
@@ -1175,7 +1187,7 @@ class MinimalTrainer:
             self.loss_history['total_loss'].append(total_loss.item())
             self.loss_history['lm_loss'].append(lm_loss.item())
             self.loss_history['seg_loss'].append(seg_loss.item() if isinstance(seg_loss, torch.Tensor) else seg_loss)
-            self.loss_history['learning_rate'].append(self.scheduler.get_last_lr()[0])
+            self.loss_history['learning_rate'].append(current_lr)
             
             self.global_step += 1
             
@@ -1196,6 +1208,7 @@ class MinimalTrainer:
         avg_seg_loss = epoch_seg_loss / len(self.train_loader)
         
         logger.info(f"Epoch {epoch+1} - 平均損失: {avg_loss:.4f}, LM: {avg_lm_loss:.4f}, Seg: {avg_seg_loss:.4f}")
+        logger.info(f"最終学習率: {self.scheduler.get_last_lr()[0]:.2e}")
         
         # エポック終了時に可視化を保存
         self.plot_loss_history()

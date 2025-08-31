@@ -1,922 +1,372 @@
-     2.e-04, 3.e-04, 4.e-04, 5.e-04, 6.e-04, 7.e-04, 8.e-04, 9.e-04,
-       2.e-03, 3.e-03, 4.e-03, 5.e-03, 6.e-03, 7.e-03, 8.e-03, 9.e-03,
-       2.e-02, 3.e-02, 4.e-02, 5.e-02, 6.e-02, 7.e-02, 8.e-02, 9.e-02,
-       2.e-01, 3.e-01, 4.e-01, 5.e-01, 6.e-01, 7.e-01, 8.e-01, 9.e-01,
-       2.e+00, 3.e+00, 4.e+00, 5.e+00, 6.e+00, 7.e+00, 8.e+00, 9.e+00])
-08/25/2025 10:22:46 - DEBUG - matplotlib.ticker - vmin 7.943282347242822e-05 vmax 0.012589254117941675
-08/25/2025 10:22:46 - DEBUG - matplotlib.ticker - ticklocs array([1.e-06, 1.e-05, 1.e-04, 1.e-03, 1.e-02, 1.e-01, 1.e+00])
-08/25/2025 10:22:46 - DEBUG - matplotlib.ticker - vmin 7.943282347242822e-05 vmax 0.012589254117941675
-08/25/2025 10:22:46 - DEBUG - matplotlib.ticker - ticklocs array([1.e-06, 1.e-05, 1.e-04, 1.e-03, 1.e-02, 1.e-01, 1.e+00])
-08/25/2025 10:22:46 - DEBUG - matplotlib.ticker - vmin 7.943282347242822e-05 vmax 0.012589254117941675
-08/25/2025 10:22:46 - DEBUG - matplotlib.ticker - ticklocs array([2.e-06, 3.e-06, 4.e-06, 5.e-06, 6.e-06, 7.e-06, 8.e-06, 9.e-06,
-       2.e-05, 3.e-05, 4.e-05, 5.e-05, 6.e-05, 7.e-05, 8.e-05, 9.e-05,
-       2.e-04, 3.e-04, 4.e-04, 5.e-04, 6.e-04, 7.e-04, 8.e-04, 9.e-04,
-       2.e-03, 3.e-03, 4.e-03, 5.e-03, 6.e-03, 7.e-03, 8.e-03, 9.e-03,
-       2.e-02, 3.e-02, 4.e-02, 5.e-02, 6.e-02, 7.e-02, 8.e-02, 9.e-02,
-       2.e-01, 3.e-01, 4.e-01, 5.e-01, 6.e-01, 7.e-01, 8.e-01, 9.e-01,
-       2.e+00, 3.e+00, 4.e+00, 5.e+00, 6.e+00, 7.e+00, 8.e+00, 9.e+00])
-08/25/2025 10:22:46 - DEBUG - matplotlib.ticker - vmin 7.943282347242822e-05 vmax 0.012589254117941675
-08/25/2025 10:22:46 - DEBUG - matplotlib.ticker - ticklocs array([1.e-06, 1.e-05, 1.e-04, 1.e-03, 1.e-02, 1.e-01, 1.e+00])
-08/25/2025 10:22:46 - DEBUG - matplotlib.ticker - vmin 7.943282347242822e-05 vmax 0.012589254117941675
-08/25/2025 10:22:46 - DEBUG - matplotlib.ticker - ticklocs array([1.e-06, 1.e-05, 1.e-04, 1.e-03, 1.e-02, 1.e-01, 1.e+00])
-08/25/2025 10:22:46 - DEBUG - matplotlib.ticker - vmin 7.943282347242822e-05 vmax 0.012589254117941675
-08/25/2025 10:22:46 - DEBUG - matplotlib.ticker - ticklocs array([2.e-06, 3.e-06, 4.e-06, 5.e-06, 6.e-06, 7.e-06, 8.e-06, 9.e-06,
-       2.e-05, 3.e-05, 4.e-05, 5.e-05, 6.e-05, 7.e-05, 8.e-05, 9.e-05,
-       2.e-04, 3.e-04, 4.e-04, 5.e-04, 6.e-04, 7.e-04, 8.e-04, 9.e-04,
-       2.e-03, 3.e-03, 4.e-03, 5.e-03, 6.e-03, 7.e-03, 8.e-03, 9.e-03,
-       2.e-02, 3.e-02, 4.e-02, 5.e-02, 6.e-02, 7.e-02, 8.e-02, 9.e-02,
-       2.e-01, 3.e-01, 4.e-01, 5.e-01, 6.e-01, 7.e-01, 8.e-01, 9.e-01,
-       2.e+00, 3.e+00, 4.e+00, 5.e+00, 6.e+00, 7.e+00, 8.e+00, 9.e+00])
-08/25/2025 10:22:46 - DEBUG - matplotlib.ticker - vmin 7.943282347242822e-05 vmax 0.012589254117941675
-08/25/2025 10:22:46 - DEBUG - matplotlib.ticker - ticklocs array([1.e-06, 1.e-05, 1.e-04, 1.e-03, 1.e-02, 1.e-01, 1.e+00])
-08/25/2025 10:22:46 - DEBUG - matplotlib.ticker - vmin 7.943282347242822e-05 vmax 0.012589254117941675
-08/25/2025 10:22:46 - DEBUG - matplotlib.ticker - ticklocs array([1.e-06, 1.e-05, 1.e-04, 1.e-03, 1.e-02, 1.e-01, 1.e+00])
-08/25/2025 10:22:46 - DEBUG - matplotlib.ticker - vmin 7.943282347242822e-05 vmax 0.012589254117941675
-08/25/2025 10:22:46 - DEBUG - matplotlib.ticker - ticklocs array([2.e-06, 3.e-06, 4.e-06, 5.e-06, 6.e-06, 7.e-06, 8.e-06, 9.e-06,
-       2.e-05, 3.e-05, 4.e-05, 5.e-05, 6.e-05, 7.e-05, 8.e-05, 9.e-05,
-       2.e-04, 3.e-04, 4.e-04, 5.e-04, 6.e-04, 7.e-04, 8.e-04, 9.e-04,
-       2.e-03, 3.e-03, 4.e-03, 5.e-03, 6.e-03, 7.e-03, 8.e-03, 9.e-03,
-       2.e-02, 3.e-02, 4.e-02, 5.e-02, 6.e-02, 7.e-02, 8.e-02, 9.e-02,
-       2.e-01, 3.e-01, 4.e-01, 5.e-01, 6.e-01, 7.e-01, 8.e-01, 9.e-01,
-       2.e+00, 3.e+00, 4.e+00, 5.e+00, 6.e+00, 7.e+00, 8.e+00, 9.e+00])
-08/25/2025 10:22:46 - DEBUG - matplotlib.ticker - vmin 7.943282347242822e-05 vmax 0.012589254117941675
-08/25/2025 10:22:46 - DEBUG - matplotlib.ticker - ticklocs array([1.e-06, 1.e-05, 1.e-04, 1.e-03, 1.e-02, 1.e-01, 1.e+00])
-08/25/2025 10:22:46 - DEBUG - matplotlib.ticker - vmin 7.943282347242822e-05 vmax 0.012589254117941675
-08/25/2025 10:22:46 - DEBUG - matplotlib.ticker - ticklocs array([1.e-06, 1.e-05, 1.e-04, 1.e-03, 1.e-02, 1.e-01, 1.e+00])
-08/25/2025 10:22:46 - DEBUG - matplotlib.ticker - vmin 7.943282347242822e-05 vmax 0.012589254117941675
-08/25/2025 10:22:46 - DEBUG - matplotlib.ticker - ticklocs array([2.e-06, 3.e-06, 4.e-06, 5.e-06, 6.e-06, 7.e-06, 8.e-06, 9.e-06,
-       2.e-05, 3.e-05, 4.e-05, 5.e-05, 6.e-05, 7.e-05, 8.e-05, 9.e-05,
-       2.e-04, 3.e-04, 4.e-04, 5.e-04, 6.e-04, 7.e-04, 8.e-04, 9.e-04,
-       2.e-03, 3.e-03, 4.e-03, 5.e-03, 6.e-03, 7.e-03, 8.e-03, 9.e-03,
-       2.e-02, 3.e-02, 4.e-02, 5.e-02, 6.e-02, 7.e-02, 8.e-02, 9.e-02,
-       2.e-01, 3.e-01, 4.e-01, 5.e-01, 6.e-01, 7.e-01, 8.e-01, 9.e-01,
-       2.e+00, 3.e+00, 4.e+00, 5.e+00, 6.e+00, 7.e+00, 8.e+00, 9.e+00])
-08/25/2025 10:22:46 - DEBUG - matplotlib.ticker - vmin 7.943282347242822e-05 vmax 0.012589254117941675
-08/25/2025 10:22:46 - DEBUG - matplotlib.ticker - ticklocs array([1.e-06, 1.e-05, 1.e-04, 1.e-03, 1.e-02, 1.e-01, 1.e+00])
-08/25/2025 10:22:46 - DEBUG - matplotlib.ticker - vmin 7.943282347242822e-05 vmax 0.012589254117941675
-08/25/2025 10:22:46 - DEBUG - matplotlib.ticker - ticklocs array([1.e-06, 1.e-05, 1.e-04, 1.e-03, 1.e-02, 1.e-01, 1.e+00])
-08/25/2025 10:22:46 - DEBUG - matplotlib.ticker - vmin 7.943282347242822e-05 vmax 0.012589254117941675
-08/25/2025 10:22:46 - DEBUG - matplotlib.ticker - ticklocs array([2.e-06, 3.e-06, 4.e-06, 5.e-06, 6.e-06, 7.e-06, 8.e-06, 9.e-06,
-       2.e-05, 3.e-05, 4.e-05, 5.e-05, 6.e-05, 7.e-05, 8.e-05, 9.e-05,
-       2.e-04, 3.e-04, 4.e-04, 5.e-04, 6.e-04, 7.e-04, 8.e-04, 9.e-04,
-       2.e-03, 3.e-03, 4.e-03, 5.e-03, 6.e-03, 7.e-03, 8.e-03, 9.e-03,
-       2.e-02, 3.e-02, 4.e-02, 5.e-02, 6.e-02, 7.e-02, 8.e-02, 9.e-02,
-       2.e-01, 3.e-01, 4.e-01, 5.e-01, 6.e-01, 7.e-01, 8.e-01, 9.e-01,
-       2.e+00, 3.e+00, 4.e+00, 5.e+00, 6.e+00, 7.e+00, 8.e+00, 9.e+00])
-08/25/2025 10:22:46 - DEBUG - matplotlib.ticker - vmin 7.943282347242822e-05 vmax 0.012589254117941675
-08/25/2025 10:22:46 - DEBUG - matplotlib.ticker - ticklocs array([1.e-06, 1.e-05, 1.e-04, 1.e-03, 1.e-02, 1.e-01, 1.e+00])
-08/25/2025 10:22:46 - DEBUG - matplotlib.ticker - vmin 7.943282347242822e-05 vmax 0.012589254117941675
-08/25/2025 10:22:46 - DEBUG - matplotlib.ticker - ticklocs array([1.e-06, 1.e-05, 1.e-04, 1.e-03, 1.e-02, 1.e-01, 1.e+00])
-08/25/2025 10:22:46 - DEBUG - matplotlib.ticker - vmin 7.943282347242822e-05 vmax 0.012589254117941675
-08/25/2025 10:22:46 - DEBUG - matplotlib.ticker - ticklocs array([2.e-06, 3.e-06, 4.e-06, 5.e-06, 6.e-06, 7.e-06, 8.e-06, 9.e-06,
-       2.e-05, 3.e-05, 4.e-05, 5.e-05, 6.e-05, 7.e-05, 8.e-05, 9.e-05,
-       2.e-04, 3.e-04, 4.e-04, 5.e-04, 6.e-04, 7.e-04, 8.e-04, 9.e-04,
-       2.e-03, 3.e-03, 4.e-03, 5.e-03, 6.e-03, 7.e-03, 8.e-03, 9.e-03,
-       2.e-02, 3.e-02, 4.e-02, 5.e-02, 6.e-02, 7.e-02, 8.e-02, 9.e-02,
-       2.e-01, 3.e-01, 4.e-01, 5.e-01, 6.e-01, 7.e-01, 8.e-01, 9.e-01,
-       2.e+00, 3.e+00, 4.e+00, 5.e+00, 6.e+00, 7.e+00, 8.e+00, 9.e+00])
-08/25/2025 10:22:46 - DEBUG - matplotlib.ticker - vmin 7.943282347242822e-05 vmax 0.012589254117941675
-08/25/2025 10:22:46 - DEBUG - matplotlib.ticker - ticklocs array([1.e-06, 1.e-05, 1.e-04, 1.e-03, 1.e-02, 1.e-01, 1.e+00])
-08/25/2025 10:22:46 - DEBUG - matplotlib.ticker - vmin 7.943282347242822e-05 vmax 0.012589254117941675
-08/25/2025 10:22:46 - DEBUG - matplotlib.ticker - ticklocs array([1.e-06, 1.e-05, 1.e-04, 1.e-03, 1.e-02, 1.e-01, 1.e+00])
-08/25/2025 10:22:46 - DEBUG - matplotlib.ticker - vmin 7.943282347242822e-05 vmax 0.012589254117941675
-08/25/2025 10:22:46 - DEBUG - matplotlib.ticker - ticklocs array([2.e-06, 3.e-06, 4.e-06, 5.e-06, 6.e-06, 7.e-06, 8.e-06, 9.e-06,
-       2.e-05, 3.e-05, 4.e-05, 5.e-05, 6.e-05, 7.e-05, 8.e-05, 9.e-05,
-       2.e-04, 3.e-04, 4.e-04, 5.e-04, 6.e-04, 7.e-04, 8.e-04, 9.e-04,
-       2.e-03, 3.e-03, 4.e-03, 5.e-03, 6.e-03, 7.e-03, 8.e-03, 9.e-03,
-       2.e-02, 3.e-02, 4.e-02, 5.e-02, 6.e-02, 7.e-02, 8.e-02, 9.e-02,
-       2.e-01, 3.e-01, 4.e-01, 5.e-01, 6.e-01, 7.e-01, 8.e-01, 9.e-01,
-       2.e+00, 3.e+00, 4.e+00, 5.e+00, 6.e+00, 7.e+00, 8.e+00, 9.e+00])
-08/25/2025 10:22:46 - DEBUG - matplotlib.ticker - vmin 7.943282347242822e-05 vmax 0.012589254117941675
-08/25/2025 10:22:46 - DEBUG - matplotlib.ticker - ticklocs array([1.e-06, 1.e-05, 1.e-04, 1.e-03, 1.e-02, 1.e-01, 1.e+00])
-08/25/2025 10:22:46 - DEBUG - matplotlib.ticker - vmin 7.943282347242822e-05 vmax 0.012589254117941675
-08/25/2025 10:22:46 - DEBUG - matplotlib.ticker - ticklocs array([1.e-06, 1.e-05, 1.e-04, 1.e-03, 1.e-02, 1.e-01, 1.e+00])
-08/25/2025 10:22:46 - DEBUG - matplotlib.ticker - vmin 7.943282347242822e-05 vmax 0.012589254117941675
-08/25/2025 10:22:46 - DEBUG - matplotlib.ticker - ticklocs array([2.e-06, 3.e-06, 4.e-06, 5.e-06, 6.e-06, 7.e-06, 8.e-06, 9.e-06,
-       2.e-05, 3.e-05, 4.e-05, 5.e-05, 6.e-05, 7.e-05, 8.e-05, 9.e-05,
-       2.e-04, 3.e-04, 4.e-04, 5.e-04, 6.e-04, 7.e-04, 8.e-04, 9.e-04,
-       2.e-03, 3.e-03, 4.e-03, 5.e-03, 6.e-03, 7.e-03, 8.e-03, 9.e-03,
-       2.e-02, 3.e-02, 4.e-02, 5.e-02, 6.e-02, 7.e-02, 8.e-02, 9.e-02,
-       2.e-01, 3.e-01, 4.e-01, 5.e-01, 6.e-01, 7.e-01, 8.e-01, 9.e-01,
-       2.e+00, 3.e+00, 4.e+00, 5.e+00, 6.e+00, 7.e+00, 8.e+00, 9.e+00])
-08/25/2025 10:22:46 - DEBUG - matplotlib.ticker - vmin 7.943282347242822e-05 vmax 0.012589254117941675
-08/25/2025 10:22:46 - DEBUG - matplotlib.ticker - ticklocs array([1.e-06, 1.e-05, 1.e-04, 1.e-03, 1.e-02, 1.e-01, 1.e+00])
-08/25/2025 10:22:46 - DEBUG - matplotlib.ticker - vmin 7.943282347242822e-05 vmax 0.012589254117941675
-08/25/2025 10:22:46 - DEBUG - matplotlib.ticker - ticklocs array([1.e-06, 1.e-05, 1.e-04, 1.e-03, 1.e-02, 1.e-01, 1.e+00])
-08/25/2025 10:22:46 - DEBUG - matplotlib.ticker - vmin 7.943282347242822e-05 vmax 0.012589254117941675
-08/25/2025 10:22:46 - DEBUG - matplotlib.ticker - ticklocs array([2.e-06, 3.e-06, 4.e-06, 5.e-06, 6.e-06, 7.e-06, 8.e-06, 9.e-06,
-       2.e-05, 3.e-05, 4.e-05, 5.e-05, 6.e-05, 7.e-05, 8.e-05, 9.e-05,
-       2.e-04, 3.e-04, 4.e-04, 5.e-04, 6.e-04, 7.e-04, 8.e-04, 9.e-04,
-       2.e-03, 3.e-03, 4.e-03, 5.e-03, 6.e-03, 7.e-03, 8.e-03, 9.e-03,
-       2.e-02, 3.e-02, 4.e-02, 5.e-02, 6.e-02, 7.e-02, 8.e-02, 9.e-02,
-       2.e-01, 3.e-01, 4.e-01, 5.e-01, 6.e-01, 7.e-01, 8.e-01, 9.e-01,
-       2.e+00, 3.e+00, 4.e+00, 5.e+00, 6.e+00, 7.e+00, 8.e+00, 9.e+00])
-08/25/2025 10:22:46 - DEBUG - matplotlib.ticker - vmin 7.943282347242822e-05 vmax 0.012589254117941675
-08/25/2025 10:22:46 - DEBUG - matplotlib.ticker - ticklocs array([1.e-06, 1.e-05, 1.e-04, 1.e-03, 1.e-02, 1.e-01, 1.e+00])
-08/25/2025 10:22:46 - INFO - __main__ - Loss curves saved to outputs/minimal_train_20250825_102206
-08/25/2025 10:22:46 - INFO - src.utils.checkpoint_io - Saving checkpoint to outputs/minimal_train_20250825_102206/checkpoints/best
-08/25/2025 10:22:47 - INFO - src.utils.checkpoint_io - Saved processor to outputs/minimal_train_20250825_102206/checkpoints/best/processor
-08/25/2025 10:22:47 - DEBUG - urllib3.connectionpool - https://huggingface.co:443 "HEAD /Qwen/Qwen2.5-VL-3B-Instruct/resolve/main/config.json HTTP/1.1" 307 0
-08/25/2025 10:22:47 - DEBUG - urllib3.connectionpool - https://huggingface.co:443 "HEAD /api/resolve-cache/models/Qwen/Qwen2.5-VL-3B-Instruct/66285546d2b821cf421d4f5eb2576359d3770cd3/config.json HTTP/1.1" 200 0
-08/25/2025 10:22:47 - DEBUG - urllib3.connectionpool - https://huggingface.co:443 "HEAD /Qwen/Qwen2.5-VL-3B-Instruct/resolve/main/config.json HTTP/1.1" 307 0
-08/25/2025 10:22:47 - DEBUG - urllib3.connectionpool - https://huggingface.co:443 "HEAD /api/resolve-cache/models/Qwen/Qwen2.5-VL-3B-Instruct/66285546d2b821cf421d4f5eb2576359d3770cd3/config.json HTTP/1.1" 200 0
-08/25/2025 10:22:47 - INFO - src.utils.checkpoint_io - Saved Qwen LoRA adapter
-08/25/2025 10:22:47 - INFO - src.utils.checkpoint_io - Saved SEG token embedding for ID 151665
-08/25/2025 10:22:47 - INFO - src.utils.checkpoint_io - Saved prompt_beta: 0.009000
-08/25/2025 10:22:47 - INFO - src.utils.checkpoint_io - Saved SAM LoRA weights: 54 tensors
-08/25/2025 10:22:47 - INFO - src.utils.checkpoint_io - Saved image_adapter
-08/25/2025 10:22:47 - INFO - src.utils.checkpoint_io - Saved text_prompt_proj
-08/25/2025 10:22:47 - INFO - src.utils.checkpoint_io - Saved token_fpn
-08/25/2025 10:22:47 - INFO - src.utils.checkpoint_io - Saved training state at step 3, epoch 0
-08/25/2025 10:22:47 - INFO - src.utils.checkpoint_io - Checkpoint saved successfully to outputs/minimal_train_20250825_102206/checkpoints/best
-08/25/2025 10:22:47 - INFO - __main__ - チェックポイント保存完了: outputs/minimal_train_20250825_102206/checkpoints/best
-08/25/2025 10:22:47 - INFO - __main__ - 🔍 チェックポイント best の推論評価を開始...
-08/25/2025 10:22:47 - DEBUG - urllib3.connectionpool - Starting new HTTPS connection (1): raw.githubusercontent.com:443
-08/25/2025 10:22:48 - DEBUG - urllib3.connectionpool - https://raw.githubusercontent.com:443 "GET /facebookresearch/segment-anything/main/notebooks/images/truck.jpg HTTP/1.1" 200 271475
-08/25/2025 10:22:48 - DEBUG - urllib3.connectionpool - Starting new HTTPS connection (1): raw.githubusercontent.com:443
-08/25/2025 10:22:48 - DEBUG - urllib3.connectionpool - https://raw.githubusercontent.com:443 "GET /facebookresearch/segment-anything/main/notebooks/images/groceries.jpg HTTP/1.1" 200 168066
-08/25/2025 10:22:48 - DEBUG - urllib3.connectionpool - Starting new HTTPS connection (1): raw.githubusercontent.com:443
-08/25/2025 10:22:48 - DEBUG - urllib3.connectionpool - https://raw.githubusercontent.com:443 "GET /facebookresearch/segment-anything/main/notebooks/images/dog.jpg HTTP/1.1" 200 99846
+soya@DESKTOP-45J3R3T:~/SAM2_1_Qwen_2_5_Integration_2$ python minimal_train_backup.py     --samples_per_epoch 20     --batch_size 2     --gradient_accumulation_steps 16     --num_epochs 2     --save_steps 5     --visualize_steps 5     --run_inference_eval     --inference_eval_samples 3     --warmup_ratio 0.1     --fp16
+設定: LISAConfig を使用
+08/31/2025 09:49:01 - INFO - __main__ - Automatic Mixed Precision (BFloat16) を有効化
+08/31/2025 09:49:01 - INFO - __main__ - 可視化を有効化: 5ステップごとに保存
+08/31/2025 09:49:01 - INFO - __main__ - ランダムシードを固定: 42
+08/31/2025 09:49:01 - INFO - __main__ - モデルとデータセットのセットアップを開始
+08/31/2025 09:49:01 - INFO - __main__ - トークナイザーとプロセッサの準備
+Added 1 special tokens to tokenizer
+Tokenizer prepared with vocab size: 151666
+Special tokens: {'<SEG>': 151665}
+08/31/2025 09:49:01 - INFO - __main__ - 動的解像度モード有効: min_pixels=112896, max_pixels=7225344
+Using a slow image processor as `use_fast` is unset and a slow processor was saved with this model. `use_fast=True` will be the default behavior in v4.52, even if the model was saved with a slow processor. This will result in minor differences in outputs. You'll still be able to use a slow processor with `use_fast=False`.
+You have video processor config saved in `preprocessor.json` file which is deprecated. Video processor configs should be saved in their own `video_preprocessor.json` file. You can rename the file or load and save the processor back which renames it automatically. Loading from `preprocessor.json` will be removed in v5.0.
+08/31/2025 09:49:05 - INFO - __main__ - ProcessorのトークナイザーにSEGトークンを追加
+08/31/2025 09:49:05 - INFO - __main__ - Processor語彙サイズ: 151666
+08/31/2025 09:49:05 - INFO - __main__ - LISA改モデルの読み込み
+Loading checkpoint shards: 100%|███████████████████████████████████████████████████| 2/2 [00:16<00:00,  8.06s/it]
+08/31/2025 09:49:22 - INFO - src.models.lisa_model - Set visual.config.image_feature_select_strategy = 'none'
+08/31/2025 09:49:22 - INFO - src.models.lisa_model - Set model.config.image_feature_select_strategy = 'none'
+08/31/2025 09:49:22 - INFO - src.models.lisa_model - Set model.model.config.image_feature_select_strategy = 'none'
+08/31/2025 09:49:22 - INFO - src.models.lisa_model - Disabled top128 token selection - using all visual tokens for segmentation
+08/31/2025 09:49:25 - INFO - root - Loaded checkpoint sucessfully
+08/31/2025 09:49:26 - INFO - src.models.lisa_model - Token-FPN initialized with intermediate layer extraction
+08/31/2025 09:49:26 - INFO - src.models.lisa_model - Froze Qwen2.5-VL base model
+08/31/2025 09:49:26 - INFO - src.models.lisa_model - Froze SAM ImageEncoder (not used in current implementation - saves 212M params)
+08/31/2025 09:49:26 - INFO - src.models.lisa_model - Froze SAM PromptEncoder
+08/31/2025 09:49:26 - INFO - src.models.lisa_model - Froze SAM memory_attention (video components - saves 8.3M params)
+08/31/2025 09:49:26 - INFO - src.models.lisa_model - Froze other SAM video components
+08/31/2025 09:49:26 - INFO - src.models.lisa_model - Added image_fusion_beta parameter for SAM-Qwen feature fusion
+08/31/2025 09:49:26 - WARNING - src.models.lisa_model - SAM MaskDecoder is unfrozen (freeze_sam_mask_decoder_base=False). LoRA will be disabled even though sam_lora_r=8 is set. MaskDecoder will be trained directly.
+08/31/2025 09:49:26 - INFO - src.models.lisa_model - Applying LoRA to Qwen2.5-VL (r=8, alpha=32)...
+08/31/2025 09:49:27 - INFO - src.models.lisa_model - Added 18,576,384 LoRA parameters to Qwen2.5-VL
+trainable params: 18,576,384 || all params: 3,773,199,360 || trainable%: 0.4923
+08/31/2025 09:49:27 - INFO - __main__ - トークナイザーを設定してSEGトークンの埋め込みをリサイズ
+08/31/2025 09:49:27 - INFO - src.models.lisa_model - SEG token embedding training enabled for token ID 151665 (separate parameter: 2048 dims)
+08/31/2025 09:49:27 - INFO - __main__ - SAM MaskDecoderにLoRAを適用 (r=8)
+08/31/2025 09:49:27 - WARNING - src.models.lisa_model - SAM MaskDecoder is not frozen! LoRA should only be applied to frozen layers. Consider setting freeze_sam_mask_decoder_base=True in config.
+08/31/2025 09:49:27 - INFO - __main__ - ================================================================================
+08/31/2025 09:49:27 - INFO - __main__ - パラメータ統計詳細
+08/31/2025 09:49:27 - INFO - __main__ - ================================================================================
+08/31/2025 09:49:27 - INFO - __main__ - 総パラメータ数: 4,004,473,780
+08/31/2025 09:49:27 - INFO - __main__ - 学習可能パラメータ数: 29,619,271
+08/31/2025 09:49:27 - INFO - __main__ - 凍結パラメータ数: 3,974,854,509
+08/31/2025 09:49:27 - INFO - __main__ - 学習可能パラメータの割合: 0.74%
+08/31/2025 09:49:27 - INFO - __main__ - --------------------------------------------------------------------------------
+08/31/2025 09:49:27 - INFO - __main__ - 学習可能コンポーネントの内訳:
+08/31/2025 09:49:27 - INFO - __main__ -    1. Qwen Language LoRA (freeze_qwen_lora)           14,966,784 ( 50.5%)
+08/31/2025 09:49:27 - INFO - __main__ -    2. Token-FPN (freeze_token_fpn)                     4,462,848 ( 15.1%)
+08/31/2025 09:49:27 - INFO - __main__ -    3. SAM MaskDecoder Base (freeze_sam_mask_decoder_base)    4,215,109 ( 14.2%)
+08/31/2025 09:49:27 - INFO - __main__ -    4. Qwen Visual ViT LoRA                             3,609,600 ( 12.2%)
+08/31/2025 09:49:27 - INFO - __main__ -    5. Text Prompt Projector (freeze_text_prompt_projector)    1,181,952 (  4.0%)
+08/31/2025 09:49:27 - INFO - __main__ -    6. Image Adapter (freeze_image_adapter)             1,180,928 (  4.0%)
+08/31/2025 09:49:27 - INFO - __main__ -    7. SEG Token (freeze_seg_token)                         2,048 (  0.0%)
+08/31/2025 09:49:27 - INFO - __main__ -    8. Prompt Beta (freeze_prompt_beta)                         1 (  0.0%)
+08/31/2025 09:49:27 - INFO - __main__ -    9. Image Fusion β (Sigma-Add)                               1 (  0.0%)
+08/31/2025 09:49:27 - INFO - __main__ - --------------------------------------------------------------------------------
+08/31/2025 09:49:27 - INFO - __main__ - 凍結コンポーネント:
+08/31/2025 09:49:27 - INFO - __main__ -   - Qwen Base (freeze_qwen_base)                  3,754,622,976 ( 94.5%)
+08/31/2025 09:49:27 - INFO - __main__ -   - SAM ImageEncoder (freeze_sam_image_encoder)    212,703,280 (  5.4%)
+08/31/2025 09:49:27 - INFO - __main__ -   - SAM MemoryAttention (freeze_sam_memory_attention)    5,922,304 (  0.1%)
+08/31/2025 09:49:27 - INFO - __main__ -   - SAM Video Components (frozen)                    1,599,729 (  0.0%)
+08/31/2025 09:49:27 - INFO - __main__ -   - SAM PromptEncoder (freeze_sam_prompt_encoder)        6,220 (  0.0%)
+08/31/2025 09:49:27 - INFO - __main__ - ================================================================================
+08/31/2025 09:49:27 - INFO - __main__ - データセットの作成
+08/31/2025 09:49:27 - INFO - __main__ - データセットディレクトリ: /mnt/h/download/LISA-dataset/data/dataset
+08/31/2025 09:49:27 - INFO - __main__ - データセットタイプ: ['sem_seg', 'refer_seg', 'vqa', 'reason_seg']
+08/31/2025 09:49:27 - INFO - __main__ - サンプルレート: [9.0, 3.0, 3.0, 1.0]
+
+==================================================
+🚀 HybridDataset初期化開始
+==================================================
+📁 ベースディレクトリ: /mnt/h/download/LISA-dataset/data/dataset
+⚙️  設定:
+   - サンプル数/エポック: 20
+   - 精度: fp32
+   - クラス数/サンプル: 3
+   - SAM画像サイズ: 1024
+   - Qwen画像サイズ: 448
+   - 動的解像度: False
+   - 品質スコア最適化: False
+   - キャッシュ: メモリ
+==================================================
+
+📊 Semantic Segmentation データセット:
+   設定: ade20k||cocostuff||partimagenet||pascal_part||paco_lvis||mapillary
+08/31/2025 09:49:27 - INFO - src.data.dataset_cache - キャッシュから sem_seg を読み込み中...
+08/31/2025 09:49:30 - INFO - src.data.dataset_cache - ✅ キャッシュから sem_seg を高速読み込み完了
+🎯 Referring Segmentation データセット:
+   設定: refclef||refcoco||refcoco+||refcocog
+08/31/2025 09:49:30 - INFO - src.data.dataset_cache - キャッシュから refer_seg を読み込み中...
+08/31/2025 09:49:34 - INFO - src.data.dataset_cache - ✅ キャッシュから refer_seg を高速読み込み完了
+💬 VQA データセット:
+   設定: llava_instruct_150k
+08/31/2025 09:49:34 - INFO - src.data.dataset_cache - キャッシュから vqa を読み込み中...
+08/31/2025 09:49:35 - INFO - src.data.dataset_cache - ✅ キャッシュから vqa を高速読み込み完了
+🧠 Reasoning Segmentation データセット:
+   設定: reason_seg/ReasonSeg|train
+08/31/2025 09:49:35 - INFO - src.data.dataset_cache - キャッシュから reason_seg を読み込み中...
+08/31/2025 09:49:35 - INFO - src.data.dataset_cache - ✅ キャッシュから reason_seg を高速読み込み完了
+✅ HybridDataset初期化完了: 4 データセット
+⚠️  sample_rate正規化: 合計 16.0 -> 1.0
+📊 最終的なsample_rate: [0.5625, 0.1875, 0.1875, 0.0625] (合計: 1.0)
+08/31/2025 09:49:35 - INFO - __main__ - データセットサイズ: 20
+08/31/2025 09:49:35 - INFO - __main__ - バッチ数: 10
+08/31/2025 09:49:35 - INFO - __main__ - ============================================================
+08/31/2025 09:49:35 - INFO - __main__ - スケジューラ設定:
+08/31/2025 09:49:35 - INFO - __main__ -   バッチ数/エポック: 10
+08/31/2025 09:49:35 - INFO - __main__ -   Gradient Accumulation Steps: 16
+08/31/2025 09:49:35 - INFO - __main__ -   実際の更新回数/エポック: 1
+08/31/2025 09:49:35 - INFO - __main__ -   総更新回数: 2
+08/31/2025 09:49:35 - INFO - __main__ -   ウォームアップ更新回数: 1
+08/31/2025 09:49:35 - INFO - __main__ -   実効バッチサイズ: 32
+08/31/2025 09:49:35 - INFO - __main__ - ============================================================
+08/31/2025 09:49:35 - INFO - __main__ - 訓練開始
+08/31/2025 09:49:35 - INFO - __main__ - メイン学習ステージ開始
+Epoch 1/2:   0%|                                                                          | 0/10 [00:00<?, ?it/s]🔥[MODEL] Forward pass - sam_images: torch.Size([2, 3, 1024, 1024])
+`loss_type=None` was set in the config but it is unrecognised.Using the default loss: `ForCausalLMLoss`.
+Epoch 1/2:  10%|▌     | 1/10 [00:16<02:31, 16.88s/it, loss=15.7284, lm=13.0938, seg=2.6347, lr=0.00e+00, β=0.502]🔥[MODEL] Forward pass - sam_images: torch.Size([2, 3, 1024, 1024])
+Epoch 1/2:  20%|█▏    | 2/10 [00:31<02:03, 15.43s/it, loss=13.2652, lm=12.5625, seg=0.7027, lr=0.00e+00, β=0.502]🔥[MODEL] Forward pass - sam_images: torch.Size([2, 3, 1024, 1024])
+Epoch 1/2:  30%|█▊    | 3/10 [00:39<01:24, 12.14s/it, loss=13.7275, lm=12.6445, seg=1.0830, lr=0.00e+00, β=0.502]🔥[MODEL] Forward pass - sam_images: torch.Size([2, 3, 1024, 1024])
+Epoch 1/2:  40%|██▍   | 4/10 [00:51<01:11, 11.94s/it, loss=13.8566, lm=12.1016, seg=1.7550, lr=0.00e+00, β=0.502]🔥[MODEL] Forward pass - sam_images: torch.Size([2, 3, 1024, 1024])
+Epoch 1/2:  40%|██▍   | 4/10 [01:00<01:11, 11.94s/it, loss=13.4656, lm=11.6133, seg=1.8523, lr=0.00e+00, β=0.502]08/31/2025 09:50:46 - INFO - __main__ - Saved visualization to outputs/minimal_train_20250831_094901/visualizations/step_000005.png (IoU: 0.000, Dice: 0.000)
+08/31/2025 09:50:46 - INFO - src.utils.checkpoint_io - Saving checkpoint to outputs/minimal_train_20250831_094901/checkpoints/step_5
+08/31/2025 09:50:47 - INFO - src.utils.checkpoint_io - Saved processor to outputs/minimal_train_20250831_094901/checkpoints/step_5/processor
+08/31/2025 09:50:47 - INFO - src.utils.checkpoint_io - Saved Qwen LoRA adapter
+08/31/2025 09:50:47 - INFO - src.utils.checkpoint_io - Visual ViT LoRA was disabled (language-only)
+08/31/2025 09:50:47 - INFO - src.utils.checkpoint_io - Saved SEG token embedding for ID 151665
+08/31/2025 09:50:47 - INFO - src.utils.checkpoint_io - Saved prompt_beta: 0.010000
+08/31/2025 09:50:47 - INFO - src.utils.checkpoint_io - Saved image_fusion_beta: 0.500000 (fusion_type: sigma_add)
+08/31/2025 09:50:47 - INFO - src.utils.checkpoint_io - Saved full SAM MaskDecoder
+08/31/2025 09:50:47 - INFO - src.utils.checkpoint_io - Saved image_adapter
+08/31/2025 09:50:48 - INFO - src.utils.checkpoint_io - Saved text_prompt_proj
+08/31/2025 09:50:48 - INFO - src.utils.checkpoint_io - Saved token_fpn
+08/31/2025 09:50:48 - INFO - src.utils.checkpoint_io - Saved training state at step 5, epoch 0
+08/31/2025 09:50:48 - INFO - src.utils.checkpoint_io - Checkpoint saved successfully to outputs/minimal_train_20250831_094901/checkpoints/step_5
+08/31/2025 09:50:48 - INFO - __main__ - チェックポイント保存完了: outputs/minimal_train_20250831_094901/checkpoints/step_5
+08/31/2025 09:50:48 - INFO - __main__ - 🔍 チェックポイント step_5 の推論評価を開始...
 /home/soya/.local/lib/python3.12/site-packages/transformers/tokenization_utils_base.py:2714: UserWarning: `max_length` is ignored when `padding`=`True` and there is no truncation strategy. To pad to max length, use `padding='max_length'`.
   warnings.warn(
 🔥[MODEL] Forward pass - sam_images: torch.Size([1, 3, 1024, 1024])
-08/25/2025 10:22:49 - DEBUG - src.models.lisa_model - [FORWARD] Starting forward pass
-08/25/2025 10:22:49 - DEBUG - src.models.lisa_model -   input_ids: torch.Size([1, 2783])
-08/25/2025 10:22:49 - DEBUG - src.models.lisa_model -   pixel_values: torch.Size([11008, 1176])
-08/25/2025 10:22:49 - DEBUG - src.models.lisa_model -   image_grid_thw: tensor([[  1,  86, 128]], device='cuda:0')
-08/25/2025 10:22:49 - DEBUG - src.models.lisa_model -   sam_images: torch.Size([1, 3, 1024, 1024])
-08/25/2025 10:22:49 - DEBUG - src.models.lisa_model -   labels: None
-08/25/2025 10:22:49 - DEBUG - src.models.lisa_model -   mask_labels: <class 'NoneType'> with None
-08/25/2025 10:22:49 - DEBUG - src.models.lisa_model - [FORWARD] Running Qwen forward pass...
-08/25/2025 10:23:21 - DEBUG - src.models.lisa_model - [FORWARD] Qwen outputs - logits: torch.Size([1, 2783, 151936]), hidden_states: torch.Size([1, 2783, 2048])
-08/25/2025 10:23:21 - DEBUG - src.models.lisa_model - [FORWARD] Extracting Qwen vision features...
-08/25/2025 10:23:21 - DEBUG - src.models.lisa_model - [extract_vision_features] Start - pixel_values shape: torch.Size([11008, 1176]), image_grid_thw shape: torch.Size([1, 3])
-08/25/2025 10:24:11 - DEBUG - src.models.lisa_model - [extract_vision_features] End - vision_features shape: torch.Size([1, 2752, 2048]), dtype: torch.bfloat16
-08/25/2025 10:24:11 - DEBUG - src.models.lisa_model - [SAM ViT] Processing SAM images with shape: torch.Size([1, 3, 1024, 1024]), dtype: torch.float32
-08/25/2025 10:24:11 - DEBUG - src.models.lisa_model - [SAM INPUT] min=-2.099, max=2.640, mean=0.370, std=1.171
-08/25/2025 10:24:11 - DEBUG - src.models.lisa_model - [SAM ViT] Converting input from torch.float32 to torch.float32
-08/25/2025 10:24:11 - DEBUG - src.models.lisa_model - [SAM OUTPUT] shape=torch.Size([1, 256, 64, 64]), dtype=torch.float32
-08/25/2025 10:24:11 - DEBUG - src.models.lisa_model - [SAM OUTPUT] min=-7.087, max=7.945, mean=0.029, std=0.910
-08/25/2025 10:24:11 - DEBUG - src.models.lisa_model - [FUSION] Fusing Qwen features torch.Size([1, 256, 43, 64]) with SAM features torch.Size([1, 256, 64, 64])
-08/25/2025 10:24:11 - DEBUG - src.models.lisa_model - [FUSION] Resized Qwen features to torch.Size([1, 256, 64, 64])
-08/25/2025 10:24:11 - DEBUG - src.models.lisa_model - [FUSION] Using image_fusion_beta=0.0000, scaled=0.5000
-08/25/2025 10:24:11 - DEBUG - src.models.lisa_model - [FUSION] Created fused embeddings with shape: torch.Size([1, 256, 64, 64]), dtype: torch.float32
-08/25/2025 10:24:11 - DEBUG - src.models.lisa_model - [HIGH RES] Generating high-res features from embeddings shape: torch.Size([1, 256, 64, 64]), dtype: torch.float32
-08/25/2025 10:24:11 - DEBUG - src.models.lisa_model - [HIGH RES] use_token_fpn = True
-08/25/2025 10:24:11 - DEBUG - src.models.lisa_model - [HIGH RES] Converting features from torch.float32 to FPN dtype torch.bfloat16
-08/25/2025 10:24:11 - DEBUG - src.models.lisa_model - [HIGH RES] Generated fused high-res features: s0=torch.Size([1, 256, 256, 256]), s1=torch.Size([1, 256, 128, 128])
-08/25/2025 10:24:11 - DEBUG - src.models.lisa_model - [SEG SEARCH] Batch 0: Found 1 SEG tokens at positions [2777]
-08/25/2025 10:24:11 - DEBUG - src.models.lisa_model - [MASK GEN] Total seg_positions: [[2777]]
-08/25/2025 10:24:11 - DEBUG - src.models.lisa_model - [MASK GEN] Total batches: 1
-08/25/2025 10:24:11 - DEBUG - src.models.lisa_model - [MASK GEN] Batch 0: seg_positions = [2777]
-08/25/2025 10:24:11 - DEBUG - src.models.lisa_model - [MASK GEN] image_features_sam shape: torch.Size([1, 256, 64, 64])
-08/25/2025 10:24:11 - DEBUG - src.models.lisa_model - [MASK GEN] Batch 0: Processing 1 SEG tokens
-08/25/2025 10:24:11 - DEBUG - src.models.lisa_model - [MASK GEN] Batch 0, SEG 0: Starting mask generation
-08/25/2025 10:24:11 - DEBUG - src.models.lisa_model - [CENTROID] Batch 0, SEG 0: Inference mode - using image center (512, 512)
-08/25/2025 10:24:11 - DEBUG - src.models.lisa_model - [MASK UPSCALE] Upsampling mask from torch.Size([256, 256]) to SAM size (1024, 1024)
-08/25/2025 10:24:12 - INFO - __main__ -   ✓ truck: mean=0.305, positive=636177/2160000
+08/31/2025 09:54:54 - INFO - __main__ -   ✓ truck: mean=0.259, positive=625665/2160000
 🔥[MODEL] Forward pass - sam_images: torch.Size([1, 3, 1024, 1024])
-08/25/2025 10:24:12 - DEBUG - src.models.lisa_model - [FORWARD] Starting forward pass
-08/25/2025 10:24:12 - DEBUG - src.models.lisa_model -   input_ids: torch.Size([1, 582])
-08/25/2025 10:24:12 - DEBUG - src.models.lisa_model -   pixel_values: torch.Size([2204, 1176])
-08/25/2025 10:24:12 - DEBUG - src.models.lisa_model -   image_grid_thw: tensor([[ 1, 38, 58]], device='cuda:0')
-08/25/2025 10:24:12 - DEBUG - src.models.lisa_model -   sam_images: torch.Size([1, 3, 1024, 1024])
-08/25/2025 10:24:12 - DEBUG - src.models.lisa_model -   labels: None
-08/25/2025 10:24:12 - DEBUG - src.models.lisa_model -   mask_labels: <class 'NoneType'> with None
-08/25/2025 10:24:12 - DEBUG - src.models.lisa_model - [FORWARD] Running Qwen forward pass...
-08/25/2025 10:24:13 - DEBUG - src.models.lisa_model - [FORWARD] Qwen outputs - logits: torch.Size([1, 582, 151936]), hidden_states: torch.Size([1, 582, 2048])
-08/25/2025 10:24:13 - DEBUG - src.models.lisa_model - [FORWARD] Extracting Qwen vision features...
-08/25/2025 10:24:13 - DEBUG - src.models.lisa_model - [extract_vision_features] Start - pixel_values shape: torch.Size([2204, 1176]), image_grid_thw shape: torch.Size([1, 3])
-08/25/2025 10:24:13 - DEBUG - src.models.lisa_model - [extract_vision_features] End - vision_features shape: torch.Size([1, 551, 2048]), dtype: torch.bfloat16
-08/25/2025 10:24:13 - DEBUG - src.models.lisa_model - [SAM ViT] Processing SAM images with shape: torch.Size([1, 3, 1024, 1024]), dtype: torch.float32
-08/25/2025 10:24:13 - DEBUG - src.models.lisa_model - [SAM INPUT] min=-2.118, max=2.640, mean=-0.146, std=1.137
-08/25/2025 10:24:13 - DEBUG - src.models.lisa_model - [SAM ViT] Converting input from torch.float32 to torch.float32
-08/25/2025 10:24:13 - DEBUG - src.models.lisa_model - [SAM OUTPUT] shape=torch.Size([1, 256, 64, 64]), dtype=torch.float32
-08/25/2025 10:24:14 - DEBUG - src.models.lisa_model - [SAM OUTPUT] min=-7.301, max=7.781, mean=0.017, std=0.931
-08/25/2025 10:24:14 - DEBUG - src.models.lisa_model - [FUSION] Fusing Qwen features torch.Size([1, 256, 19, 29]) with SAM features torch.Size([1, 256, 64, 64])
-08/25/2025 10:24:14 - DEBUG - src.models.lisa_model - [FUSION] Resized Qwen features to torch.Size([1, 256, 64, 64])
-08/25/2025 10:24:14 - DEBUG - src.models.lisa_model - [FUSION] Using image_fusion_beta=0.0000, scaled=0.5000
-08/25/2025 10:24:14 - DEBUG - src.models.lisa_model - [FUSION] Created fused embeddings with shape: torch.Size([1, 256, 64, 64]), dtype: torch.float32
-08/25/2025 10:24:14 - DEBUG - src.models.lisa_model - [HIGH RES] Generating high-res features from embeddings shape: torch.Size([1, 256, 64, 64]), dtype: torch.float32
-08/25/2025 10:24:14 - DEBUG - src.models.lisa_model - [HIGH RES] use_token_fpn = True
-08/25/2025 10:24:14 - DEBUG - src.models.lisa_model - [HIGH RES] Converting features from torch.float32 to FPN dtype torch.bfloat16
-08/25/2025 10:24:14 - DEBUG - src.models.lisa_model - [HIGH RES] Generated fused high-res features: s0=torch.Size([1, 256, 256, 256]), s1=torch.Size([1, 256, 128, 128])
-08/25/2025 10:24:14 - DEBUG - src.models.lisa_model - [SEG SEARCH] Batch 0: Found 1 SEG tokens at positions [576]
-08/25/2025 10:24:14 - DEBUG - src.models.lisa_model - [MASK GEN] Total seg_positions: [[576]]
-08/25/2025 10:24:14 - DEBUG - src.models.lisa_model - [MASK GEN] Total batches: 1
-08/25/2025 10:24:14 - DEBUG - src.models.lisa_model - [MASK GEN] Batch 0: seg_positions = [576]
-08/25/2025 10:24:14 - DEBUG - src.models.lisa_model - [MASK GEN] image_features_sam shape: torch.Size([1, 256, 64, 64])
-08/25/2025 10:24:14 - DEBUG - src.models.lisa_model - [MASK GEN] Batch 0: Processing 1 SEG tokens
-08/25/2025 10:24:14 - DEBUG - src.models.lisa_model - [MASK GEN] Batch 0, SEG 0: Starting mask generation
-08/25/2025 10:24:14 - DEBUG - src.models.lisa_model - [CENTROID] Batch 0, SEG 0: Inference mode - using image center (512, 512)
-08/25/2025 10:24:14 - DEBUG - src.models.lisa_model - [MASK UPSCALE] Upsampling mask from torch.Size([256, 256]) to SAM size (1024, 1024)
-08/25/2025 10:24:14 - INFO - __main__ -   ✓ groceries: mean=0.106, positive=24661/427200
+08/31/2025 09:55:19 - INFO - __main__ -   ✓ groceries: mean=0.025, positive=9483/427200
 🔥[MODEL] Forward pass - sam_images: torch.Size([1, 3, 1024, 1024])
-08/25/2025 10:24:14 - DEBUG - src.models.lisa_model - [FORWARD] Starting forward pass
-08/25/2025 10:24:14 - DEBUG - src.models.lisa_model -   input_ids: torch.Size([1, 582])
-08/25/2025 10:24:14 - DEBUG - src.models.lisa_model -   pixel_values: torch.Size([2204, 1176])
-08/25/2025 10:24:14 - DEBUG - src.models.lisa_model -   image_grid_thw: tensor([[ 1, 38, 58]], device='cuda:0')
-08/25/2025 10:24:14 - DEBUG - src.models.lisa_model -   sam_images: torch.Size([1, 3, 1024, 1024])
-08/25/2025 10:24:14 - DEBUG - src.models.lisa_model -   labels: None
-08/25/2025 10:24:14 - DEBUG - src.models.lisa_model -   mask_labels: <class 'NoneType'> with None
-08/25/2025 10:24:14 - DEBUG - src.models.lisa_model - [FORWARD] Running Qwen forward pass...
-08/25/2025 10:24:14 - DEBUG - src.models.lisa_model - [FORWARD] Qwen outputs - logits: torch.Size([1, 582, 151936]), hidden_states: torch.Size([1, 582, 2048])
-08/25/2025 10:24:14 - DEBUG - src.models.lisa_model - [FORWARD] Extracting Qwen vision features...
-08/25/2025 10:24:14 - DEBUG - src.models.lisa_model - [extract_vision_features] Start - pixel_values shape: torch.Size([2204, 1176]), image_grid_thw shape: torch.Size([1, 3])
-08/25/2025 10:24:15 - DEBUG - src.models.lisa_model - [extract_vision_features] End - vision_features shape: torch.Size([1, 551, 2048]), dtype: torch.bfloat16
-08/25/2025 10:24:15 - DEBUG - src.models.lisa_model - [SAM ViT] Processing SAM images with shape: torch.Size([1, 3, 1024, 1024]), dtype: torch.float32
-08/25/2025 10:24:15 - DEBUG - src.models.lisa_model - [SAM INPUT] min=-2.118, max=2.640, mean=0.602, std=1.167
-08/25/2025 10:24:15 - DEBUG - src.models.lisa_model - [SAM ViT] Converting input from torch.float32 to torch.float32
-08/25/2025 10:24:15 - DEBUG - src.models.lisa_model - [SAM OUTPUT] shape=torch.Size([1, 256, 64, 64]), dtype=torch.float32
-08/25/2025 10:24:15 - DEBUG - src.models.lisa_model - [SAM OUTPUT] min=-7.119, max=7.231, mean=0.027, std=0.924
-08/25/2025 10:24:15 - DEBUG - src.models.lisa_model - [FUSION] Fusing Qwen features torch.Size([1, 256, 19, 29]) with SAM features torch.Size([1, 256, 64, 64])
-08/25/2025 10:24:15 - DEBUG - src.models.lisa_model - [FUSION] Resized Qwen features to torch.Size([1, 256, 64, 64])
-08/25/2025 10:24:15 - DEBUG - src.models.lisa_model - [FUSION] Using image_fusion_beta=0.0000, scaled=0.5000
-08/25/2025 10:24:15 - DEBUG - src.models.lisa_model - [FUSION] Created fused embeddings with shape: torch.Size([1, 256, 64, 64]), dtype: torch.float32
-08/25/2025 10:24:15 - DEBUG - src.models.lisa_model - [HIGH RES] Generating high-res features from embeddings shape: torch.Size([1, 256, 64, 64]), dtype: torch.float32
-08/25/2025 10:24:15 - DEBUG - src.models.lisa_model - [HIGH RES] use_token_fpn = True
-08/25/2025 10:24:15 - DEBUG - src.models.lisa_model - [HIGH RES] Converting features from torch.float32 to FPN dtype torch.bfloat16
-08/25/2025 10:24:15 - DEBUG - src.models.lisa_model - [HIGH RES] Generated fused high-res features: s0=torch.Size([1, 256, 256, 256]), s1=torch.Size([1, 256, 128, 128])
-08/25/2025 10:24:15 - DEBUG - src.models.lisa_model - [SEG SEARCH] Batch 0: Found 1 SEG tokens at positions [576]
-08/25/2025 10:24:15 - DEBUG - src.models.lisa_model - [MASK GEN] Total seg_positions: [[576]]
-08/25/2025 10:24:15 - DEBUG - src.models.lisa_model - [MASK GEN] Total batches: 1
-08/25/2025 10:24:15 - DEBUG - src.models.lisa_model - [MASK GEN] Batch 0: seg_positions = [576]
-08/25/2025 10:24:15 - DEBUG - src.models.lisa_model - [MASK GEN] image_features_sam shape: torch.Size([1, 256, 64, 64])
-08/25/2025 10:24:15 - DEBUG - src.models.lisa_model - [MASK GEN] Batch 0: Processing 1 SEG tokens
-08/25/2025 10:24:15 - DEBUG - src.models.lisa_model - [MASK GEN] Batch 0, SEG 0: Starting mask generation
-08/25/2025 10:24:15 - DEBUG - src.models.lisa_model - [CENTROID] Batch 0, SEG 0: Inference mode - using image center (512, 512)
-08/25/2025 10:24:15 - DEBUG - src.models.lisa_model - [MASK UPSCALE] Upsampling mask from torch.Size([256, 256]) to SAM size (1024, 1024)
-08/25/2025 10:24:15 - INFO - __main__ -   ✓ dog: mean=0.516, positive=190679/427200
-08/25/2025 10:24:15 - INFO - __main__ -   → 評価結果を保存: outputs/minimal_train_20250825_102206/checkpoints/best/inference_results/evaluation_results.json
-08/25/2025 10:24:15 - INFO - __main__ - ✅ 推論評価完了: 3/3 成功
-08/25/2025 10:24:15 - INFO - __main__ - ベストモデル更新: 損失 = 16.0623
-08/25/2025 10:24:15 - INFO - src.utils.checkpoint_io - Saving checkpoint to outputs/minimal_train_20250825_102206/checkpoints/epoch_1
-08/25/2025 10:24:16 - INFO - src.utils.checkpoint_io - Saved processor to outputs/minimal_train_20250825_102206/checkpoints/epoch_1/processor
-08/25/2025 10:24:16 - DEBUG - urllib3.connectionpool - https://huggingface.co:443 "HEAD /Qwen/Qwen2.5-VL-3B-Instruct/resolve/main/config.json HTTP/1.1" 307 0
-08/25/2025 10:24:16 - DEBUG - urllib3.connectionpool - https://huggingface.co:443 "HEAD /api/resolve-cache/models/Qwen/Qwen2.5-VL-3B-Instruct/66285546d2b821cf421d4f5eb2576359d3770cd3/config.json HTTP/1.1" 200 0
-08/25/2025 10:24:16 - DEBUG - urllib3.connectionpool - https://huggingface.co:443 "HEAD /Qwen/Qwen2.5-VL-3B-Instruct/resolve/main/config.json HTTP/1.1" 307 0
-08/25/2025 10:24:16 - DEBUG - urllib3.connectionpool - https://huggingface.co:443 "HEAD /api/resolve-cache/models/Qwen/Qwen2.5-VL-3B-Instruct/66285546d2b821cf421d4f5eb2576359d3770cd3/config.json HTTP/1.1" 200 0
-08/25/2025 10:24:16 - INFO - src.utils.checkpoint_io - Saved Qwen LoRA adapter
-08/25/2025 10:24:16 - INFO - src.utils.checkpoint_io - Saved SEG token embedding for ID 151665
-08/25/2025 10:24:16 - INFO - src.utils.checkpoint_io - Saved prompt_beta: 0.009000
-08/25/2025 10:24:16 - INFO - src.utils.checkpoint_io - Saved SAM LoRA weights: 54 tensors
-08/25/2025 10:24:16 - INFO - src.utils.checkpoint_io - Saved image_adapter
-08/25/2025 10:24:16 - INFO - src.utils.checkpoint_io - Saved text_prompt_proj
-08/25/2025 10:24:16 - INFO - src.utils.checkpoint_io - Saved token_fpn
-08/25/2025 10:24:16 - INFO - src.utils.checkpoint_io - Saved training state at step 3, epoch 0
-08/25/2025 10:24:16 - INFO - src.utils.checkpoint_io - Checkpoint saved successfully to outputs/minimal_train_20250825_102206/checkpoints/epoch_1
-08/25/2025 10:24:16 - INFO - __main__ - チェックポイント保存完了: outputs/minimal_train_20250825_102206/checkpoints/epoch_1
-08/25/2025 10:24:16 - INFO - __main__ - 🔍 チェックポイント epoch_1 の推論評価を開始...
+08/31/2025 09:55:59 - INFO - __main__ -   ✓ dog: mean=0.302, positive=107105/427200
+08/31/2025 09:55:59 - INFO - __main__ -   → 評価結果を保存: outputs/minimal_train_20250831_094901/checkpoints/step_5/inference_results/evaluation_results.json
+08/31/2025 09:55:59 - INFO - __main__ - ✅ 推論評価完了: 3/3 成功
+Epoch 1/2:  50%|██▌  | 5/10 [06:23<10:37, 127.44s/it, loss=13.4656, lm=11.6133, seg=1.8523, lr=0.00e+00, β=0.502]🔥[MODEL] Forward pass - sam_images: torch.Size([2, 3, 1024, 1024])
+Epoch 1/2:  60%|███▌  | 6/10 [06:45<06:07, 91.75s/it, loss=15.3683, lm=14.5571, seg=0.8112, lr=0.00e+00, β=0.502]🔥[MODEL] Forward pass - sam_images: torch.Size([2, 3, 1024, 1024])
+Epoch 1/2:  70%|████▏ | 7/10 [06:59<03:19, 66.38s/it, loss=11.7900, lm=11.4336, seg=0.3564, lr=0.00e+00, β=0.502]🔥[MODEL] Forward pass - sam_images: torch.Size([2, 3, 1024, 1024])
+Epoch 1/2:  80%|████▊ | 8/10 [07:08<01:36, 48.06s/it, loss=13.7111, lm=12.8320, seg=0.8791, lr=0.00e+00, β=0.502]🔥[MODEL] Forward pass - sam_images: torch.Size([2, 3, 1024, 1024])
+Epoch 1/2:  90%|█████▍| 9/10 [07:35<00:41, 41.41s/it, loss=15.9947, lm=14.5805, seg=1.4142, lr=0.00e+00, β=0.502]🔥[MODEL] Forward pass - sam_images: torch.Size([2, 3, 1024, 1024])
+Epoch 1/2:  90%|█████▍| 9/10 [07:49<00:41, 41.41s/it, loss=14.9066, lm=14.2723, seg=0.6343, lr=1.00e-03, β=0.502]08/31/2025 09:57:25 - INFO - __main__ - Saved visualization to outputs/minimal_train_20250831_094901/visualizations/step_000010.png (IoU: 0.493, Dice: 0.660)
+08/31/2025 09:57:25 - INFO - src.utils.checkpoint_io - Saving checkpoint to outputs/minimal_train_20250831_094901/checkpoints/step_10
+08/31/2025 09:57:26 - INFO - src.utils.checkpoint_io - Saved processor to outputs/minimal_train_20250831_094901/checkpoints/step_10/processor
+08/31/2025 09:57:26 - INFO - src.utils.checkpoint_io - Saved Qwen LoRA adapter
+08/31/2025 09:57:26 - INFO - src.utils.checkpoint_io - Visual ViT LoRA was disabled (language-only)
+08/31/2025 09:57:26 - INFO - src.utils.checkpoint_io - Saved SEG token embedding for ID 151665
+08/31/2025 09:57:26 - INFO - src.utils.checkpoint_io - Saved prompt_beta: 0.010000
+08/31/2025 09:57:26 - INFO - src.utils.checkpoint_io - Saved image_fusion_beta: 0.500000 (fusion_type: sigma_add)
+08/31/2025 09:57:26 - INFO - src.utils.checkpoint_io - Saved full SAM MaskDecoder
+08/31/2025 09:57:26 - INFO - src.utils.checkpoint_io - Saved image_adapter
+08/31/2025 09:57:26 - INFO - src.utils.checkpoint_io - Saved text_prompt_proj
+08/31/2025 09:57:26 - INFO - src.utils.checkpoint_io - Saved token_fpn
+08/31/2025 09:57:27 - INFO - src.utils.checkpoint_io - Saved training state at step 10, epoch 0
+08/31/2025 09:57:27 - INFO - src.utils.checkpoint_io - Checkpoint saved successfully to outputs/minimal_train_20250831_094901/checkpoints/step_10
+08/31/2025 09:57:27 - INFO - __main__ - チェックポイント保存完了: outputs/minimal_train_20250831_094901/checkpoints/step_10
+08/31/2025 09:57:27 - INFO - __main__ - 🔍 チェックポイント step_10 の推論評価を開始...
 /home/soya/.local/lib/python3.12/site-packages/transformers/tokenization_utils_base.py:2714: UserWarning: `max_length` is ignored when `padding`=`True` and there is no truncation strategy. To pad to max length, use `padding='max_length'`.
   warnings.warn(
 🔥[MODEL] Forward pass - sam_images: torch.Size([1, 3, 1024, 1024])
-08/25/2025 10:24:17 - DEBUG - src.models.lisa_model - [FORWARD] Starting forward pass
-08/25/2025 10:24:17 - DEBUG - src.models.lisa_model -   input_ids: torch.Size([1, 2783])
-08/25/2025 10:24:17 - DEBUG - src.models.lisa_model -   pixel_values: torch.Size([11008, 1176])
-08/25/2025 10:24:17 - DEBUG - src.models.lisa_model -   image_grid_thw: tensor([[  1,  86, 128]], device='cuda:0')
-08/25/2025 10:24:17 - DEBUG - src.models.lisa_model -   sam_images: torch.Size([1, 3, 1024, 1024])
-08/25/2025 10:24:17 - DEBUG - src.models.lisa_model -   labels: None
-08/25/2025 10:24:17 - DEBUG - src.models.lisa_model -   mask_labels: <class 'NoneType'> with None
-08/25/2025 10:24:17 - DEBUG - src.models.lisa_model - [FORWARD] Running Qwen forward pass...
-08/25/2025 10:24:47 - DEBUG - src.models.lisa_model - [FORWARD] Qwen outputs - logits: torch.Size([1, 2783, 151936]), hidden_states: torch.Size([1, 2783, 2048])
-08/25/2025 10:24:47 - DEBUG - src.models.lisa_model - [FORWARD] Extracting Qwen vision features...
-08/25/2025 10:24:47 - DEBUG - src.models.lisa_model - [extract_vision_features] Start - pixel_values shape: torch.Size([11008, 1176]), image_grid_thw shape: torch.Size([1, 3])
-08/25/2025 10:25:37 - DEBUG - src.models.lisa_model - [extract_vision_features] End - vision_features shape: torch.Size([1, 2752, 2048]), dtype: torch.bfloat16
-08/25/2025 10:25:37 - DEBUG - src.models.lisa_model - [SAM ViT] Processing SAM images with shape: torch.Size([1, 3, 1024, 1024]), dtype: torch.float32
-08/25/2025 10:25:37 - DEBUG - src.models.lisa_model - [SAM INPUT] min=-2.099, max=2.640, mean=0.370, std=1.171
-08/25/2025 10:25:37 - DEBUG - src.models.lisa_model - [SAM ViT] Converting input from torch.float32 to torch.float32
-08/25/2025 10:25:37 - DEBUG - src.models.lisa_model - [SAM OUTPUT] shape=torch.Size([1, 256, 64, 64]), dtype=torch.float32
-08/25/2025 10:25:37 - DEBUG - src.models.lisa_model - [SAM OUTPUT] min=-7.086, max=7.937, mean=0.029, std=0.910
-08/25/2025 10:25:37 - DEBUG - src.models.lisa_model - [FUSION] Fusing Qwen features torch.Size([1, 256, 43, 64]) with SAM features torch.Size([1, 256, 64, 64])
-08/25/2025 10:25:37 - DEBUG - src.models.lisa_model - [FUSION] Resized Qwen features to torch.Size([1, 256, 64, 64])
-08/25/2025 10:25:37 - DEBUG - src.models.lisa_model - [FUSION] Using image_fusion_beta=0.0000, scaled=0.5000
-08/25/2025 10:25:37 - DEBUG - src.models.lisa_model - [FUSION] Created fused embeddings with shape: torch.Size([1, 256, 64, 64]), dtype: torch.float32
-08/25/2025 10:25:37 - DEBUG - src.models.lisa_model - [HIGH RES] Generating high-res features from embeddings shape: torch.Size([1, 256, 64, 64]), dtype: torch.float32
-08/25/2025 10:25:37 - DEBUG - src.models.lisa_model - [HIGH RES] use_token_fpn = True
-08/25/2025 10:25:37 - DEBUG - src.models.lisa_model - [HIGH RES] Converting features from torch.float32 to FPN dtype torch.bfloat16
-08/25/2025 10:25:37 - DEBUG - src.models.lisa_model - [HIGH RES] Generated fused high-res features: s0=torch.Size([1, 256, 256, 256]), s1=torch.Size([1, 256, 128, 128])
-08/25/2025 10:25:37 - DEBUG - src.models.lisa_model - [SEG SEARCH] Batch 0: Found 1 SEG tokens at positions [2777]
-08/25/2025 10:25:37 - DEBUG - src.models.lisa_model - [MASK GEN] Total seg_positions: [[2777]]
-08/25/2025 10:25:37 - DEBUG - src.models.lisa_model - [MASK GEN] Total batches: 1
-08/25/2025 10:25:37 - DEBUG - src.models.lisa_model - [MASK GEN] Batch 0: seg_positions = [2777]
-08/25/2025 10:25:37 - DEBUG - src.models.lisa_model - [MASK GEN] image_features_sam shape: torch.Size([1, 256, 64, 64])
-08/25/2025 10:25:37 - DEBUG - src.models.lisa_model - [MASK GEN] Batch 0: Processing 1 SEG tokens
-08/25/2025 10:25:37 - DEBUG - src.models.lisa_model - [MASK GEN] Batch 0, SEG 0: Starting mask generation
-08/25/2025 10:25:37 - DEBUG - src.models.lisa_model - [CENTROID] Batch 0, SEG 0: Inference mode - using image center (512, 512)
-08/25/2025 10:25:37 - DEBUG - src.models.lisa_model - [MASK UPSCALE] Upsampling mask from torch.Size([256, 256]) to SAM size (1024, 1024)
-08/25/2025 10:25:38 - INFO - __main__ -   ✓ truck: mean=0.307, positive=636872/2160000
+08/31/2025 10:00:51 - INFO - __main__ -   ✓ truck: mean=0.256, positive=621206/2160000
 🔥[MODEL] Forward pass - sam_images: torch.Size([1, 3, 1024, 1024])
-08/25/2025 10:25:38 - DEBUG - src.models.lisa_model - [FORWARD] Starting forward pass
-08/25/2025 10:25:38 - DEBUG - src.models.lisa_model -   input_ids: torch.Size([1, 582])
-08/25/2025 10:25:38 - DEBUG - src.models.lisa_model -   pixel_values: torch.Size([2204, 1176])
-08/25/2025 10:25:38 - DEBUG - src.models.lisa_model -   image_grid_thw: tensor([[ 1, 38, 58]], device='cuda:0')
-08/25/2025 10:25:38 - DEBUG - src.models.lisa_model -   sam_images: torch.Size([1, 3, 1024, 1024])
-08/25/2025 10:25:38 - DEBUG - src.models.lisa_model -   labels: None
-08/25/2025 10:25:38 - DEBUG - src.models.lisa_model -   mask_labels: <class 'NoneType'> with None
-08/25/2025 10:25:38 - DEBUG - src.models.lisa_model - [FORWARD] Running Qwen forward pass...
-08/25/2025 10:25:39 - DEBUG - src.models.lisa_model - [FORWARD] Qwen outputs - logits: torch.Size([1, 582, 151936]), hidden_states: torch.Size([1, 582, 2048])
-08/25/2025 10:25:39 - DEBUG - src.models.lisa_model - [FORWARD] Extracting Qwen vision features...
-08/25/2025 10:25:39 - DEBUG - src.models.lisa_model - [extract_vision_features] Start - pixel_values shape: torch.Size([2204, 1176]), image_grid_thw shape: torch.Size([1, 3])
-08/25/2025 10:25:39 - DEBUG - src.models.lisa_model - [extract_vision_features] End - vision_features shape: torch.Size([1, 551, 2048]), dtype: torch.bfloat16
-08/25/2025 10:25:39 - DEBUG - src.models.lisa_model - [SAM ViT] Processing SAM images with shape: torch.Size([1, 3, 1024, 1024]), dtype: torch.float32
-08/25/2025 10:25:39 - DEBUG - src.models.lisa_model - [SAM INPUT] min=-2.118, max=2.640, mean=-0.145, std=1.134
-08/25/2025 10:25:39 - DEBUG - src.models.lisa_model - [SAM ViT] Converting input from torch.float32 to torch.float32
-08/25/2025 10:25:39 - DEBUG - src.models.lisa_model - [SAM OUTPUT] shape=torch.Size([1, 256, 64, 64]), dtype=torch.float32
-08/25/2025 10:25:39 - DEBUG - src.models.lisa_model - [SAM OUTPUT] min=-7.174, max=7.443, mean=0.019, std=0.934
-08/25/2025 10:25:39 - DEBUG - src.models.lisa_model - [FUSION] Fusing Qwen features torch.Size([1, 256, 19, 29]) with SAM features torch.Size([1, 256, 64, 64])
-08/25/2025 10:25:39 - DEBUG - src.models.lisa_model - [FUSION] Resized Qwen features to torch.Size([1, 256, 64, 64])
-08/25/2025 10:25:39 - DEBUG - src.models.lisa_model - [FUSION] Using image_fusion_beta=0.0000, scaled=0.5000
-08/25/2025 10:25:39 - DEBUG - src.models.lisa_model - [FUSION] Created fused embeddings with shape: torch.Size([1, 256, 64, 64]), dtype: torch.float32
-08/25/2025 10:25:39 - DEBUG - src.models.lisa_model - [HIGH RES] Generating high-res features from embeddings shape: torch.Size([1, 256, 64, 64]), dtype: torch.float32
-08/25/2025 10:25:39 - DEBUG - src.models.lisa_model - [HIGH RES] use_token_fpn = True
-08/25/2025 10:25:39 - DEBUG - src.models.lisa_model - [HIGH RES] Converting features from torch.float32 to FPN dtype torch.bfloat16
-08/25/2025 10:25:39 - DEBUG - src.models.lisa_model - [HIGH RES] Generated fused high-res features: s0=torch.Size([1, 256, 256, 256]), s1=torch.Size([1, 256, 128, 128])
-08/25/2025 10:25:39 - DEBUG - src.models.lisa_model - [SEG SEARCH] Batch 0: Found 1 SEG tokens at positions [576]
-08/25/2025 10:25:39 - DEBUG - src.models.lisa_model - [MASK GEN] Total seg_positions: [[576]]
-08/25/2025 10:25:39 - DEBUG - src.models.lisa_model - [MASK GEN] Total batches: 1
-08/25/2025 10:25:39 - DEBUG - src.models.lisa_model - [MASK GEN] Batch 0: seg_positions = [576]
-08/25/2025 10:25:39 - DEBUG - src.models.lisa_model - [MASK GEN] image_features_sam shape: torch.Size([1, 256, 64, 64])
-08/25/2025 10:25:39 - DEBUG - src.models.lisa_model - [MASK GEN] Batch 0: Processing 1 SEG tokens
-08/25/2025 10:25:39 - DEBUG - src.models.lisa_model - [MASK GEN] Batch 0, SEG 0: Starting mask generation
-08/25/2025 10:25:39 - DEBUG - src.models.lisa_model - [CENTROID] Batch 0, SEG 0: Inference mode - using image center (512, 512)
-08/25/2025 10:25:39 - DEBUG - src.models.lisa_model - [MASK UPSCALE] Upsampling mask from torch.Size([256, 256]) to SAM size (1024, 1024)
-08/25/2025 10:25:40 - INFO - __main__ -   ✓ groceries: mean=0.701, positive=329554/427200
+08/31/2025 10:01:02 - INFO - __main__ -   ✓ groceries: mean=0.025, positive=9534/427200
 🔥[MODEL] Forward pass - sam_images: torch.Size([1, 3, 1024, 1024])
-08/25/2025 10:25:40 - DEBUG - src.models.lisa_model - [FORWARD] Starting forward pass
-08/25/2025 10:25:40 - DEBUG - src.models.lisa_model -   input_ids: torch.Size([1, 582])
-08/25/2025 10:25:40 - DEBUG - src.models.lisa_model -   pixel_values: torch.Size([2204, 1176])
-08/25/2025 10:25:40 - DEBUG - src.models.lisa_model -   image_grid_thw: tensor([[ 1, 38, 58]], device='cuda:0')
-08/25/2025 10:25:40 - DEBUG - src.models.lisa_model -   sam_images: torch.Size([1, 3, 1024, 1024])
-08/25/2025 10:25:40 - DEBUG - src.models.lisa_model -   labels: None
-08/25/2025 10:25:40 - DEBUG - src.models.lisa_model -   mask_labels: <class 'NoneType'> with None
-08/25/2025 10:25:40 - DEBUG - src.models.lisa_model - [FORWARD] Running Qwen forward pass...
-08/25/2025 10:25:40 - DEBUG - src.models.lisa_model - [FORWARD] Qwen outputs - logits: torch.Size([1, 582, 151936]), hidden_states: torch.Size([1, 582, 2048])
-08/25/2025 10:25:40 - DEBUG - src.models.lisa_model - [FORWARD] Extracting Qwen vision features...
-08/25/2025 10:25:40 - DEBUG - src.models.lisa_model - [extract_vision_features] Start - pixel_values shape: torch.Size([2204, 1176]), image_grid_thw shape: torch.Size([1, 3])
-08/25/2025 10:25:41 - DEBUG - src.models.lisa_model - [extract_vision_features] End - vision_features shape: torch.Size([1, 551, 2048]), dtype: torch.bfloat16
-08/25/2025 10:25:41 - DEBUG - src.models.lisa_model - [SAM ViT] Processing SAM images with shape: torch.Size([1, 3, 1024, 1024]), dtype: torch.float32
-08/25/2025 10:25:41 - DEBUG - src.models.lisa_model - [SAM INPUT] min=-2.118, max=2.640, mean=0.603, std=1.166
-08/25/2025 10:25:41 - DEBUG - src.models.lisa_model - [SAM ViT] Converting input from torch.float32 to torch.float32
-08/25/2025 10:25:41 - DEBUG - src.models.lisa_model - [SAM OUTPUT] shape=torch.Size([1, 256, 64, 64]), dtype=torch.float32
-08/25/2025 10:25:41 - DEBUG - src.models.lisa_model - [SAM OUTPUT] min=-6.927, max=7.041, mean=0.028, std=0.928
-08/25/2025 10:25:41 - DEBUG - src.models.lisa_model - [FUSION] Fusing Qwen features torch.Size([1, 256, 19, 29]) with SAM features torch.Size([1, 256, 64, 64])
-08/25/2025 10:25:41 - DEBUG - src.models.lisa_model - [FUSION] Resized Qwen features to torch.Size([1, 256, 64, 64])
-08/25/2025 10:25:41 - DEBUG - src.models.lisa_model - [FUSION] Using image_fusion_beta=0.0000, scaled=0.5000
-08/25/2025 10:25:41 - DEBUG - src.models.lisa_model - [FUSION] Created fused embeddings with shape: torch.Size([1, 256, 64, 64]), dtype: torch.float32
-08/25/2025 10:25:41 - DEBUG - src.models.lisa_model - [HIGH RES] Generating high-res features from embeddings shape: torch.Size([1, 256, 64, 64]), dtype: torch.float32
-08/25/2025 10:25:41 - DEBUG - src.models.lisa_model - [HIGH RES] use_token_fpn = True
-08/25/2025 10:25:41 - DEBUG - src.models.lisa_model - [HIGH RES] Converting features from torch.float32 to FPN dtype torch.bfloat16
-08/25/2025 10:25:41 - DEBUG - src.models.lisa_model - [HIGH RES] Generated fused high-res features: s0=torch.Size([1, 256, 256, 256]), s1=torch.Size([1, 256, 128, 128])
-08/25/2025 10:25:41 - DEBUG - src.models.lisa_model - [SEG SEARCH] Batch 0: Found 1 SEG tokens at positions [576]
-08/25/2025 10:25:41 - DEBUG - src.models.lisa_model - [MASK GEN] Total seg_positions: [[576]]
-08/25/2025 10:25:41 - DEBUG - src.models.lisa_model - [MASK GEN] Total batches: 1
-08/25/2025 10:25:41 - DEBUG - src.models.lisa_model - [MASK GEN] Batch 0: seg_positions = [576]
-08/25/2025 10:25:41 - DEBUG - src.models.lisa_model - [MASK GEN] image_features_sam shape: torch.Size([1, 256, 64, 64])
-08/25/2025 10:25:41 - DEBUG - src.models.lisa_model - [MASK GEN] Batch 0: Processing 1 SEG tokens
-08/25/2025 10:25:41 - DEBUG - src.models.lisa_model - [MASK GEN] Batch 0, SEG 0: Starting mask generation
-08/25/2025 10:25:41 - DEBUG - src.models.lisa_model - [CENTROID] Batch 0, SEG 0: Inference mode - using image center (512, 512)
-08/25/2025 10:25:41 - DEBUG - src.models.lisa_model - [MASK UPSCALE] Upsampling mask from torch.Size([256, 256]) to SAM size (1024, 1024)
-08/25/2025 10:25:41 - INFO - __main__ -   ✓ dog: mean=0.529, positive=196977/427200
-08/25/2025 10:25:41 - INFO - __main__ -   → 評価結果を保存: outputs/minimal_train_20250825_102206/checkpoints/epoch_1/inference_results/evaluation_results.json
-08/25/2025 10:25:41 - INFO - __main__ - ✅ 推論評価完了: 3/3 成功
-08/25/2025 10:25:41 - INFO - __main__ - 訓練完了
-08/25/2025 10:25:41 - INFO - __main__ - ベスト損失: 16.0623
-08/25/2025 10:25:41 - DEBUG - matplotlib.ticker - vmin 7.943282347242822e-05 vmax 0.012589254117941675
-08/25/2025 10:25:41 - DEBUG - matplotlib.ticker - ticklocs array([1.e-06, 1.e-05, 1.e-04, 1.e-03, 1.e-02, 1.e-01, 1.e+00])
-08/25/2025 10:25:41 - DEBUG - matplotlib.ticker - vmin 7.943282347242822e-05 vmax 0.012589254117941675
-08/25/2025 10:25:41 - DEBUG - matplotlib.ticker - ticklocs array([2.e-06, 3.e-06, 4.e-06, 5.e-06, 6.e-06, 7.e-06, 8.e-06, 9.e-06,
-       2.e-05, 3.e-05, 4.e-05, 5.e-05, 6.e-05, 7.e-05, 8.e-05, 9.e-05,
-       2.e-04, 3.e-04, 4.e-04, 5.e-04, 6.e-04, 7.e-04, 8.e-04, 9.e-04,
-       2.e-03, 3.e-03, 4.e-03, 5.e-03, 6.e-03, 7.e-03, 8.e-03, 9.e-03,
-       2.e-02, 3.e-02, 4.e-02, 5.e-02, 6.e-02, 7.e-02, 8.e-02, 9.e-02,
-       2.e-01, 3.e-01, 4.e-01, 5.e-01, 6.e-01, 7.e-01, 8.e-01, 9.e-01,
-       2.e+00, 3.e+00, 4.e+00, 5.e+00, 6.e+00, 7.e+00, 8.e+00, 9.e+00])
-08/25/2025 10:25:41 - DEBUG - matplotlib.ticker - vmin 7.943282347242822e-05 vmax 0.012589254117941675
-08/25/2025 10:25:41 - DEBUG - matplotlib.ticker - ticklocs array([1.e-06, 1.e-05, 1.e-04, 1.e-03, 1.e-02, 1.e-01, 1.e+00])
-08/25/2025 10:25:41 - DEBUG - matplotlib.ticker - vmin 7.943282347242822e-05 vmax 0.012589254117941675
-08/25/2025 10:25:41 - DEBUG - matplotlib.ticker - ticklocs array([1.e-06, 1.e-05, 1.e-04, 1.e-03, 1.e-02, 1.e-01, 1.e+00])
-08/25/2025 10:25:41 - DEBUG - matplotlib.ticker - vmin 7.943282347242822e-05 vmax 0.012589254117941675
-08/25/2025 10:25:41 - DEBUG - matplotlib.ticker - ticklocs array([2.e-06, 3.e-06, 4.e-06, 5.e-06, 6.e-06, 7.e-06, 8.e-06, 9.e-06,
-       2.e-05, 3.e-05, 4.e-05, 5.e-05, 6.e-05, 7.e-05, 8.e-05, 9.e-05,
-       2.e-04, 3.e-04, 4.e-04, 5.e-04, 6.e-04, 7.e-04, 8.e-04, 9.e-04,
-       2.e-03, 3.e-03, 4.e-03, 5.e-03, 6.e-03, 7.e-03, 8.e-03, 9.e-03,
-       2.e-02, 3.e-02, 4.e-02, 5.e-02, 6.e-02, 7.e-02, 8.e-02, 9.e-02,
-       2.e-01, 3.e-01, 4.e-01, 5.e-01, 6.e-01, 7.e-01, 8.e-01, 9.e-01,
-       2.e+00, 3.e+00, 4.e+00, 5.e+00, 6.e+00, 7.e+00, 8.e+00, 9.e+00])
-08/25/2025 10:25:41 - DEBUG - matplotlib.ticker - vmin 7.943282347242822e-05 vmax 0.012589254117941675
-08/25/2025 10:25:41 - DEBUG - matplotlib.ticker - ticklocs array([1.e-06, 1.e-05, 1.e-04, 1.e-03, 1.e-02, 1.e-01, 1.e+00])
-08/25/2025 10:25:41 - DEBUG - matplotlib.ticker - vmin 7.943282347242822e-05 vmax 0.012589254117941675
-08/25/2025 10:25:41 - DEBUG - matplotlib.ticker - ticklocs array([1.e-06, 1.e-05, 1.e-04, 1.e-03, 1.e-02, 1.e-01, 1.e+00])
-08/25/2025 10:25:41 - DEBUG - matplotlib.ticker - vmin 7.943282347242822e-05 vmax 0.012589254117941675
-08/25/2025 10:25:41 - DEBUG - matplotlib.ticker - ticklocs array([2.e-06, 3.e-06, 4.e-06, 5.e-06, 6.e-06, 7.e-06, 8.e-06, 9.e-06,
-       2.e-05, 3.e-05, 4.e-05, 5.e-05, 6.e-05, 7.e-05, 8.e-05, 9.e-05,
-       2.e-04, 3.e-04, 4.e-04, 5.e-04, 6.e-04, 7.e-04, 8.e-04, 9.e-04,
-       2.e-03, 3.e-03, 4.e-03, 5.e-03, 6.e-03, 7.e-03, 8.e-03, 9.e-03,
-       2.e-02, 3.e-02, 4.e-02, 5.e-02, 6.e-02, 7.e-02, 8.e-02, 9.e-02,
-       2.e-01, 3.e-01, 4.e-01, 5.e-01, 6.e-01, 7.e-01, 8.e-01, 9.e-01,
-       2.e+00, 3.e+00, 4.e+00, 5.e+00, 6.e+00, 7.e+00, 8.e+00, 9.e+00])
-08/25/2025 10:25:41 - DEBUG - matplotlib.ticker - vmin 7.943282347242822e-05 vmax 0.012589254117941675
-08/25/2025 10:25:41 - DEBUG - matplotlib.ticker - ticklocs array([1.e-06, 1.e-05, 1.e-04, 1.e-03, 1.e-02, 1.e-01, 1.e+00])
-08/25/2025 10:25:41 - DEBUG - matplotlib.ticker - vmin 7.943282347242822e-05 vmax 0.012589254117941675
-08/25/2025 10:25:41 - DEBUG - matplotlib.ticker - ticklocs array([1.e-06, 1.e-05, 1.e-04, 1.e-03, 1.e-02, 1.e-01, 1.e+00])
-08/25/2025 10:25:41 - DEBUG - matplotlib.ticker - vmin 7.943282347242822e-05 vmax 0.012589254117941675
-08/25/2025 10:25:41 - DEBUG - matplotlib.ticker - ticklocs array([2.e-06, 3.e-06, 4.e-06, 5.e-06, 6.e-06, 7.e-06, 8.e-06, 9.e-06,
-       2.e-05, 3.e-05, 4.e-05, 5.e-05, 6.e-05, 7.e-05, 8.e-05, 9.e-05,
-       2.e-04, 3.e-04, 4.e-04, 5.e-04, 6.e-04, 7.e-04, 8.e-04, 9.e-04,
-       2.e-03, 3.e-03, 4.e-03, 5.e-03, 6.e-03, 7.e-03, 8.e-03, 9.e-03,
-       2.e-02, 3.e-02, 4.e-02, 5.e-02, 6.e-02, 7.e-02, 8.e-02, 9.e-02,
-       2.e-01, 3.e-01, 4.e-01, 5.e-01, 6.e-01, 7.e-01, 8.e-01, 9.e-01,
-       2.e+00, 3.e+00, 4.e+00, 5.e+00, 6.e+00, 7.e+00, 8.e+00, 9.e+00])
-08/25/2025 10:25:41 - DEBUG - matplotlib.ticker - vmin 7.943282347242822e-05 vmax 0.012589254117941675
-08/25/2025 10:25:41 - DEBUG - matplotlib.ticker - ticklocs array([1.e-06, 1.e-05, 1.e-04, 1.e-03, 1.e-02, 1.e-01, 1.e+00])
-08/25/2025 10:25:41 - DEBUG - matplotlib.ticker - vmin 7.943282347242822e-05 vmax 0.012589254117941675
-08/25/2025 10:25:41 - DEBUG - matplotlib.ticker - ticklocs array([1.e-06, 1.e-05, 1.e-04, 1.e-03, 1.e-02, 1.e-01, 1.e+00])
-08/25/2025 10:25:41 - DEBUG - matplotlib.ticker - vmin 7.943282347242822e-05 vmax 0.012589254117941675
-08/25/2025 10:25:41 - DEBUG - matplotlib.ticker - ticklocs array([2.e-06, 3.e-06, 4.e-06, 5.e-06, 6.e-06, 7.e-06, 8.e-06, 9.e-06,
-       2.e-05, 3.e-05, 4.e-05, 5.e-05, 6.e-05, 7.e-05, 8.e-05, 9.e-05,
-       2.e-04, 3.e-04, 4.e-04, 5.e-04, 6.e-04, 7.e-04, 8.e-04, 9.e-04,
-       2.e-03, 3.e-03, 4.e-03, 5.e-03, 6.e-03, 7.e-03, 8.e-03, 9.e-03,
-       2.e-02, 3.e-02, 4.e-02, 5.e-02, 6.e-02, 7.e-02, 8.e-02, 9.e-02,
-       2.e-01, 3.e-01, 4.e-01, 5.e-01, 6.e-01, 7.e-01, 8.e-01, 9.e-01,
-       2.e+00, 3.e+00, 4.e+00, 5.e+00, 6.e+00, 7.e+00, 8.e+00, 9.e+00])
-08/25/2025 10:25:41 - DEBUG - matplotlib.ticker - vmin 7.943282347242822e-05 vmax 0.012589254117941675
-08/25/2025 10:25:41 - DEBUG - matplotlib.ticker - ticklocs array([1.e-06, 1.e-05, 1.e-04, 1.e-03, 1.e-02, 1.e-01, 1.e+00])
-08/25/2025 10:25:41 - DEBUG - matplotlib.ticker - vmin 7.943282347242822e-05 vmax 0.012589254117941675
-08/25/2025 10:25:41 - DEBUG - matplotlib.ticker - ticklocs array([1.e-06, 1.e-05, 1.e-04, 1.e-03, 1.e-02, 1.e-01, 1.e+00])
-08/25/2025 10:25:41 - DEBUG - matplotlib.ticker - vmin 7.943282347242822e-05 vmax 0.012589254117941675
-08/25/2025 10:25:41 - DEBUG - matplotlib.ticker - ticklocs array([2.e-06, 3.e-06, 4.e-06, 5.e-06, 6.e-06, 7.e-06, 8.e-06, 9.e-06,
-       2.e-05, 3.e-05, 4.e-05, 5.e-05, 6.e-05, 7.e-05, 8.e-05, 9.e-05,
-       2.e-04, 3.e-04, 4.e-04, 5.e-04, 6.e-04, 7.e-04, 8.e-04, 9.e-04,
-       2.e-03, 3.e-03, 4.e-03, 5.e-03, 6.e-03, 7.e-03, 8.e-03, 9.e-03,
-       2.e-02, 3.e-02, 4.e-02, 5.e-02, 6.e-02, 7.e-02, 8.e-02, 9.e-02,
-       2.e-01, 3.e-01, 4.e-01, 5.e-01, 6.e-01, 7.e-01, 8.e-01, 9.e-01,
-       2.e+00, 3.e+00, 4.e+00, 5.e+00, 6.e+00, 7.e+00, 8.e+00, 9.e+00])
-08/25/2025 10:25:41 - DEBUG - matplotlib.ticker - vmin 7.943282347242822e-05 vmax 0.012589254117941675
-08/25/2025 10:25:41 - DEBUG - matplotlib.ticker - ticklocs array([1.e-06, 1.e-05, 1.e-04, 1.e-03, 1.e-02, 1.e-01, 1.e+00])
-08/25/2025 10:25:41 - DEBUG - matplotlib.ticker - vmin 7.943282347242822e-05 vmax 0.012589254117941675
-08/25/2025 10:25:41 - DEBUG - matplotlib.ticker - ticklocs array([1.e-06, 1.e-05, 1.e-04, 1.e-03, 1.e-02, 1.e-01, 1.e+00])
-08/25/2025 10:25:41 - DEBUG - matplotlib.ticker - vmin 7.943282347242822e-05 vmax 0.012589254117941675
-08/25/2025 10:25:41 - DEBUG - matplotlib.ticker - ticklocs array([2.e-06, 3.e-06, 4.e-06, 5.e-06, 6.e-06, 7.e-06, 8.e-06, 9.e-06,
-       2.e-05, 3.e-05, 4.e-05, 5.e-05, 6.e-05, 7.e-05, 8.e-05, 9.e-05,
-       2.e-04, 3.e-04, 4.e-04, 5.e-04, 6.e-04, 7.e-04, 8.e-04, 9.e-04,
-       2.e-03, 3.e-03, 4.e-03, 5.e-03, 6.e-03, 7.e-03, 8.e-03, 9.e-03,
-       2.e-02, 3.e-02, 4.e-02, 5.e-02, 6.e-02, 7.e-02, 8.e-02, 9.e-02,
-       2.e-01, 3.e-01, 4.e-01, 5.e-01, 6.e-01, 7.e-01, 8.e-01, 9.e-01,
-       2.e+00, 3.e+00, 4.e+00, 5.e+00, 6.e+00, 7.e+00, 8.e+00, 9.e+00])
-08/25/2025 10:25:41 - DEBUG - matplotlib.ticker - vmin 7.943282347242822e-05 vmax 0.012589254117941675
-08/25/2025 10:25:41 - DEBUG - matplotlib.ticker - ticklocs array([1.e-06, 1.e-05, 1.e-04, 1.e-03, 1.e-02, 1.e-01, 1.e+00])
-08/25/2025 10:25:41 - DEBUG - matplotlib.ticker - vmin 7.943282347242822e-05 vmax 0.012589254117941675
-08/25/2025 10:25:41 - DEBUG - matplotlib.ticker - ticklocs array([1.e-06, 1.e-05, 1.e-04, 1.e-03, 1.e-02, 1.e-01, 1.e+00])
-08/25/2025 10:25:41 - DEBUG - matplotlib.ticker - vmin 7.943282347242822e-05 vmax 0.012589254117941675
-08/25/2025 10:25:41 - DEBUG - matplotlib.ticker - ticklocs array([2.e-06, 3.e-06, 4.e-06, 5.e-06, 6.e-06, 7.e-06, 8.e-06, 9.e-06,
-       2.e-05, 3.e-05, 4.e-05, 5.e-05, 6.e-05, 7.e-05, 8.e-05, 9.e-05,
-       2.e-04, 3.e-04, 4.e-04, 5.e-04, 6.e-04, 7.e-04, 8.e-04, 9.e-04,
-       2.e-03, 3.e-03, 4.e-03, 5.e-03, 6.e-03, 7.e-03, 8.e-03, 9.e-03,
-       2.e-02, 3.e-02, 4.e-02, 5.e-02, 6.e-02, 7.e-02, 8.e-02, 9.e-02,
-       2.e-01, 3.e-01, 4.e-01, 5.e-01, 6.e-01, 7.e-01, 8.e-01, 9.e-01,
-       2.e+00, 3.e+00, 4.e+00, 5.e+00, 6.e+00, 7.e+00, 8.e+00, 9.e+00])
-08/25/2025 10:25:41 - DEBUG - matplotlib.ticker - vmin 7.943282347242822e-05 vmax 0.012589254117941675
-08/25/2025 10:25:41 - DEBUG - matplotlib.ticker - ticklocs array([1.e-06, 1.e-05, 1.e-04, 1.e-03, 1.e-02, 1.e-01, 1.e+00])
-08/25/2025 10:25:41 - DEBUG - matplotlib.ticker - vmin 7.943282347242822e-05 vmax 0.012589254117941675
-08/25/2025 10:25:41 - DEBUG - matplotlib.ticker - ticklocs array([1.e-06, 1.e-05, 1.e-04, 1.e-03, 1.e-02, 1.e-01, 1.e+00])
-08/25/2025 10:25:41 - DEBUG - matplotlib.ticker - vmin 7.943282347242822e-05 vmax 0.012589254117941675
-08/25/2025 10:25:41 - DEBUG - matplotlib.ticker - ticklocs array([2.e-06, 3.e-06, 4.e-06, 5.e-06, 6.e-06, 7.e-06, 8.e-06, 9.e-06,
-       2.e-05, 3.e-05, 4.e-05, 5.e-05, 6.e-05, 7.e-05, 8.e-05, 9.e-05,
-       2.e-04, 3.e-04, 4.e-04, 5.e-04, 6.e-04, 7.e-04, 8.e-04, 9.e-04,
-       2.e-03, 3.e-03, 4.e-03, 5.e-03, 6.e-03, 7.e-03, 8.e-03, 9.e-03,
-       2.e-02, 3.e-02, 4.e-02, 5.e-02, 6.e-02, 7.e-02, 8.e-02, 9.e-02,
-       2.e-01, 3.e-01, 4.e-01, 5.e-01, 6.e-01, 7.e-01, 8.e-01, 9.e-01,
-       2.e+00, 3.e+00, 4.e+00, 5.e+00, 6.e+00, 7.e+00, 8.e+00, 9.e+00])
-08/25/2025 10:25:41 - DEBUG - matplotlib.ticker - vmin 7.943282347242822e-05 vmax 0.012589254117941675
-08/25/2025 10:25:41 - DEBUG - matplotlib.ticker - ticklocs array([1.e-06, 1.e-05, 1.e-04, 1.e-03, 1.e-02, 1.e-01, 1.e+00])
-08/25/2025 10:25:41 - DEBUG - matplotlib.ticker - vmin 7.943282347242822e-05 vmax 0.012589254117941675
-08/25/2025 10:25:41 - DEBUG - matplotlib.ticker - ticklocs array([1.e-06, 1.e-05, 1.e-04, 1.e-03, 1.e-02, 1.e-01, 1.e+00])
-08/25/2025 10:25:41 - DEBUG - matplotlib.ticker - vmin 7.943282347242822e-05 vmax 0.012589254117941675
-08/25/2025 10:25:41 - DEBUG - matplotlib.ticker - ticklocs array([2.e-06, 3.e-06, 4.e-06, 5.e-06, 6.e-06, 7.e-06, 8.e-06, 9.e-06,
-       2.e-05, 3.e-05, 4.e-05, 5.e-05, 6.e-05, 7.e-05, 8.e-05, 9.e-05,
-       2.e-04, 3.e-04, 4.e-04, 5.e-04, 6.e-04, 7.e-04, 8.e-04, 9.e-04,
-       2.e-03, 3.e-03, 4.e-03, 5.e-03, 6.e-03, 7.e-03, 8.e-03, 9.e-03,
-       2.e-02, 3.e-02, 4.e-02, 5.e-02, 6.e-02, 7.e-02, 8.e-02, 9.e-02,
-       2.e-01, 3.e-01, 4.e-01, 5.e-01, 6.e-01, 7.e-01, 8.e-01, 9.e-01,
-       2.e+00, 3.e+00, 4.e+00, 5.e+00, 6.e+00, 7.e+00, 8.e+00, 9.e+00])
-08/25/2025 10:25:41 - DEBUG - matplotlib.ticker - vmin 7.943282347242822e-05 vmax 0.012589254117941675
-08/25/2025 10:25:41 - DEBUG - matplotlib.ticker - ticklocs array([1.e-06, 1.e-05, 1.e-04, 1.e-03, 1.e-02, 1.e-01, 1.e+00])
-08/25/2025 10:25:41 - DEBUG - matplotlib.ticker - vmin 7.943282347242822e-05 vmax 0.012589254117941675
-08/25/2025 10:25:41 - DEBUG - matplotlib.ticker - ticklocs array([1.e-06, 1.e-05, 1.e-04, 1.e-03, 1.e-02, 1.e-01, 1.e+00])
-08/25/2025 10:25:41 - DEBUG - matplotlib.ticker - vmin 7.943282347242822e-05 vmax 0.012589254117941675
-08/25/2025 10:25:41 - DEBUG - matplotlib.ticker - ticklocs array([2.e-06, 3.e-06, 4.e-06, 5.e-06, 6.e-06, 7.e-06, 8.e-06, 9.e-06,
-       2.e-05, 3.e-05, 4.e-05, 5.e-05, 6.e-05, 7.e-05, 8.e-05, 9.e-05,
-       2.e-04, 3.e-04, 4.e-04, 5.e-04, 6.e-04, 7.e-04, 8.e-04, 9.e-04,
-       2.e-03, 3.e-03, 4.e-03, 5.e-03, 6.e-03, 7.e-03, 8.e-03, 9.e-03,
-       2.e-02, 3.e-02, 4.e-02, 5.e-02, 6.e-02, 7.e-02, 8.e-02, 9.e-02,
-       2.e-01, 3.e-01, 4.e-01, 5.e-01, 6.e-01, 7.e-01, 8.e-01, 9.e-01,
-       2.e+00, 3.e+00, 4.e+00, 5.e+00, 6.e+00, 7.e+00, 8.e+00, 9.e+00])
-08/25/2025 10:25:41 - DEBUG - matplotlib.ticker - vmin 7.943282347242822e-05 vmax 0.012589254117941675
-08/25/2025 10:25:41 - DEBUG - matplotlib.ticker - ticklocs array([1.e-06, 1.e-05, 1.e-04, 1.e-03, 1.e-02, 1.e-01, 1.e+00])
-08/25/2025 10:25:41 - DEBUG - matplotlib.ticker - vmin 7.943282347242822e-05 vmax 0.012589254117941675
-08/25/2025 10:25:41 - DEBUG - matplotlib.ticker - ticklocs array([1.e-06, 1.e-05, 1.e-04, 1.e-03, 1.e-02, 1.e-01, 1.e+00])
-08/25/2025 10:25:41 - DEBUG - matplotlib.ticker - vmin 7.943282347242822e-05 vmax 0.012589254117941675
-08/25/2025 10:25:41 - DEBUG - matplotlib.ticker - ticklocs array([2.e-06, 3.e-06, 4.e-06, 5.e-06, 6.e-06, 7.e-06, 8.e-06, 9.e-06,
-       2.e-05, 3.e-05, 4.e-05, 5.e-05, 6.e-05, 7.e-05, 8.e-05, 9.e-05,
-       2.e-04, 3.e-04, 4.e-04, 5.e-04, 6.e-04, 7.e-04, 8.e-04, 9.e-04,
-       2.e-03, 3.e-03, 4.e-03, 5.e-03, 6.e-03, 7.e-03, 8.e-03, 9.e-03,
-       2.e-02, 3.e-02, 4.e-02, 5.e-02, 6.e-02, 7.e-02, 8.e-02, 9.e-02,
-       2.e-01, 3.e-01, 4.e-01, 5.e-01, 6.e-01, 7.e-01, 8.e-01, 9.e-01,
-       2.e+00, 3.e+00, 4.e+00, 5.e+00, 6.e+00, 7.e+00, 8.e+00, 9.e+00])
-08/25/2025 10:25:41 - DEBUG - matplotlib.ticker - vmin 7.943282347242822e-05 vmax 0.012589254117941675
-08/25/2025 10:25:41 - DEBUG - matplotlib.ticker - ticklocs array([1.e-06, 1.e-05, 1.e-04, 1.e-03, 1.e-02, 1.e-01, 1.e+00])
-08/25/2025 10:25:41 - DEBUG - matplotlib.ticker - vmin 7.943282347242822e-05 vmax 0.012589254117941675
-08/25/2025 10:25:41 - DEBUG - matplotlib.ticker - ticklocs array([1.e-06, 1.e-05, 1.e-04, 1.e-03, 1.e-02, 1.e-01, 1.e+00])
-08/25/2025 10:25:41 - DEBUG - matplotlib.ticker - vmin 7.943282347242822e-05 vmax 0.012589254117941675
-08/25/2025 10:25:41 - DEBUG - matplotlib.ticker - ticklocs array([2.e-06, 3.e-06, 4.e-06, 5.e-06, 6.e-06, 7.e-06, 8.e-06, 9.e-06,
-       2.e-05, 3.e-05, 4.e-05, 5.e-05, 6.e-05, 7.e-05, 8.e-05, 9.e-05,
-       2.e-04, 3.e-04, 4.e-04, 5.e-04, 6.e-04, 7.e-04, 8.e-04, 9.e-04,
-       2.e-03, 3.e-03, 4.e-03, 5.e-03, 6.e-03, 7.e-03, 8.e-03, 9.e-03,
-       2.e-02, 3.e-02, 4.e-02, 5.e-02, 6.e-02, 7.e-02, 8.e-02, 9.e-02,
-       2.e-01, 3.e-01, 4.e-01, 5.e-01, 6.e-01, 7.e-01, 8.e-01, 9.e-01,
-       2.e+00, 3.e+00, 4.e+00, 5.e+00, 6.e+00, 7.e+00, 8.e+00, 9.e+00])
-08/25/2025 10:25:41 - DEBUG - matplotlib.ticker - vmin 7.943282347242822e-05 vmax 0.012589254117941675
-08/25/2025 10:25:41 - DEBUG - matplotlib.ticker - ticklocs array([1.e-06, 1.e-05, 1.e-04, 1.e-03, 1.e-02, 1.e-01, 1.e+00])
-08/25/2025 10:25:41 - DEBUG - matplotlib.ticker - vmin 7.943282347242822e-05 vmax 0.012589254117941675
-08/25/2025 10:25:41 - DEBUG - matplotlib.ticker - ticklocs array([1.e-06, 1.e-05, 1.e-04, 1.e-03, 1.e-02, 1.e-01, 1.e+00])
-08/25/2025 10:25:41 - DEBUG - matplotlib.ticker - vmin 7.943282347242822e-05 vmax 0.012589254117941675
-08/25/2025 10:25:41 - DEBUG - matplotlib.ticker - ticklocs array([2.e-06, 3.e-06, 4.e-06, 5.e-06, 6.e-06, 7.e-06, 8.e-06, 9.e-06,
-       2.e-05, 3.e-05, 4.e-05, 5.e-05, 6.e-05, 7.e-05, 8.e-05, 9.e-05,
-       2.e-04, 3.e-04, 4.e-04, 5.e-04, 6.e-04, 7.e-04, 8.e-04, 9.e-04,
-       2.e-03, 3.e-03, 4.e-03, 5.e-03, 6.e-03, 7.e-03, 8.e-03, 9.e-03,
-       2.e-02, 3.e-02, 4.e-02, 5.e-02, 6.e-02, 7.e-02, 8.e-02, 9.e-02,
-       2.e-01, 3.e-01, 4.e-01, 5.e-01, 6.e-01, 7.e-01, 8.e-01, 9.e-01,
-       2.e+00, 3.e+00, 4.e+00, 5.e+00, 6.e+00, 7.e+00, 8.e+00, 9.e+00])
-08/25/2025 10:25:41 - DEBUG - matplotlib.ticker - vmin 7.943282347242822e-05 vmax 0.012589254117941675
-08/25/2025 10:25:41 - DEBUG - matplotlib.ticker - ticklocs array([1.e-06, 1.e-05, 1.e-04, 1.e-03, 1.e-02, 1.e-01, 1.e+00])
-08/25/2025 10:25:41 - DEBUG - matplotlib.ticker - vmin 7.943282347242822e-05 vmax 0.012589254117941675
-08/25/2025 10:25:41 - DEBUG - matplotlib.ticker - ticklocs array([1.e-06, 1.e-05, 1.e-04, 1.e-03, 1.e-02, 1.e-01, 1.e+00])
-08/25/2025 10:25:41 - DEBUG - matplotlib.ticker - vmin 7.943282347242822e-05 vmax 0.012589254117941675
-08/25/2025 10:25:41 - DEBUG - matplotlib.ticker - ticklocs array([2.e-06, 3.e-06, 4.e-06, 5.e-06, 6.e-06, 7.e-06, 8.e-06, 9.e-06,
-       2.e-05, 3.e-05, 4.e-05, 5.e-05, 6.e-05, 7.e-05, 8.e-05, 9.e-05,
-       2.e-04, 3.e-04, 4.e-04, 5.e-04, 6.e-04, 7.e-04, 8.e-04, 9.e-04,
-       2.e-03, 3.e-03, 4.e-03, 5.e-03, 6.e-03, 7.e-03, 8.e-03, 9.e-03,
-       2.e-02, 3.e-02, 4.e-02, 5.e-02, 6.e-02, 7.e-02, 8.e-02, 9.e-02,
-       2.e-01, 3.e-01, 4.e-01, 5.e-01, 6.e-01, 7.e-01, 8.e-01, 9.e-01,
-       2.e+00, 3.e+00, 4.e+00, 5.e+00, 6.e+00, 7.e+00, 8.e+00, 9.e+00])
-08/25/2025 10:25:41 - DEBUG - matplotlib.ticker - vmin 7.943282347242822e-05 vmax 0.012589254117941675
-08/25/2025 10:25:41 - DEBUG - matplotlib.ticker - ticklocs array([1.e-06, 1.e-05, 1.e-04, 1.e-03, 1.e-02, 1.e-01, 1.e+00])
-08/25/2025 10:25:41 - DEBUG - matplotlib.ticker - vmin 7.943282347242822e-05 vmax 0.012589254117941675
-08/25/2025 10:25:41 - DEBUG - matplotlib.ticker - ticklocs array([1.e-06, 1.e-05, 1.e-04, 1.e-03, 1.e-02, 1.e-01, 1.e+00])
-08/25/2025 10:25:41 - DEBUG - matplotlib.ticker - vmin 7.943282347242822e-05 vmax 0.012589254117941675
-08/25/2025 10:25:41 - DEBUG - matplotlib.ticker - ticklocs array([2.e-06, 3.e-06, 4.e-06, 5.e-06, 6.e-06, 7.e-06, 8.e-06, 9.e-06,
-       2.e-05, 3.e-05, 4.e-05, 5.e-05, 6.e-05, 7.e-05, 8.e-05, 9.e-05,
-       2.e-04, 3.e-04, 4.e-04, 5.e-04, 6.e-04, 7.e-04, 8.e-04, 9.e-04,
-       2.e-03, 3.e-03, 4.e-03, 5.e-03, 6.e-03, 7.e-03, 8.e-03, 9.e-03,
-       2.e-02, 3.e-02, 4.e-02, 5.e-02, 6.e-02, 7.e-02, 8.e-02, 9.e-02,
-       2.e-01, 3.e-01, 4.e-01, 5.e-01, 6.e-01, 7.e-01, 8.e-01, 9.e-01,
-       2.e+00, 3.e+00, 4.e+00, 5.e+00, 6.e+00, 7.e+00, 8.e+00, 9.e+00])
-08/25/2025 10:25:41 - DEBUG - matplotlib.ticker - vmin 7.943282347242822e-05 vmax 0.012589254117941675
-08/25/2025 10:25:41 - DEBUG - matplotlib.ticker - ticklocs array([1.e-06, 1.e-05, 1.e-04, 1.e-03, 1.e-02, 1.e-01, 1.e+00])
-08/25/2025 10:25:41 - DEBUG - matplotlib.ticker - vmin 7.943282347242822e-05 vmax 0.012589254117941675
-08/25/2025 10:25:41 - DEBUG - matplotlib.ticker - ticklocs array([1.e-06, 1.e-05, 1.e-04, 1.e-03, 1.e-02, 1.e-01, 1.e+00])
-08/25/2025 10:25:41 - DEBUG - matplotlib.ticker - vmin 7.943282347242822e-05 vmax 0.012589254117941675
-08/25/2025 10:25:41 - DEBUG - matplotlib.ticker - ticklocs array([2.e-06, 3.e-06, 4.e-06, 5.e-06, 6.e-06, 7.e-06, 8.e-06, 9.e-06,
-       2.e-05, 3.e-05, 4.e-05, 5.e-05, 6.e-05, 7.e-05, 8.e-05, 9.e-05,
-       2.e-04, 3.e-04, 4.e-04, 5.e-04, 6.e-04, 7.e-04, 8.e-04, 9.e-04,
-       2.e-03, 3.e-03, 4.e-03, 5.e-03, 6.e-03, 7.e-03, 8.e-03, 9.e-03,
-       2.e-02, 3.e-02, 4.e-02, 5.e-02, 6.e-02, 7.e-02, 8.e-02, 9.e-02,
-       2.e-01, 3.e-01, 4.e-01, 5.e-01, 6.e-01, 7.e-01, 8.e-01, 9.e-01,
-       2.e+00, 3.e+00, 4.e+00, 5.e+00, 6.e+00, 7.e+00, 8.e+00, 9.e+00])
-08/25/2025 10:25:41 - DEBUG - matplotlib.ticker - vmin 7.943282347242822e-05 vmax 0.012589254117941675
-08/25/2025 10:25:41 - DEBUG - matplotlib.ticker - ticklocs array([1.e-06, 1.e-05, 1.e-04, 1.e-03, 1.e-02, 1.e-01, 1.e+00])
-08/25/2025 10:25:41 - DEBUG - matplotlib.ticker - vmin 7.943282347242822e-05 vmax 0.012589254117941675
-08/25/2025 10:25:41 - DEBUG - matplotlib.ticker - ticklocs array([1.e-06, 1.e-05, 1.e-04, 1.e-03, 1.e-02, 1.e-01, 1.e+00])
-08/25/2025 10:25:41 - DEBUG - matplotlib.ticker - vmin 7.943282347242822e-05 vmax 0.012589254117941675
-08/25/2025 10:25:41 - DEBUG - matplotlib.ticker - ticklocs array([2.e-06, 3.e-06, 4.e-06, 5.e-06, 6.e-06, 7.e-06, 8.e-06, 9.e-06,
-       2.e-05, 3.e-05, 4.e-05, 5.e-05, 6.e-05, 7.e-05, 8.e-05, 9.e-05,
-       2.e-04, 3.e-04, 4.e-04, 5.e-04, 6.e-04, 7.e-04, 8.e-04, 9.e-04,
-       2.e-03, 3.e-03, 4.e-03, 5.e-03, 6.e-03, 7.e-03, 8.e-03, 9.e-03,
-       2.e-02, 3.e-02, 4.e-02, 5.e-02, 6.e-02, 7.e-02, 8.e-02, 9.e-02,
-       2.e-01, 3.e-01, 4.e-01, 5.e-01, 6.e-01, 7.e-01, 8.e-01, 9.e-01,
-       2.e+00, 3.e+00, 4.e+00, 5.e+00, 6.e+00, 7.e+00, 8.e+00, 9.e+00])
-08/25/2025 10:25:41 - DEBUG - matplotlib.ticker - vmin 7.943282347242822e-05 vmax 0.012589254117941675
-08/25/2025 10:25:41 - DEBUG - matplotlib.ticker - ticklocs array([1.e-06, 1.e-05, 1.e-04, 1.e-03, 1.e-02, 1.e-01, 1.e+00])
-08/25/2025 10:25:41 - DEBUG - matplotlib.ticker - vmin 7.943282347242822e-05 vmax 0.012589254117941675
-08/25/2025 10:25:41 - DEBUG - matplotlib.ticker - ticklocs array([1.e-06, 1.e-05, 1.e-04, 1.e-03, 1.e-02, 1.e-01, 1.e+00])
-08/25/2025 10:25:41 - DEBUG - matplotlib.ticker - vmin 7.943282347242822e-05 vmax 0.012589254117941675
-08/25/2025 10:25:41 - DEBUG - matplotlib.ticker - ticklocs array([2.e-06, 3.e-06, 4.e-06, 5.e-06, 6.e-06, 7.e-06, 8.e-06, 9.e-06,
-       2.e-05, 3.e-05, 4.e-05, 5.e-05, 6.e-05, 7.e-05, 8.e-05, 9.e-05,
-       2.e-04, 3.e-04, 4.e-04, 5.e-04, 6.e-04, 7.e-04, 8.e-04, 9.e-04,
-       2.e-03, 3.e-03, 4.e-03, 5.e-03, 6.e-03, 7.e-03, 8.e-03, 9.e-03,
-       2.e-02, 3.e-02, 4.e-02, 5.e-02, 6.e-02, 7.e-02, 8.e-02, 9.e-02,
-       2.e-01, 3.e-01, 4.e-01, 5.e-01, 6.e-01, 7.e-01, 8.e-01, 9.e-01,
-       2.e+00, 3.e+00, 4.e+00, 5.e+00, 6.e+00, 7.e+00, 8.e+00, 9.e+00])
-08/25/2025 10:25:41 - DEBUG - matplotlib.ticker - vmin 7.943282347242822e-05 vmax 0.012589254117941675
-08/25/2025 10:25:41 - DEBUG - matplotlib.ticker - ticklocs array([1.e-06, 1.e-05, 1.e-04, 1.e-03, 1.e-02, 1.e-01, 1.e+00])
-08/25/2025 10:25:41 - DEBUG - matplotlib.ticker - vmin 7.943282347242822e-05 vmax 0.012589254117941675
-08/25/2025 10:25:41 - DEBUG - matplotlib.ticker - ticklocs array([1.e-06, 1.e-05, 1.e-04, 1.e-03, 1.e-02, 1.e-01, 1.e+00])
-08/25/2025 10:25:41 - DEBUG - matplotlib.ticker - vmin 7.943282347242822e-05 vmax 0.012589254117941675
-08/25/2025 10:25:41 - DEBUG - matplotlib.ticker - ticklocs array([2.e-06, 3.e-06, 4.e-06, 5.e-06, 6.e-06, 7.e-06, 8.e-06, 9.e-06,
-       2.e-05, 3.e-05, 4.e-05, 5.e-05, 6.e-05, 7.e-05, 8.e-05, 9.e-05,
-       2.e-04, 3.e-04, 4.e-04, 5.e-04, 6.e-04, 7.e-04, 8.e-04, 9.e-04,
-       2.e-03, 3.e-03, 4.e-03, 5.e-03, 6.e-03, 7.e-03, 8.e-03, 9.e-03,
-       2.e-02, 3.e-02, 4.e-02, 5.e-02, 6.e-02, 7.e-02, 8.e-02, 9.e-02,
-       2.e-01, 3.e-01, 4.e-01, 5.e-01, 6.e-01, 7.e-01, 8.e-01, 9.e-01,
-       2.e+00, 3.e+00, 4.e+00, 5.e+00, 6.e+00, 7.e+00, 8.e+00, 9.e+00])
-08/25/2025 10:25:41 - DEBUG - matplotlib.ticker - vmin 7.943282347242822e-05 vmax 0.012589254117941675
-08/25/2025 10:25:41 - DEBUG - matplotlib.ticker - ticklocs array([1.e-06, 1.e-05, 1.e-04, 1.e-03, 1.e-02, 1.e-01, 1.e+00])
-08/25/2025 10:25:41 - DEBUG - matplotlib.ticker - vmin 7.943282347242822e-05 vmax 0.012589254117941675
-08/25/2025 10:25:41 - DEBUG - matplotlib.ticker - ticklocs array([1.e-06, 1.e-05, 1.e-04, 1.e-03, 1.e-02, 1.e-01, 1.e+00])
-08/25/2025 10:25:41 - DEBUG - matplotlib.ticker - vmin 7.943282347242822e-05 vmax 0.012589254117941675
-08/25/2025 10:25:41 - DEBUG - matplotlib.ticker - ticklocs array([2.e-06, 3.e-06, 4.e-06, 5.e-06, 6.e-06, 7.e-06, 8.e-06, 9.e-06,
-       2.e-05, 3.e-05, 4.e-05, 5.e-05, 6.e-05, 7.e-05, 8.e-05, 9.e-05,
-       2.e-04, 3.e-04, 4.e-04, 5.e-04, 6.e-04, 7.e-04, 8.e-04, 9.e-04,
-       2.e-03, 3.e-03, 4.e-03, 5.e-03, 6.e-03, 7.e-03, 8.e-03, 9.e-03,
-       2.e-02, 3.e-02, 4.e-02, 5.e-02, 6.e-02, 7.e-02, 8.e-02, 9.e-02,
-       2.e-01, 3.e-01, 4.e-01, 5.e-01, 6.e-01, 7.e-01, 8.e-01, 9.e-01,
-       2.e+00, 3.e+00, 4.e+00, 5.e+00, 6.e+00, 7.e+00, 8.e+00, 9.e+00])
-08/25/2025 10:25:41 - DEBUG - matplotlib.ticker - vmin 7.943282347242822e-05 vmax 0.012589254117941675
-08/25/2025 10:25:41 - DEBUG - matplotlib.ticker - ticklocs array([1.e-06, 1.e-05, 1.e-04, 1.e-03, 1.e-02, 1.e-01, 1.e+00])
-08/25/2025 10:25:41 - DEBUG - matplotlib.ticker - vmin 7.943282347242822e-05 vmax 0.012589254117941675
-08/25/2025 10:25:41 - DEBUG - matplotlib.ticker - ticklocs array([1.e-06, 1.e-05, 1.e-04, 1.e-03, 1.e-02, 1.e-01, 1.e+00])
-08/25/2025 10:25:41 - DEBUG - matplotlib.ticker - vmin 7.943282347242822e-05 vmax 0.012589254117941675
-08/25/2025 10:25:41 - DEBUG - matplotlib.ticker - ticklocs array([2.e-06, 3.e-06, 4.e-06, 5.e-06, 6.e-06, 7.e-06, 8.e-06, 9.e-06,
-       2.e-05, 3.e-05, 4.e-05, 5.e-05, 6.e-05, 7.e-05, 8.e-05, 9.e-05,
-       2.e-04, 3.e-04, 4.e-04, 5.e-04, 6.e-04, 7.e-04, 8.e-04, 9.e-04,
-       2.e-03, 3.e-03, 4.e-03, 5.e-03, 6.e-03, 7.e-03, 8.e-03, 9.e-03,
-       2.e-02, 3.e-02, 4.e-02, 5.e-02, 6.e-02, 7.e-02, 8.e-02, 9.e-02,
-       2.e-01, 3.e-01, 4.e-01, 5.e-01, 6.e-01, 7.e-01, 8.e-01, 9.e-01,
-       2.e+00, 3.e+00, 4.e+00, 5.e+00, 6.e+00, 7.e+00, 8.e+00, 9.e+00])
-08/25/2025 10:25:41 - DEBUG - matplotlib.ticker - vmin 7.943282347242822e-05 vmax 0.012589254117941675
-08/25/2025 10:25:41 - DEBUG - matplotlib.ticker - ticklocs array([1.e-06, 1.e-05, 1.e-04, 1.e-03, 1.e-02, 1.e-01, 1.e+00])
-08/25/2025 10:25:42 - DEBUG - matplotlib.ticker - vmin 7.943282347242822e-05 vmax 0.012589254117941675
-08/25/2025 10:25:42 - DEBUG - matplotlib.ticker - ticklocs array([1.e-06, 1.e-05, 1.e-04, 1.e-03, 1.e-02, 1.e-01, 1.e+00])
-08/25/2025 10:25:42 - DEBUG - matplotlib.ticker - vmin 7.943282347242822e-05 vmax 0.012589254117941675
-08/25/2025 10:25:42 - DEBUG - matplotlib.ticker - ticklocs array([2.e-06, 3.e-06, 4.e-06, 5.e-06, 6.e-06, 7.e-06, 8.e-06, 9.e-06,
-       2.e-05, 3.e-05, 4.e-05, 5.e-05, 6.e-05, 7.e-05, 8.e-05, 9.e-05,
-       2.e-04, 3.e-04, 4.e-04, 5.e-04, 6.e-04, 7.e-04, 8.e-04, 9.e-04,
-       2.e-03, 3.e-03, 4.e-03, 5.e-03, 6.e-03, 7.e-03, 8.e-03, 9.e-03,
-       2.e-02, 3.e-02, 4.e-02, 5.e-02, 6.e-02, 7.e-02, 8.e-02, 9.e-02,
-       2.e-01, 3.e-01, 4.e-01, 5.e-01, 6.e-01, 7.e-01, 8.e-01, 9.e-01,
-       2.e+00, 3.e+00, 4.e+00, 5.e+00, 6.e+00, 7.e+00, 8.e+00, 9.e+00])
-08/25/2025 10:25:42 - DEBUG - matplotlib.ticker - vmin 7.943282347242822e-05 vmax 0.012589254117941675
-08/25/2025 10:25:42 - DEBUG - matplotlib.ticker - ticklocs array([1.e-06, 1.e-05, 1.e-04, 1.e-03, 1.e-02, 1.e-01, 1.e+00])
-08/25/2025 10:25:42 - DEBUG - matplotlib.ticker - vmin 7.943282347242822e-05 vmax 0.012589254117941675
-08/25/2025 10:25:42 - DEBUG - matplotlib.ticker - ticklocs array([1.e-06, 1.e-05, 1.e-04, 1.e-03, 1.e-02, 1.e-01, 1.e+00])
-08/25/2025 10:25:42 - DEBUG - matplotlib.ticker - vmin 7.943282347242822e-05 vmax 0.012589254117941675
-08/25/2025 10:25:42 - DEBUG - matplotlib.ticker - ticklocs array([2.e-06, 3.e-06, 4.e-06, 5.e-06, 6.e-06, 7.e-06, 8.e-06, 9.e-06,
-       2.e-05, 3.e-05, 4.e-05, 5.e-05, 6.e-05, 7.e-05, 8.e-05, 9.e-05,
-       2.e-04, 3.e-04, 4.e-04, 5.e-04, 6.e-04, 7.e-04, 8.e-04, 9.e-04,
-       2.e-03, 3.e-03, 4.e-03, 5.e-03, 6.e-03, 7.e-03, 8.e-03, 9.e-03,
-       2.e-02, 3.e-02, 4.e-02, 5.e-02, 6.e-02, 7.e-02, 8.e-02, 9.e-02,
-       2.e-01, 3.e-01, 4.e-01, 5.e-01, 6.e-01, 7.e-01, 8.e-01, 9.e-01,
-       2.e+00, 3.e+00, 4.e+00, 5.e+00, 6.e+00, 7.e+00, 8.e+00, 9.e+00])
-08/25/2025 10:25:42 - DEBUG - matplotlib.ticker - vmin 7.943282347242822e-05 vmax 0.012589254117941675
-08/25/2025 10:25:42 - DEBUG - matplotlib.ticker - ticklocs array([1.e-06, 1.e-05, 1.e-04, 1.e-03, 1.e-02, 1.e-01, 1.e+00])
-08/25/2025 10:25:42 - DEBUG - matplotlib.ticker - vmin 7.943282347242822e-05 vmax 0.012589254117941675
-08/25/2025 10:25:42 - DEBUG - matplotlib.ticker - ticklocs array([1.e-06, 1.e-05, 1.e-04, 1.e-03, 1.e-02, 1.e-01, 1.e+00])
-08/25/2025 10:25:42 - DEBUG - matplotlib.ticker - vmin 7.943282347242822e-05 vmax 0.012589254117941675
-08/25/2025 10:25:42 - DEBUG - matplotlib.ticker - ticklocs array([2.e-06, 3.e-06, 4.e-06, 5.e-06, 6.e-06, 7.e-06, 8.e-06, 9.e-06,
-       2.e-05, 3.e-05, 4.e-05, 5.e-05, 6.e-05, 7.e-05, 8.e-05, 9.e-05,
-       2.e-04, 3.e-04, 4.e-04, 5.e-04, 6.e-04, 7.e-04, 8.e-04, 9.e-04,
-       2.e-03, 3.e-03, 4.e-03, 5.e-03, 6.e-03, 7.e-03, 8.e-03, 9.e-03,
-       2.e-02, 3.e-02, 4.e-02, 5.e-02, 6.e-02, 7.e-02, 8.e-02, 9.e-02,
-       2.e-01, 3.e-01, 4.e-01, 5.e-01, 6.e-01, 7.e-01, 8.e-01, 9.e-01,
-       2.e+00, 3.e+00, 4.e+00, 5.e+00, 6.e+00, 7.e+00, 8.e+00, 9.e+00])
-08/25/2025 10:25:42 - DEBUG - matplotlib.ticker - vmin 7.943282347242822e-05 vmax 0.012589254117941675
-08/25/2025 10:25:42 - DEBUG - matplotlib.ticker - ticklocs array([1.e-06, 1.e-05, 1.e-04, 1.e-03, 1.e-02, 1.e-01, 1.e+00])
-08/25/2025 10:25:42 - DEBUG - matplotlib.ticker - vmin 7.943282347242822e-05 vmax 0.012589254117941675
-08/25/2025 10:25:42 - DEBUG - matplotlib.ticker - ticklocs array([1.e-06, 1.e-05, 1.e-04, 1.e-03, 1.e-02, 1.e-01, 1.e+00])
-08/25/2025 10:25:42 - DEBUG - matplotlib.ticker - vmin 7.943282347242822e-05 vmax 0.012589254117941675
-08/25/2025 10:25:42 - DEBUG - matplotlib.ticker - ticklocs array([2.e-06, 3.e-06, 4.e-06, 5.e-06, 6.e-06, 7.e-06, 8.e-06, 9.e-06,
-       2.e-05, 3.e-05, 4.e-05, 5.e-05, 6.e-05, 7.e-05, 8.e-05, 9.e-05,
-       2.e-04, 3.e-04, 4.e-04, 5.e-04, 6.e-04, 7.e-04, 8.e-04, 9.e-04,
-       2.e-03, 3.e-03, 4.e-03, 5.e-03, 6.e-03, 7.e-03, 8.e-03, 9.e-03,
-       2.e-02, 3.e-02, 4.e-02, 5.e-02, 6.e-02, 7.e-02, 8.e-02, 9.e-02,
-       2.e-01, 3.e-01, 4.e-01, 5.e-01, 6.e-01, 7.e-01, 8.e-01, 9.e-01,
-       2.e+00, 3.e+00, 4.e+00, 5.e+00, 6.e+00, 7.e+00, 8.e+00, 9.e+00])
-08/25/2025 10:25:42 - DEBUG - matplotlib.ticker - vmin 7.943282347242822e-05 vmax 0.012589254117941675
-08/25/2025 10:25:42 - DEBUG - matplotlib.ticker - ticklocs array([1.e-06, 1.e-05, 1.e-04, 1.e-03, 1.e-02, 1.e-01, 1.e+00])
-08/25/2025 10:25:42 - DEBUG - matplotlib.ticker - vmin 7.943282347242822e-05 vmax 0.012589254117941675
-08/25/2025 10:25:42 - DEBUG - matplotlib.ticker - ticklocs array([1.e-06, 1.e-05, 1.e-04, 1.e-03, 1.e-02, 1.e-01, 1.e+00])
-08/25/2025 10:25:42 - DEBUG - matplotlib.ticker - vmin 7.943282347242822e-05 vmax 0.012589254117941675
-08/25/2025 10:25:42 - DEBUG - matplotlib.ticker - ticklocs array([2.e-06, 3.e-06, 4.e-06, 5.e-06, 6.e-06, 7.e-06, 8.e-06, 9.e-06,
-       2.e-05, 3.e-05, 4.e-05, 5.e-05, 6.e-05, 7.e-05, 8.e-05, 9.e-05,
-       2.e-04, 3.e-04, 4.e-04, 5.e-04, 6.e-04, 7.e-04, 8.e-04, 9.e-04,
-       2.e-03, 3.e-03, 4.e-03, 5.e-03, 6.e-03, 7.e-03, 8.e-03, 9.e-03,
-       2.e-02, 3.e-02, 4.e-02, 5.e-02, 6.e-02, 7.e-02, 8.e-02, 9.e-02,
-       2.e-01, 3.e-01, 4.e-01, 5.e-01, 6.e-01, 7.e-01, 8.e-01, 9.e-01,
-       2.e+00, 3.e+00, 4.e+00, 5.e+00, 6.e+00, 7.e+00, 8.e+00, 9.e+00])
-08/25/2025 10:25:42 - DEBUG - matplotlib.ticker - vmin 7.943282347242822e-05 vmax 0.012589254117941675
-08/25/2025 10:25:42 - DEBUG - matplotlib.ticker - ticklocs array([1.e-06, 1.e-05, 1.e-04, 1.e-03, 1.e-02, 1.e-01, 1.e+00])
-08/25/2025 10:25:42 - DEBUG - matplotlib.ticker - vmin 7.943282347242822e-05 vmax 0.012589254117941675
-08/25/2025 10:25:42 - DEBUG - matplotlib.ticker - ticklocs array([1.e-06, 1.e-05, 1.e-04, 1.e-03, 1.e-02, 1.e-01, 1.e+00])
-08/25/2025 10:25:42 - DEBUG - matplotlib.ticker - vmin 7.943282347242822e-05 vmax 0.012589254117941675
-08/25/2025 10:25:42 - DEBUG - matplotlib.ticker - ticklocs array([2.e-06, 3.e-06, 4.e-06, 5.e-06, 6.e-06, 7.e-06, 8.e-06, 9.e-06,
-       2.e-05, 3.e-05, 4.e-05, 5.e-05, 6.e-05, 7.e-05, 8.e-05, 9.e-05,
-       2.e-04, 3.e-04, 4.e-04, 5.e-04, 6.e-04, 7.e-04, 8.e-04, 9.e-04,
-       2.e-03, 3.e-03, 4.e-03, 5.e-03, 6.e-03, 7.e-03, 8.e-03, 9.e-03,
-       2.e-02, 3.e-02, 4.e-02, 5.e-02, 6.e-02, 7.e-02, 8.e-02, 9.e-02,
-       2.e-01, 3.e-01, 4.e-01, 5.e-01, 6.e-01, 7.e-01, 8.e-01, 9.e-01,
-       2.e+00, 3.e+00, 4.e+00, 5.e+00, 6.e+00, 7.e+00, 8.e+00, 9.e+00])
-08/25/2025 10:25:42 - DEBUG - matplotlib.ticker - vmin 7.943282347242822e-05 vmax 0.012589254117941675
-08/25/2025 10:25:42 - DEBUG - matplotlib.ticker - ticklocs array([1.e-06, 1.e-05, 1.e-04, 1.e-03, 1.e-02, 1.e-01, 1.e+00])
-08/25/2025 10:25:42 - DEBUG - matplotlib.ticker - vmin 7.943282347242822e-05 vmax 0.012589254117941675
-08/25/2025 10:25:42 - DEBUG - matplotlib.ticker - ticklocs array([1.e-06, 1.e-05, 1.e-04, 1.e-03, 1.e-02, 1.e-01, 1.e+00])
-08/25/2025 10:25:42 - DEBUG - matplotlib.ticker - vmin 7.943282347242822e-05 vmax 0.012589254117941675
-08/25/2025 10:25:42 - DEBUG - matplotlib.ticker - ticklocs array([2.e-06, 3.e-06, 4.e-06, 5.e-06, 6.e-06, 7.e-06, 8.e-06, 9.e-06,
-       2.e-05, 3.e-05, 4.e-05, 5.e-05, 6.e-05, 7.e-05, 8.e-05, 9.e-05,
-       2.e-04, 3.e-04, 4.e-04, 5.e-04, 6.e-04, 7.e-04, 8.e-04, 9.e-04,
-       2.e-03, 3.e-03, 4.e-03, 5.e-03, 6.e-03, 7.e-03, 8.e-03, 9.e-03,
-       2.e-02, 3.e-02, 4.e-02, 5.e-02, 6.e-02, 7.e-02, 8.e-02, 9.e-02,
-       2.e-01, 3.e-01, 4.e-01, 5.e-01, 6.e-01, 7.e-01, 8.e-01, 9.e-01,
-       2.e+00, 3.e+00, 4.e+00, 5.e+00, 6.e+00, 7.e+00, 8.e+00, 9.e+00])
-08/25/2025 10:25:42 - DEBUG - matplotlib.ticker - vmin 7.943282347242822e-05 vmax 0.012589254117941675
-08/25/2025 10:25:42 - DEBUG - matplotlib.ticker - ticklocs array([1.e-06, 1.e-05, 1.e-04, 1.e-03, 1.e-02, 1.e-01, 1.e+00])
-08/25/2025 10:25:42 - DEBUG - matplotlib.ticker - vmin 7.943282347242822e-05 vmax 0.012589254117941675
-08/25/2025 10:25:42 - DEBUG - matplotlib.ticker - ticklocs array([1.e-06, 1.e-05, 1.e-04, 1.e-03, 1.e-02, 1.e-01, 1.e+00])
-08/25/2025 10:25:42 - DEBUG - matplotlib.ticker - vmin 7.943282347242822e-05 vmax 0.012589254117941675
-08/25/2025 10:25:42 - DEBUG - matplotlib.ticker - ticklocs array([2.e-06, 3.e-06, 4.e-06, 5.e-06, 6.e-06, 7.e-06, 8.e-06, 9.e-06,
-       2.e-05, 3.e-05, 4.e-05, 5.e-05, 6.e-05, 7.e-05, 8.e-05, 9.e-05,
-       2.e-04, 3.e-04, 4.e-04, 5.e-04, 6.e-04, 7.e-04, 8.e-04, 9.e-04,
-       2.e-03, 3.e-03, 4.e-03, 5.e-03, 6.e-03, 7.e-03, 8.e-03, 9.e-03,
-       2.e-02, 3.e-02, 4.e-02, 5.e-02, 6.e-02, 7.e-02, 8.e-02, 9.e-02,
-       2.e-01, 3.e-01, 4.e-01, 5.e-01, 6.e-01, 7.e-01, 8.e-01, 9.e-01,
-       2.e+00, 3.e+00, 4.e+00, 5.e+00, 6.e+00, 7.e+00, 8.e+00, 9.e+00])
-08/25/2025 10:25:42 - DEBUG - matplotlib.ticker - vmin 7.943282347242822e-05 vmax 0.012589254117941675
-08/25/2025 10:25:42 - DEBUG - matplotlib.ticker - ticklocs array([1.e-06, 1.e-05, 1.e-04, 1.e-03, 1.e-02, 1.e-01, 1.e+00])
-08/25/2025 10:25:42 - DEBUG - matplotlib.ticker - vmin 7.943282347242822e-05 vmax 0.012589254117941675
-08/25/2025 10:25:42 - DEBUG - matplotlib.ticker - ticklocs array([1.e-06, 1.e-05, 1.e-04, 1.e-03, 1.e-02, 1.e-01, 1.e+00])
-08/25/2025 10:25:42 - DEBUG - matplotlib.ticker - vmin 7.943282347242822e-05 vmax 0.012589254117941675
-08/25/2025 10:25:42 - DEBUG - matplotlib.ticker - ticklocs array([2.e-06, 3.e-06, 4.e-06, 5.e-06, 6.e-06, 7.e-06, 8.e-06, 9.e-06,
-       2.e-05, 3.e-05, 4.e-05, 5.e-05, 6.e-05, 7.e-05, 8.e-05, 9.e-05,
-       2.e-04, 3.e-04, 4.e-04, 5.e-04, 6.e-04, 7.e-04, 8.e-04, 9.e-04,
-       2.e-03, 3.e-03, 4.e-03, 5.e-03, 6.e-03, 7.e-03, 8.e-03, 9.e-03,
-       2.e-02, 3.e-02, 4.e-02, 5.e-02, 6.e-02, 7.e-02, 8.e-02, 9.e-02,
-       2.e-01, 3.e-01, 4.e-01, 5.e-01, 6.e-01, 7.e-01, 8.e-01, 9.e-01,
-       2.e+00, 3.e+00, 4.e+00, 5.e+00, 6.e+00, 7.e+00, 8.e+00, 9.e+00])
-08/25/2025 10:25:42 - DEBUG - matplotlib.ticker - vmin 7.943282347242822e-05 vmax 0.012589254117941675
-08/25/2025 10:25:42 - DEBUG - matplotlib.ticker - ticklocs array([1.e-06, 1.e-05, 1.e-04, 1.e-03, 1.e-02, 1.e-01, 1.e+00])
-08/25/2025 10:25:42 - DEBUG - matplotlib.ticker - vmin 7.943282347242822e-05 vmax 0.012589254117941675
-08/25/2025 10:25:42 - DEBUG - matplotlib.ticker - ticklocs array([1.e-06, 1.e-05, 1.e-04, 1.e-03, 1.e-02, 1.e-01, 1.e+00])
-08/25/2025 10:25:42 - DEBUG - matplotlib.ticker - vmin 7.943282347242822e-05 vmax 0.012589254117941675
-08/25/2025 10:25:42 - DEBUG - matplotlib.ticker - ticklocs array([2.e-06, 3.e-06, 4.e-06, 5.e-06, 6.e-06, 7.e-06, 8.e-06, 9.e-06,
-       2.e-05, 3.e-05, 4.e-05, 5.e-05, 6.e-05, 7.e-05, 8.e-05, 9.e-05,
-       2.e-04, 3.e-04, 4.e-04, 5.e-04, 6.e-04, 7.e-04, 8.e-04, 9.e-04,
-       2.e-03, 3.e-03, 4.e-03, 5.e-03, 6.e-03, 7.e-03, 8.e-03, 9.e-03,
-       2.e-02, 3.e-02, 4.e-02, 5.e-02, 6.e-02, 7.e-02, 8.e-02, 9.e-02,
-       2.e-01, 3.e-01, 4.e-01, 5.e-01, 6.e-01, 7.e-01, 8.e-01, 9.e-01,
-       2.e+00, 3.e+00, 4.e+00, 5.e+00, 6.e+00, 7.e+00, 8.e+00, 9.e+00])
-08/25/2025 10:25:42 - DEBUG - matplotlib.ticker - vmin 7.943282347242822e-05 vmax 0.012589254117941675
-08/25/2025 10:25:42 - DEBUG - matplotlib.ticker - ticklocs array([1.e-06, 1.e-05, 1.e-04, 1.e-03, 1.e-02, 1.e-01, 1.e+00])
-08/25/2025 10:25:42 - DEBUG - matplotlib.ticker - vmin 7.943282347242822e-05 vmax 0.012589254117941675
-08/25/2025 10:25:42 - DEBUG - matplotlib.ticker - ticklocs array([1.e-06, 1.e-05, 1.e-04, 1.e-03, 1.e-02, 1.e-01, 1.e+00])
-08/25/2025 10:25:42 - DEBUG - matplotlib.ticker - vmin 7.943282347242822e-05 vmax 0.012589254117941675
-08/25/2025 10:25:42 - DEBUG - matplotlib.ticker - ticklocs array([2.e-06, 3.e-06, 4.e-06, 5.e-06, 6.e-06, 7.e-06, 8.e-06, 9.e-06,
-       2.e-05, 3.e-05, 4.e-05, 5.e-05, 6.e-05, 7.e-05, 8.e-05, 9.e-05,
-       2.e-04, 3.e-04, 4.e-04, 5.e-04, 6.e-04, 7.e-04, 8.e-04, 9.e-04,
-       2.e-03, 3.e-03, 4.e-03, 5.e-03, 6.e-03, 7.e-03, 8.e-03, 9.e-03,
-       2.e-02, 3.e-02, 4.e-02, 5.e-02, 6.e-02, 7.e-02, 8.e-02, 9.e-02,
-       2.e-01, 3.e-01, 4.e-01, 5.e-01, 6.e-01, 7.e-01, 8.e-01, 9.e-01,
-       2.e+00, 3.e+00, 4.e+00, 5.e+00, 6.e+00, 7.e+00, 8.e+00, 9.e+00])
-08/25/2025 10:25:42 - DEBUG - matplotlib.ticker - vmin 7.943282347242822e-05 vmax 0.012589254117941675
-08/25/2025 10:25:42 - DEBUG - matplotlib.ticker - ticklocs array([1.e-06, 1.e-05, 1.e-04, 1.e-03, 1.e-02, 1.e-01, 1.e+00])
-08/25/2025 10:25:42 - DEBUG - matplotlib.ticker - vmin 7.943282347242822e-05 vmax 0.012589254117941675
-08/25/2025 10:25:42 - DEBUG - matplotlib.ticker - ticklocs array([1.e-06, 1.e-05, 1.e-04, 1.e-03, 1.e-02, 1.e-01, 1.e+00])
-08/25/2025 10:25:42 - DEBUG - matplotlib.ticker - vmin 7.943282347242822e-05 vmax 0.012589254117941675
-08/25/2025 10:25:42 - DEBUG - matplotlib.ticker - ticklocs array([2.e-06, 3.e-06, 4.e-06, 5.e-06, 6.e-06, 7.e-06, 8.e-06, 9.e-06,
-       2.e-05, 3.e-05, 4.e-05, 5.e-05, 6.e-05, 7.e-05, 8.e-05, 9.e-05,
-       2.e-04, 3.e-04, 4.e-04, 5.e-04, 6.e-04, 7.e-04, 8.e-04, 9.e-04,
-       2.e-03, 3.e-03, 4.e-03, 5.e-03, 6.e-03, 7.e-03, 8.e-03, 9.e-03,
-       2.e-02, 3.e-02, 4.e-02, 5.e-02, 6.e-02, 7.e-02, 8.e-02, 9.e-02,
-       2.e-01, 3.e-01, 4.e-01, 5.e-01, 6.e-01, 7.e-01, 8.e-01, 9.e-01,
-       2.e+00, 3.e+00, 4.e+00, 5.e+00, 6.e+00, 7.e+00, 8.e+00, 9.e+00])
-08/25/2025 10:25:42 - DEBUG - matplotlib.ticker - vmin 7.943282347242822e-05 vmax 0.012589254117941675
-08/25/2025 10:25:42 - DEBUG - matplotlib.ticker - ticklocs array([1.e-06, 1.e-05, 1.e-04, 1.e-03, 1.e-02, 1.e-01, 1.e+00])
-08/25/2025 10:25:42 - INFO - __main__ - Loss curves saved to outputs/minimal_train_20250825_102206
-08/25/2025 10:25:42 - INFO - src.utils.checkpoint_io - Saving checkpoint to outputs/minimal_train_20250825_102206/checkpoints/final
-08/25/2025 10:25:42 - INFO - src.utils.checkpoint_io - Saved processor to outputs/minimal_train_20250825_102206/checkpoints/final/processor
-08/25/2025 10:25:42 - DEBUG - urllib3.connectionpool - https://huggingface.co:443 "HEAD /Qwen/Qwen2.5-VL-3B-Instruct/resolve/main/config.json HTTP/1.1" 307 0
-08/25/2025 10:25:42 - DEBUG - urllib3.connectionpool - https://huggingface.co:443 "HEAD /api/resolve-cache/models/Qwen/Qwen2.5-VL-3B-Instruct/66285546d2b821cf421d4f5eb2576359d3770cd3/config.json HTTP/1.1" 200 0
-08/25/2025 10:25:43 - DEBUG - urllib3.connectionpool - https://huggingface.co:443 "HEAD /Qwen/Qwen2.5-VL-3B-Instruct/resolve/main/config.json HTTP/1.1" 307 0
-08/25/2025 10:25:43 - DEBUG - urllib3.connectionpool - https://huggingface.co:443 "HEAD /api/resolve-cache/models/Qwen/Qwen2.5-VL-3B-Instruct/66285546d2b821cf421d4f5eb2576359d3770cd3/config.json HTTP/1.1" 200 0
-08/25/2025 10:25:43 - INFO - src.utils.checkpoint_io - Saved Qwen LoRA adapter
-08/25/2025 10:25:43 - INFO - src.utils.checkpoint_io - Saved SEG token embedding for ID 151665
-08/25/2025 10:25:43 - INFO - src.utils.checkpoint_io - Saved prompt_beta: 0.009000
-08/25/2025 10:25:43 - INFO - src.utils.checkpoint_io - Saved SAM LoRA weights: 54 tensors
-08/25/2025 10:25:43 - INFO - src.utils.checkpoint_io - Saved image_adapter
-08/25/2025 10:25:43 - INFO - src.utils.checkpoint_io - Saved text_prompt_proj
-08/25/2025 10:25:43 - INFO - src.utils.checkpoint_io - Saved token_fpn
-08/25/2025 10:25:43 - INFO - src.utils.checkpoint_io - Saved training state at step 3, epoch 0
-08/25/2025 10:25:43 - INFO - src.utils.checkpoint_io - Checkpoint saved successfully to outputs/minimal_train_20250825_102206/checkpoints/final
-08/25/2025 10:25:43 - INFO - __main__ - チェックポイント保存完了: outputs/minimal_train_20250825_102206/checkpoints/final
-08/25/2025 10:25:43 - INFO - __main__ - 🔍 チェックポイント final の推論評価を開始...
+08/31/2025 10:01:14 - INFO - __main__ -   ✓ dog: mean=0.002, positive=532/427200
+08/31/2025 10:01:14 - INFO - __main__ -   → 評価結果を保存: outputs/minimal_train_20250831_094901/checkpoints/step_10/inference_results/evaluation_results.json
+08/31/2025 10:01:14 - INFO - __main__ - ✅ 推論評価完了: 3/3 成功
+Epoch 1/2: 100%|█████| 10/10 [11:39<00:00, 69.90s/it, loss=14.9066, lm=14.2723, seg=0.6343, lr=1.00e-03, β=0.502]
+08/31/2025 10:01:14 - INFO - __main__ - Epoch 1 - 平均損失: 14.1814, LM: 12.9691, Seg: 1.2123
+08/31/2025 10:01:14 - INFO - __main__ - 最終学習率: 1.00e-03
+08/31/2025 10:01:15 - INFO - __main__ - Loss curves saved to outputs/minimal_train_20250831_094901
+08/31/2025 10:01:15 - INFO - src.utils.checkpoint_io - Saving checkpoint to outputs/minimal_train_20250831_094901/checkpoints/best
+08/31/2025 10:01:15 - INFO - src.utils.checkpoint_io - Saved processor to outputs/minimal_train_20250831_094901/checkpoints/best/processor
+08/31/2025 10:01:16 - INFO - src.utils.checkpoint_io - Saved Qwen LoRA adapter
+08/31/2025 10:01:16 - INFO - src.utils.checkpoint_io - Visual ViT LoRA was disabled (language-only)
+08/31/2025 10:01:16 - INFO - src.utils.checkpoint_io - Saved SEG token embedding for ID 151665
+08/31/2025 10:01:16 - INFO - src.utils.checkpoint_io - Saved prompt_beta: 0.010000
+08/31/2025 10:01:16 - INFO - src.utils.checkpoint_io - Saved image_fusion_beta: 0.500000 (fusion_type: sigma_add)
+08/31/2025 10:01:16 - INFO - src.utils.checkpoint_io - Saved full SAM MaskDecoder
+08/31/2025 10:01:16 - INFO - src.utils.checkpoint_io - Saved image_adapter
+08/31/2025 10:01:16 - INFO - src.utils.checkpoint_io - Saved text_prompt_proj
+08/31/2025 10:01:16 - INFO - src.utils.checkpoint_io - Saved token_fpn
+08/31/2025 10:01:16 - INFO - src.utils.checkpoint_io - Saved training state at step 10, epoch 0
+08/31/2025 10:01:16 - INFO - src.utils.checkpoint_io - Checkpoint saved successfully to outputs/minimal_train_20250831_094901/checkpoints/best
+08/31/2025 10:01:16 - INFO - __main__ - チェックポイント保存完了: outputs/minimal_train_20250831_094901/checkpoints/best
+08/31/2025 10:01:16 - INFO - __main__ - 🔍 チェックポイント best の推論評価を開始...
 /home/soya/.local/lib/python3.12/site-packages/transformers/tokenization_utils_base.py:2714: UserWarning: `max_length` is ignored when `padding`=`True` and there is no truncation strategy. To pad to max length, use `padding='max_length'`.
   warnings.warn(
 🔥[MODEL] Forward pass - sam_images: torch.Size([1, 3, 1024, 1024])
-08/25/2025 10:25:43 - DEBUG - src.models.lisa_model - [FORWARD] Starting forward pass
-08/25/2025 10:25:43 - DEBUG - src.models.lisa_model -   input_ids: torch.Size([1, 2783])
-08/25/2025 10:25:43 - DEBUG - src.models.lisa_model -   pixel_values: torch.Size([11008, 1176])
-08/25/2025 10:25:43 - DEBUG - src.models.lisa_model -   image_grid_thw: tensor([[  1,  86, 128]], device='cuda:0')
-08/25/2025 10:25:43 - DEBUG - src.models.lisa_model -   sam_images: torch.Size([1, 3, 1024, 1024])
-08/25/2025 10:25:43 - DEBUG - src.models.lisa_model -   labels: None
-08/25/2025 10:25:43 - DEBUG - src.models.lisa_model -   mask_labels: <class 'NoneType'> with None
-08/25/2025 10:25:43 - DEBUG - src.models.lisa_model - [FORWARD] Running Qwen forward pass...
-08/25/2025 10:26:13 - DEBUG - src.models.lisa_model - [FORWARD] Qwen outputs - logits: torch.Size([1, 2783, 151936]), hidden_states: torch.Size([1, 2783, 2048])
-08/25/2025 10:26:13 - DEBUG - src.models.lisa_model - [FORWARD] Extracting Qwen vision features...
-08/25/2025 10:26:13 - DEBUG - src.models.lisa_model - [extract_vision_features] Start - pixel_values shape: torch.Size([11008, 1176]), image_grid_thw shape: torch.Size([1, 3])
-08/25/2025 10:27:02 - DEBUG - src.models.lisa_model - [extract_vision_features] End - vision_features shape: torch.Size([1, 2752, 2048]), dtype: torch.bfloat16
-08/25/2025 10:27:02 - DEBUG - src.models.lisa_model - [SAM ViT] Processing SAM images with shape: torch.Size([1, 3, 1024, 1024]), dtype: torch.float32
-08/25/2025 10:27:02 - DEBUG - src.models.lisa_model - [SAM INPUT] min=-2.099, max=2.640, mean=0.370, std=1.171
-08/25/2025 10:27:02 - DEBUG - src.models.lisa_model - [SAM ViT] Converting input from torch.float32 to torch.float32
-08/25/2025 10:27:02 - DEBUG - src.models.lisa_model - [SAM OUTPUT] shape=torch.Size([1, 256, 64, 64]), dtype=torch.float32
-08/25/2025 10:27:02 - DEBUG - src.models.lisa_model - [SAM OUTPUT] min=-7.086, max=7.937, mean=0.029, std=0.910
-08/25/2025 10:27:02 - DEBUG - src.models.lisa_model - [FUSION] Fusing Qwen features torch.Size([1, 256, 43, 64]) with SAM features torch.Size([1, 256, 64, 64])
-08/25/2025 10:27:02 - DEBUG - src.models.lisa_model - [FUSION] Resized Qwen features to torch.Size([1, 256, 64, 64])
-08/25/2025 10:27:02 - DEBUG - src.models.lisa_model - [FUSION] Using image_fusion_beta=0.0000, scaled=0.5000
-08/25/2025 10:27:02 - DEBUG - src.models.lisa_model - [FUSION] Created fused embeddings with shape: torch.Size([1, 256, 64, 64]), dtype: torch.float32
-08/25/2025 10:27:02 - DEBUG - src.models.lisa_model - [HIGH RES] Generating high-res features from embeddings shape: torch.Size([1, 256, 64, 64]), dtype: torch.float32
-08/25/2025 10:27:02 - DEBUG - src.models.lisa_model - [HIGH RES] use_token_fpn = True
-08/25/2025 10:27:02 - DEBUG - src.models.lisa_model - [HIGH RES] Converting features from torch.float32 to FPN dtype torch.bfloat16
-08/25/2025 10:27:02 - DEBUG - src.models.lisa_model - [HIGH RES] Generated fused high-res features: s0=torch.Size([1, 256, 256, 256]), s1=torch.Size([1, 256, 128, 128])
-08/25/2025 10:27:02 - DEBUG - src.models.lisa_model - [SEG SEARCH] Batch 0: Found 1 SEG tokens at positions [2777]
-08/25/2025 10:27:02 - DEBUG - src.models.lisa_model - [MASK GEN] Total seg_positions: [[2777]]
-08/25/2025 10:27:02 - DEBUG - src.models.lisa_model - [MASK GEN] Total batches: 1
-08/25/2025 10:27:02 - DEBUG - src.models.lisa_model - [MASK GEN] Batch 0: seg_positions = [2777]
-08/25/2025 10:27:02 - DEBUG - src.models.lisa_model - [MASK GEN] image_features_sam shape: torch.Size([1, 256, 64, 64])
-08/25/2025 10:27:02 - DEBUG - src.models.lisa_model - [MASK GEN] Batch 0: Processing 1 SEG tokens
-08/25/2025 10:27:02 - DEBUG - src.models.lisa_model - [MASK GEN] Batch 0, SEG 0: Starting mask generation
-08/25/2025 10:27:02 - DEBUG - src.models.lisa_model - [CENTROID] Batch 0, SEG 0: Inference mode - using image center (512, 512)
-08/25/2025 10:27:02 - DEBUG - src.models.lisa_model - [MASK UPSCALE] Upsampling mask from torch.Size([256, 256]) to SAM size (1024, 1024)
-08/25/2025 10:27:03 - INFO - __main__ -   ✓ truck: mean=0.307, positive=636872/2160000
+08/31/2025 10:04:05 - INFO - __main__ -   ✓ truck: mean=0.256, positive=621206/2160000
 🔥[MODEL] Forward pass - sam_images: torch.Size([1, 3, 1024, 1024])
-08/25/2025 10:27:03 - DEBUG - src.models.lisa_model - [FORWARD] Starting forward pass
-08/25/2025 10:27:03 - DEBUG - src.models.lisa_model -   input_ids: torch.Size([1, 582])
-08/25/2025 10:27:03 - DEBUG - src.models.lisa_model -   pixel_values: torch.Size([2204, 1176])
-08/25/2025 10:27:03 - DEBUG - src.models.lisa_model -   image_grid_thw: tensor([[ 1, 38, 58]], device='cuda:0')
-08/25/2025 10:27:03 - DEBUG - src.models.lisa_model -   sam_images: torch.Size([1, 3, 1024, 1024])
-08/25/2025 10:27:03 - DEBUG - src.models.lisa_model -   labels: None
-08/25/2025 10:27:03 - DEBUG - src.models.lisa_model -   mask_labels: <class 'NoneType'> with None
-08/25/2025 10:27:03 - DEBUG - src.models.lisa_model - [FORWARD] Running Qwen forward pass...
-08/25/2025 10:27:04 - DEBUG - src.models.lisa_model - [FORWARD] Qwen outputs - logits: torch.Size([1, 582, 151936]), hidden_states: torch.Size([1, 582, 2048])
-08/25/2025 10:27:04 - DEBUG - src.models.lisa_model - [FORWARD] Extracting Qwen vision features...
-08/25/2025 10:27:04 - DEBUG - src.models.lisa_model - [extract_vision_features] Start - pixel_values shape: torch.Size([2204, 1176]), image_grid_thw shape: torch.Size([1, 3])
-08/25/2025 10:27:04 - DEBUG - src.models.lisa_model - [extract_vision_features] End - vision_features shape: torch.Size([1, 551, 2048]), dtype: torch.bfloat16
-08/25/2025 10:27:04 - DEBUG - src.models.lisa_model - [SAM ViT] Processing SAM images with shape: torch.Size([1, 3, 1024, 1024]), dtype: torch.float32
-08/25/2025 10:27:04 - DEBUG - src.models.lisa_model - [SAM INPUT] min=-2.118, max=2.640, mean=-0.145, std=1.134
-08/25/2025 10:27:04 - DEBUG - src.models.lisa_model - [SAM ViT] Converting input from torch.float32 to torch.float32
-08/25/2025 10:27:04 - DEBUG - src.models.lisa_model - [SAM OUTPUT] shape=torch.Size([1, 256, 64, 64]), dtype=torch.float32
-08/25/2025 10:27:05 - DEBUG - src.models.lisa_model - [SAM OUTPUT] min=-7.174, max=7.443, mean=0.019, std=0.934
-08/25/2025 10:27:05 - DEBUG - src.models.lisa_model - [FUSION] Fusing Qwen features torch.Size([1, 256, 19, 29]) with SAM features torch.Size([1, 256, 64, 64])
-08/25/2025 10:27:05 - DEBUG - src.models.lisa_model - [FUSION] Resized Qwen features to torch.Size([1, 256, 64, 64])
-08/25/2025 10:27:05 - DEBUG - src.models.lisa_model - [FUSION] Using image_fusion_beta=0.0000, scaled=0.5000
-08/25/2025 10:27:05 - DEBUG - src.models.lisa_model - [FUSION] Created fused embeddings with shape: torch.Size([1, 256, 64, 64]), dtype: torch.float32
-08/25/2025 10:27:05 - DEBUG - src.models.lisa_model - [HIGH RES] Generating high-res features from embeddings shape: torch.Size([1, 256, 64, 64]), dtype: torch.float32
-08/25/2025 10:27:05 - DEBUG - src.models.lisa_model - [HIGH RES] use_token_fpn = True
-08/25/2025 10:27:05 - DEBUG - src.models.lisa_model - [HIGH RES] Converting features from torch.float32 to FPN dtype torch.bfloat16
-08/25/2025 10:27:05 - DEBUG - src.models.lisa_model - [HIGH RES] Generated fused high-res features: s0=torch.Size([1, 256, 256, 256]), s1=torch.Size([1, 256, 128, 128])
-08/25/2025 10:27:05 - DEBUG - src.models.lisa_model - [SEG SEARCH] Batch 0: Found 1 SEG tokens at positions [576]
-08/25/2025 10:27:05 - DEBUG - src.models.lisa_model - [MASK GEN] Total seg_positions: [[576]]
-08/25/2025 10:27:05 - DEBUG - src.models.lisa_model - [MASK GEN] Total batches: 1
-08/25/2025 10:27:05 - DEBUG - src.models.lisa_model - [MASK GEN] Batch 0: seg_positions = [576]
-08/25/2025 10:27:05 - DEBUG - src.models.lisa_model - [MASK GEN] image_features_sam shape: torch.Size([1, 256, 64, 64])
-08/25/2025 10:27:05 - DEBUG - src.models.lisa_model - [MASK GEN] Batch 0: Processing 1 SEG tokens
-08/25/2025 10:27:05 - DEBUG - src.models.lisa_model - [MASK GEN] Batch 0, SEG 0: Starting mask generation
-08/25/2025 10:27:05 - DEBUG - src.models.lisa_model - [CENTROID] Batch 0, SEG 0: Inference mode - using image center (512, 512)
-08/25/2025 10:27:05 - DEBUG - src.models.lisa_model - [MASK UPSCALE] Upsampling mask from torch.Size([256, 256]) to SAM size (1024, 1024)
-08/25/2025 10:27:05 - INFO - __main__ -   ✓ groceries: mean=0.701, positive=329554/427200
+08/31/2025 10:04:23 - INFO - __main__ -   ✓ groceries: mean=0.025, positive=9534/427200
 🔥[MODEL] Forward pass - sam_images: torch.Size([1, 3, 1024, 1024])
-08/25/2025 10:27:05 - DEBUG - src.models.lisa_model - [FORWARD] Starting forward pass
-08/25/2025 10:27:05 - DEBUG - src.models.lisa_model -   input_ids: torch.Size([1, 582])
-08/25/2025 10:27:05 - DEBUG - src.models.lisa_model -   pixel_values: torch.Size([2204, 1176])
-08/25/2025 10:27:05 - DEBUG - src.models.lisa_model -   image_grid_thw: tensor([[ 1, 38, 58]], device='cuda:0')
-08/25/2025 10:27:05 - DEBUG - src.models.lisa_model -   sam_images: torch.Size([1, 3, 1024, 1024])
-08/25/2025 10:27:05 - DEBUG - src.models.lisa_model -   labels: None
-08/25/2025 10:27:05 - DEBUG - src.models.lisa_model -   mask_labels: <class 'NoneType'> with None
-08/25/2025 10:27:05 - DEBUG - src.models.lisa_model - [FORWARD] Running Qwen forward pass...
-08/25/2025 10:27:05 - DEBUG - src.models.lisa_model - [FORWARD] Qwen outputs - logits: torch.Size([1, 582, 151936]), hidden_states: torch.Size([1, 582, 2048])
-08/25/2025 10:27:05 - DEBUG - src.models.lisa_model - [FORWARD] Extracting Qwen vision features...
-08/25/2025 10:27:05 - DEBUG - src.models.lisa_model - [extract_vision_features] Start - pixel_values shape: torch.Size([2204, 1176]), image_grid_thw shape: torch.Size([1, 3])
-08/25/2025 10:27:06 - DEBUG - src.models.lisa_model - [extract_vision_features] End - vision_features shape: torch.Size([1, 551, 2048]), dtype: torch.bfloat16
-08/25/2025 10:27:06 - DEBUG - src.models.lisa_model - [SAM ViT] Processing SAM images with shape: torch.Size([1, 3, 1024, 1024]), dtype: torch.float32
-08/25/2025 10:27:06 - DEBUG - src.models.lisa_model - [SAM INPUT] min=-2.118, max=2.640, mean=0.603, std=1.166
-08/25/2025 10:27:06 - DEBUG - src.models.lisa_model - [SAM ViT] Converting input from torch.float32 to torch.float32
-08/25/2025 10:27:06 - DEBUG - src.models.lisa_model - [SAM OUTPUT] shape=torch.Size([1, 256, 64, 64]), dtype=torch.float32
-08/25/2025 10:27:06 - DEBUG - src.models.lisa_model - [SAM OUTPUT] min=-6.927, max=7.041, mean=0.028, std=0.928
-08/25/2025 10:27:06 - DEBUG - src.models.lisa_model - [FUSION] Fusing Qwen features torch.Size([1, 256, 19, 29]) with SAM features torch.Size([1, 256, 64, 64])
-08/25/2025 10:27:06 - DEBUG - src.models.lisa_model - [FUSION] Resized Qwen features to torch.Size([1, 256, 64, 64])
-08/25/2025 10:27:06 - DEBUG - src.models.lisa_model - [FUSION] Using image_fusion_beta=0.0000, scaled=0.5000
-08/25/2025 10:27:06 - DEBUG - src.models.lisa_model - [FUSION] Created fused embeddings with shape: torch.Size([1, 256, 64, 64]), dtype: torch.float32
-08/25/2025 10:27:06 - DEBUG - src.models.lisa_model - [HIGH RES] Generating high-res features from embeddings shape: torch.Size([1, 256, 64, 64]), dtype: torch.float32
-08/25/2025 10:27:06 - DEBUG - src.models.lisa_model - [HIGH RES] use_token_fpn = True
-08/25/2025 10:27:06 - DEBUG - src.models.lisa_model - [HIGH RES] Converting features from torch.float32 to FPN dtype torch.bfloat16
-08/25/2025 10:27:06 - DEBUG - src.models.lisa_model - [HIGH RES] Generated fused high-res features: s0=torch.Size([1, 256, 256, 256]), s1=torch.Size([1, 256, 128, 128])
-08/25/2025 10:27:06 - DEBUG - src.models.lisa_model - [SEG SEARCH] Batch 0: Found 1 SEG tokens at positions [576]
-08/25/2025 10:27:06 - DEBUG - src.models.lisa_model - [MASK GEN] Total seg_positions: [[576]]
-08/25/2025 10:27:06 - DEBUG - src.models.lisa_model - [MASK GEN] Total batches: 1
-08/25/2025 10:27:06 - DEBUG - src.models.lisa_model - [MASK GEN] Batch 0: seg_positions = [576]
-08/25/2025 10:27:06 - DEBUG - src.models.lisa_model - [MASK GEN] image_features_sam shape: torch.Size([1, 256, 64, 64])
-08/25/2025 10:27:06 - DEBUG - src.models.lisa_model - [MASK GEN] Batch 0: Processing 1 SEG tokens
-08/25/2025 10:27:06 - DEBUG - src.models.lisa_model - [MASK GEN] Batch 0, SEG 0: Starting mask generation
-08/25/2025 10:27:06 - DEBUG - src.models.lisa_model - [CENTROID] Batch 0, SEG 0: Inference mode - using image center (512, 512)
-08/25/2025 10:27:06 - DEBUG - src.models.lisa_model - [MASK UPSCALE] Upsampling mask from torch.Size([256, 256]) to SAM size (1024, 1024)
-08/25/2025 10:27:06 - INFO - __main__ -   ✓ dog: mean=0.529, positive=196977/427200
-08/25/2025 10:27:06 - INFO - __main__ -   → 評価結果を保存: outputs/minimal_train_20250825_102206/checkpoints/final/inference_results/evaluation_results.json
-08/25/2025 10:27:06 - INFO - __main__ - ✅ 推論評価完了: 3/3 成功
-soya@DESKTOP-45J3R3T:~/SAM2_1_Qwen_2_5_Integration_2$ 
+08/31/2025 10:04:42 - INFO - __main__ -   ✓ dog: mean=0.002, positive=532/427200
+08/31/2025 10:04:42 - INFO - __main__ -   → 評価結果を保存: outputs/minimal_train_20250831_094901/checkpoints/best/inference_results/evaluation_results.json
+08/31/2025 10:04:42 - INFO - __main__ - ✅ 推論評価完了: 3/3 成功
+08/31/2025 10:04:42 - INFO - __main__ - ベストモデル更新: 損失 = 14.1814
+08/31/2025 10:04:42 - INFO - src.utils.checkpoint_io - Saving checkpoint to outputs/minimal_train_20250831_094901/checkpoints/epoch_1
+08/31/2025 10:04:43 - INFO - src.utils.checkpoint_io - Saved processor to outputs/minimal_train_20250831_094901/checkpoints/epoch_1/processor
+08/31/2025 10:04:43 - INFO - src.utils.checkpoint_io - Saved Qwen LoRA adapter
+08/31/2025 10:04:43 - INFO - src.utils.checkpoint_io - Visual ViT LoRA was disabled (language-only)
+08/31/2025 10:04:43 - INFO - src.utils.checkpoint_io - Saved SEG token embedding for ID 151665
+08/31/2025 10:04:43 - INFO - src.utils.checkpoint_io - Saved prompt_beta: 0.010000
+08/31/2025 10:04:43 - INFO - src.utils.checkpoint_io - Saved image_fusion_beta: 0.500000 (fusion_type: sigma_add)
+08/31/2025 10:04:43 - INFO - src.utils.checkpoint_io - Saved full SAM MaskDecoder
+08/31/2025 10:04:43 - INFO - src.utils.checkpoint_io - Saved image_adapter
+08/31/2025 10:04:43 - INFO - src.utils.checkpoint_io - Saved text_prompt_proj
+08/31/2025 10:04:43 - INFO - src.utils.checkpoint_io - Saved token_fpn
+08/31/2025 10:04:44 - INFO - src.utils.checkpoint_io - Saved training state at step 10, epoch 0
+08/31/2025 10:04:44 - INFO - src.utils.checkpoint_io - Checkpoint saved successfully to outputs/minimal_train_20250831_094901/checkpoints/epoch_1
+08/31/2025 10:04:44 - INFO - __main__ - チェックポイント保存完了: outputs/minimal_train_20250831_094901/checkpoints/epoch_1
+08/31/2025 10:04:44 - INFO - __main__ - 🔍 チェックポイント epoch_1 の推論評価を開始...
+/home/soya/.local/lib/python3.12/site-packages/transformers/tokenization_utils_base.py:2714: UserWarning: `max_length` is ignored when `padding`=`True` and there is no truncation strategy. To pad to max length, use `padding='max_length'`.
+  warnings.warn(
+🔥[MODEL] Forward pass - sam_images: torch.Size([1, 3, 1024, 1024])
+08/31/2025 10:07:43 - INFO - __main__ -   ✓ truck: mean=0.256, positive=621206/2160000
+🔥[MODEL] Forward pass - sam_images: torch.Size([1, 3, 1024, 1024])
+08/31/2025 10:07:56 - INFO - __main__ -   ✓ groceries: mean=0.025, positive=9534/427200
+🔥[MODEL] Forward pass - sam_images: torch.Size([1, 3, 1024, 1024])
+08/31/2025 10:08:09 - INFO - __main__ -   ✓ dog: mean=0.002, positive=532/427200
+08/31/2025 10:08:09 - INFO - __main__ -   → 評価結果を保存: outputs/minimal_train_20250831_094901/checkpoints/epoch_1/inference_results/evaluation_results.json
+08/31/2025 10:08:09 - INFO - __main__ - ✅ 推論評価完了: 3/3 成功
+Epoch 2/2:   0%|                                                                          | 0/10 [00:00<?, ?it/s]🔥[MODEL] Forward pass - sam_images: torch.Size([2, 3, 1024, 1024])
+Epoch 2/2:  10%|▌     | 1/10 [00:13<01:57, 13.11s/it, loss=15.3253, lm=14.3393, seg=0.9860, lr=1.00e-03, β=0.502]🔥[MODEL] Forward pass - sam_images: torch.Size([2, 3, 1024, 1024])
+Epoch 2/2:  20%|█▏    | 2/10 [00:23<01:32, 11.62s/it, loss=12.4398, lm=11.6875, seg=0.7523, lr=1.00e-03, β=0.502]🔥[MODEL] Forward pass - sam_images: torch.Size([2, 3, 1024, 1024])
+Epoch 2/2:  30%|█▊    | 3/10 [00:34<01:17, 11.02s/it, loss=12.4497, lm=12.2109, seg=0.2388, lr=1.00e-03, β=0.502]🔥[MODEL] Forward pass - sam_images: torch.Size([2, 3, 1024, 1024])
+Epoch 2/2:  40%|██▍   | 4/10 [00:50<01:18, 13.04s/it, loss=12.5522, lm=12.0352, seg=0.5171, lr=1.00e-03, β=0.502]🔥[MODEL] Forward pass - sam_images: torch.Size([2, 3, 1024, 1024])
+Epoch 2/2:  40%|██▍   | 4/10 [01:00<01:18, 13.04s/it, loss=13.8011, lm=12.7411, seg=1.0600, lr=1.00e-03, β=0.502]08/31/2025 10:09:09 - INFO - __main__ - Saved visualization to outputs/minimal_train_20250831_094901/visualizations/step_000015.png (IoU: 0.002, Dice: 0.003)
+08/31/2025 10:09:09 - INFO - src.utils.checkpoint_io - Saving checkpoint to outputs/minimal_train_20250831_094901/checkpoints/step_15
+08/31/2025 10:09:10 - INFO - src.utils.checkpoint_io - Saved processor to outputs/minimal_train_20250831_094901/checkpoints/step_15/processor
+08/31/2025 10:09:10 - INFO - src.utils.checkpoint_io - Saved Qwen LoRA adapter
+08/31/2025 10:09:10 - INFO - src.utils.checkpoint_io - Visual ViT LoRA was disabled (language-only)
+08/31/2025 10:09:10 - INFO - src.utils.checkpoint_io - Saved SEG token embedding for ID 151665
+08/31/2025 10:09:10 - INFO - src.utils.checkpoint_io - Saved prompt_beta: 0.010000
+08/31/2025 10:09:10 - INFO - src.utils.checkpoint_io - Saved image_fusion_beta: 0.500000 (fusion_type: sigma_add)
+08/31/2025 10:09:10 - INFO - src.utils.checkpoint_io - Saved full SAM MaskDecoder
+08/31/2025 10:09:10 - INFO - src.utils.checkpoint_io - Saved image_adapter
+08/31/2025 10:09:10 - INFO - src.utils.checkpoint_io - Saved text_prompt_proj
+08/31/2025 10:09:10 - INFO - src.utils.checkpoint_io - Saved token_fpn
+08/31/2025 10:09:11 - INFO - src.utils.checkpoint_io - Saved training state at step 15, epoch 0
+08/31/2025 10:09:11 - INFO - src.utils.checkpoint_io - Checkpoint saved successfully to outputs/minimal_train_20250831_094901/checkpoints/step_15
+08/31/2025 10:09:11 - INFO - __main__ - チェックポイント保存完了: outputs/minimal_train_20250831_094901/checkpoints/step_15
+08/31/2025 10:09:11 - INFO - __main__ - 🔍 チェックポイント step_15 の推論評価を開始...
+/home/soya/.local/lib/python3.12/site-packages/transformers/tokenization_utils_base.py:2714: UserWarning: `max_length` is ignored when `padding`=`True` and there is no truncation strategy. To pad to max length, use `padding='max_length'`.
+  warnings.warn(
+🔥[MODEL] Forward pass - sam_images: torch.Size([1, 3, 1024, 1024])
+08/31/2025 10:12:00 - INFO - __main__ -   ✓ truck: mean=0.254, positive=618649/2160000
+🔥[MODEL] Forward pass - sam_images: torch.Size([1, 3, 1024, 1024])
+08/31/2025 10:12:14 - INFO - __main__ -   ✓ groceries: mean=0.026, positive=9523/427200
+🔥[MODEL] Forward pass - sam_images: torch.Size([1, 3, 1024, 1024])
+08/31/2025 10:12:26 - INFO - __main__ -   ✓ dog: mean=0.002, positive=530/427200
+08/31/2025 10:12:26 - INFO - __main__ -   → 評価結果を保存: outputs/minimal_train_20250831_094901/checkpoints/step_15/inference_results/evaluation_results.json
+08/31/2025 10:12:26 - INFO - __main__ - ✅ 推論評価完了: 3/3 成功
+Epoch 2/2:  50%|███   | 5/10 [04:17<06:56, 83.24s/it, loss=13.8011, lm=12.7411, seg=1.0600, lr=1.00e-03, β=0.502]🔥[MODEL] Forward pass - sam_images: torch.Size([2, 3, 1024, 1024])
+Epoch 2/2:  60%|███▌  | 6/10 [04:40<04:10, 62.60s/it, loss=15.2045, lm=15.2045, seg=0.0000, lr=1.00e-03, β=0.502]🔥[MODEL] Forward pass - sam_images: torch.Size([2, 3, 1024, 1024])
+Epoch 2/2:  70%|████▏ | 7/10 [05:06<02:31, 50.66s/it, loss=16.7551, lm=14.7428, seg=2.0123, lr=1.00e-03, β=0.502]🔥[MODEL] Forward pass - sam_images: torch.Size([2, 3, 1024, 1024])
+Epoch 2/2:  80%|████▊ | 8/10 [05:18<01:16, 38.31s/it, loss=12.5681, lm=11.9023, seg=0.6658, lr=1.00e-03, β=0.502]🔥[MODEL] Forward pass - sam_images: torch.Size([2, 3, 1024, 1024])
+Epoch 2/2:  90%|█████▍| 9/10 [05:39<00:33, 33.09s/it, loss=15.1386, lm=15.1386, seg=0.0000, lr=1.00e-03, β=0.502]🔥[MODEL] Forward pass - sam_images: torch.Size([2, 3, 1024, 1024])
+Epoch 2/2:  90%|█████▍| 9/10 [06:04<00:33, 33.09s/it, loss=14.9895, lm=14.9895, seg=0.0000, lr=0.00e+00, β=0.503]08/31/2025 10:14:13 - WARNING - __main__ - Original image shape (427, 640) != expected (683, 1024), resizing...
+08/31/2025 10:14:14 - INFO - __main__ - Saved visualization to outputs/minimal_train_20250831_094901/visualizations/step_000020.png (IoU: 0.000, Dice: 0.000)
+08/31/2025 10:14:14 - INFO - src.utils.checkpoint_io - Saving checkpoint to outputs/minimal_train_20250831_094901/checkpoints/step_20
+08/31/2025 10:14:15 - INFO - src.utils.checkpoint_io - Saved processor to outputs/minimal_train_20250831_094901/checkpoints/step_20/processor
+08/31/2025 10:14:15 - INFO - src.utils.checkpoint_io - Saved Qwen LoRA adapter
+08/31/2025 10:14:15 - INFO - src.utils.checkpoint_io - Visual ViT LoRA was disabled (language-only)
+08/31/2025 10:14:15 - INFO - src.utils.checkpoint_io - Saved SEG token embedding for ID 151665
+08/31/2025 10:14:15 - INFO - src.utils.checkpoint_io - Saved prompt_beta: 0.010896
+08/31/2025 10:14:15 - INFO - src.utils.checkpoint_io - Saved image_fusion_beta: 0.500000 (fusion_type: sigma_add)
+08/31/2025 10:14:15 - INFO - src.utils.checkpoint_io - Saved full SAM MaskDecoder
+08/31/2025 10:14:15 - INFO - src.utils.checkpoint_io - Saved image_adapter
+08/31/2025 10:14:15 - INFO - src.utils.checkpoint_io - Saved text_prompt_proj
+08/31/2025 10:14:15 - INFO - src.utils.checkpoint_io - Saved token_fpn
+08/31/2025 10:14:16 - INFO - src.utils.checkpoint_io - Saved training state at step 20, epoch 0
+08/31/2025 10:14:16 - INFO - src.utils.checkpoint_io - Checkpoint saved successfully to outputs/minimal_train_20250831_094901/checkpoints/step_20
+08/31/2025 10:14:16 - INFO - __main__ - チェックポイント保存完了: outputs/minimal_train_20250831_094901/checkpoints/step_20
+08/31/2025 10:14:16 - INFO - __main__ - 🔍 チェックポイント step_20 の推論評価を開始...
+/home/soya/.local/lib/python3.12/site-packages/transformers/tokenization_utils_base.py:2714: UserWarning: `max_length` is ignored when `padding`=`True` and there is no truncation strategy. To pad to max length, use `padding='max_length'`.
+  warnings.warn(
+🔥[MODEL] Forward pass - sam_images: torch.Size([1, 3, 1024, 1024])
+08/31/2025 10:16:59 - INFO - __main__ -   ✓ truck: mean=0.340, positive=656869/2160000
+🔥[MODEL] Forward pass - sam_images: torch.Size([1, 3, 1024, 1024])
+08/31/2025 10:17:15 - INFO - __main__ -   ✓ groceries: mean=0.596, positive=329199/427200
+🔥[MODEL] Forward pass - sam_images: torch.Size([1, 3, 1024, 1024])
+08/31/2025 10:17:30 - INFO - __main__ -   ✓ dog: mean=0.107, positive=48678/427200
+08/31/2025 10:17:30 - INFO - __main__ -   → 評価結果を保存: outputs/minimal_train_20250831_094901/checkpoints/step_20/inference_results/evaluation_results.json
+08/31/2025 10:17:30 - INFO - __main__ - ✅ 推論評価完了: 3/3 成功
+Epoch 2/2: 100%|█████| 10/10 [09:21<00:00, 56.18s/it, loss=14.9895, lm=14.9895, seg=0.0000, lr=0.00e+00, β=0.503]
+08/31/2025 10:17:30 - INFO - __main__ - Epoch 2 - 平均損失: 14.1224, LM: 13.4992, Seg: 0.6232
+08/31/2025 10:17:30 - INFO - __main__ - 最終学習率: 0.00e+00
+08/31/2025 10:17:31 - INFO - __main__ - Loss curves saved to outputs/minimal_train_20250831_094901
+08/31/2025 10:17:31 - INFO - src.utils.checkpoint_io - Saving checkpoint to outputs/minimal_train_20250831_094901/checkpoints/best
+08/31/2025 10:17:32 - INFO - src.utils.checkpoint_io - Saved processor to outputs/minimal_train_20250831_094901/checkpoints/best/processor
+08/31/2025 10:17:32 - INFO - src.utils.checkpoint_io - Saved Qwen LoRA adapter
+08/31/2025 10:17:32 - INFO - src.utils.checkpoint_io - Visual ViT LoRA was disabled (language-only)
+08/31/2025 10:17:32 - INFO - src.utils.checkpoint_io - Saved SEG token embedding for ID 151665
+08/31/2025 10:17:32 - INFO - src.utils.checkpoint_io - Saved prompt_beta: 0.010896
+08/31/2025 10:17:32 - INFO - src.utils.checkpoint_io - Saved image_fusion_beta: 0.500000 (fusion_type: sigma_add)
+08/31/2025 10:17:32 - INFO - src.utils.checkpoint_io - Saved full SAM MaskDecoder
+08/31/2025 10:17:32 - INFO - src.utils.checkpoint_io - Saved image_adapter
+08/31/2025 10:17:32 - INFO - src.utils.checkpoint_io - Saved text_prompt_proj
+08/31/2025 10:17:32 - INFO - src.utils.checkpoint_io - Saved token_fpn
+08/31/2025 10:17:33 - INFO - src.utils.checkpoint_io - Saved training state at step 20, epoch 0
+08/31/2025 10:17:33 - INFO - src.utils.checkpoint_io - Checkpoint saved successfully to outputs/minimal_train_20250831_094901/checkpoints/best
+08/31/2025 10:17:33 - INFO - __main__ - チェックポイント保存完了: outputs/minimal_train_20250831_094901/checkpoints/best
+08/31/2025 10:17:33 - INFO - __main__ - 🔍 チェックポイント best の推論評価を開始...
+/home/soya/.local/lib/python3.12/site-packages/transformers/tokenization_utils_base.py:2714: UserWarning: `max_length` is ignored when `padding`=`True` and there is no truncation strategy. To pad to max length, use `padding='max_length'`.
+  warnings.warn(
+🔥[MODEL] Forward pass - sam_images: torch.Size([1, 3, 1024, 1024])
+08/31/2025 10:20:14 - INFO - __main__ -   ✓ truck: mean=0.340, positive=656869/2160000
+🔥[MODEL] Forward pass - sam_images: torch.Size([1, 3, 1024, 1024])
+08/31/2025 10:20:30 - INFO - __main__ -   ✓ groceries: mean=0.596, positive=329199/427200
+🔥[MODEL] Forward pass - sam_images: torch.Size([1, 3, 1024, 1024])
+08/31/2025 10:20:45 - INFO - __main__ -   ✓ dog: mean=0.107, positive=48678/427200
+08/31/2025 10:20:45 - INFO - __main__ -   → 評価結果を保存: outputs/minimal_train_20250831_094901/checkpoints/best/inference_results/evaluation_results.json
+08/31/2025 10:20:45 - INFO - __main__ - ✅ 推論評価完了: 3/3 成功
+08/31/2025 10:20:45 - INFO - __main__ - ベストモデル更新: 損失 = 14.1224
+08/31/2025 10:20:45 - INFO - src.utils.checkpoint_io - Saving checkpoint to outputs/minimal_train_20250831_094901/checkpoints/epoch_2
+08/31/2025 10:20:46 - INFO - src.utils.checkpoint_io - Saved processor to outputs/minimal_train_20250831_094901/checkpoints/epoch_2/processor
+08/31/2025 10:20:46 - INFO - src.utils.checkpoint_io - Saved Qwen LoRA adapter
+08/31/2025 10:20:46 - INFO - src.utils.checkpoint_io - Visual ViT LoRA was disabled (language-only)
+08/31/2025 10:20:46 - INFO - src.utils.checkpoint_io - Saved SEG token embedding for ID 151665
+08/31/2025 10:20:46 - INFO - src.utils.checkpoint_io - Saved prompt_beta: 0.010896
+08/31/2025 10:20:46 - INFO - src.utils.checkpoint_io - Saved image_fusion_beta: 0.500000 (fusion_type: sigma_add)
+08/31/2025 10:20:47 - INFO - src.utils.checkpoint_io - Saved full SAM MaskDecoder
+08/31/2025 10:20:47 - INFO - src.utils.checkpoint_io - Saved image_adapter
+08/31/2025 10:20:47 - INFO - src.utils.checkpoint_io - Saved text_prompt_proj
+08/31/2025 10:20:47 - INFO - src.utils.checkpoint_io - Saved token_fpn
+08/31/2025 10:20:47 - INFO - src.utils.checkpoint_io - Saved training state at step 20, epoch 0
+08/31/2025 10:20:47 - INFO - src.utils.checkpoint_io - Checkpoint saved successfully to outputs/minimal_train_20250831_094901/checkpoints/epoch_2
+08/31/2025 10:20:47 - INFO - __main__ - チェックポイント保存完了: outputs/minimal_train_20250831_094901/checkpoints/epoch_2
+08/31/2025 10:20:47 - INFO - __main__ - 🔍 チェックポイント epoch_2 の推論評価を開始...
+/home/soya/.local/lib/python3.12/site-packages/transformers/tokenization_utils_base.py:2714: UserWarning: `max_length` is ignored when `padding`=`True` and there is no truncation strategy. To pad to max length, use `padding='max_length'`.
+  warnings.warn(
+🔥[MODEL] Forward pass - sam_images: torch.Size([1, 3, 1024, 1024])
+08/31/2025 10:23:28 - INFO - __main__ -   ✓ truck: mean=0.340, positive=656869/2160000
+🔥[MODEL] Forward pass - sam_images: torch.Size([1, 3, 1024, 1024])
+08/31/2025 10:23:44 - INFO - __main__ -   ✓ groceries: mean=0.596, positive=329199/427200
+🔥[MODEL] Forward pass - sam_images: torch.Size([1, 3, 1024, 1024])
+08/31/2025 10:23:59 - INFO - __main__ -   ✓ dog: mean=0.107, positive=48678/427200
+08/31/2025 10:23:59 - INFO - __main__ -   → 評価結果を保存: outputs/minimal_train_20250831_094901/checkpoints/epoch_2/inference_results/evaluation_results.json
+08/31/2025 10:23:59 - INFO - __main__ - ✅ 推論評価完了: 3/3 成功
+08/31/2025 10:23:59 - INFO - __main__ - 訓練完了
+08/31/2025 10:23:59 - INFO - __main__ - ベスト損失: 14.1224
+08/31/2025 10:24:00 - INFO - __main__ - Loss curves saved to outputs/minimal_train_20250831_094901
+08/31/2025 10:24:00 - INFO - src.utils.checkpoint_io - Saving checkpoint to outputs/minimal_train_20250831_094901/checkpoints/final
+08/31/2025 10:24:00 - INFO - src.utils.checkpoint_io - Saved processor to outputs/minimal_train_20250831_094901/checkpoints/final/processor
+08/31/2025 10:24:01 - INFO - src.utils.checkpoint_io - Saved Qwen LoRA adapter
+08/31/2025 10:24:01 - INFO - src.utils.checkpoint_io - Visual ViT LoRA was disabled (language-only)
+08/31/2025 10:24:01 - INFO - src.utils.checkpoint_io - Saved SEG token embedding for ID 151665
+08/31/2025 10:24:01 - INFO - src.utils.checkpoint_io - Saved prompt_beta: 0.010896
+08/31/2025 10:24:01 - INFO - src.utils.checkpoint_io - Saved image_fusion_beta: 0.500000 (fusion_type: sigma_add)
+08/31/2025 10:24:01 - INFO - src.utils.checkpoint_io - Saved full SAM MaskDecoder
+08/31/2025 10:24:01 - INFO - src.utils.checkpoint_io - Saved image_adapter
+08/31/2025 10:24:01 - INFO - src.utils.checkpoint_io - Saved text_prompt_proj
+08/31/2025 10:24:01 - INFO - src.utils.checkpoint_io - Saved token_fpn
+08/31/2025 10:24:01 - INFO - src.utils.checkpoint_io - Saved training state at step 20, epoch 0
+08/31/2025 10:24:01 - INFO - src.utils.checkpoint_io - Checkpoint saved successfully to outputs/minimal_train_20250831_094901/checkpoints/final
+08/31/2025 10:24:01 - INFO - __main__ - チェックポイント保存完了: outputs/minimal_train_20250831_094901/checkpoints/final
+08/31/2025 10:24:01 - INFO - __main__ - 🔍 チェックポイント final の推論評価を開始...
+/home/soya/.local/lib/python3.12/site-packages/transformers/tokenization_utils_base.py:2714: UserWarning: `max_length` is ignored when `padding`=`True` and there is no truncation strategy. To pad to max length, use `padding='max_length'`.
+  warnings.warn(
+🔥[MODEL] Forward pass - sam_images: torch.Size([1, 3, 1024, 1024])
