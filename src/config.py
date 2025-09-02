@@ -5,6 +5,11 @@ from dataclasses import dataclass
 from typing import Optional
 
 
+# O3推奨: Phase別のサンプル率設定
+# LISA論文準拠: Phase 1ではVQAを除外してセグメンテーションタスクのみで学習
+PHASE1_SAMPLE_RATES = [9, 3, 0, 1]  # [SemSeg, ReferSeg, VQA, ReasonSeg] - VQA=0
+PHASE2_SAMPLE_RATES = [9, 3, 3, 1]  # 全タスクを含める
+
 @dataclass
 class LISAConfig:
     """
@@ -47,7 +52,7 @@ class LISAConfig:
     lora_target_modules: list = None   # 自動設定（lora_visual_enabledに基づいて__post_init__で決定）
     lora_visual_enabled: bool = False  # Visual ViT blocksへのLoRA適用（lora_r>0の場合のみ有効）
                                        # False: 言語モデルのみ（既存チェックポイントと互換、デフォルト）
-                                       # True: 言語モデル＋Visual ViT（より高性能だが既存チェックポイントと非互換）
+                                       # True: 言語モデル+Visual ViT（より高性能だが既存チェックポイントと非互換）
     
     # SAM2.1 MaskDecoder LoRA settings
     # NOTE: sam_lora_r=0 にするとSAMのLoRAは完全に無効化されます
@@ -114,22 +119,35 @@ class LISAConfig:
     # Training Configuration - 学習パラメータの一元管理
     # ========================================================================
     
-    # Learning rates (各コンポーネントの学習率)
+    # Learning rates (各コンポーネントの学習率) - deepresearch.md 4-4に基づく改善
+    # LMとSeg/SAMで異なる学習率を設定
+    lr_lm: float = 5e-6                # 言語モデル（Qwen LoRA）の学習率 - 極小
+    lr_seg: float = 2e-4               # セグメンテーション（SAM, アダプター等）の学習率 - やや大きめ
+    
+    # 後方互換性のための旧設定（非推奨）
     adapter_lr: float = 5e-4           # アダプター（Image Adapter, Text Projector等）の学習率
     lora_lr: float = 5e-5              # LoRA（Qwen/SAM）の学習率
     seg_token_lr: float = 1e-5         # SEGトークン埋め込みの学習率
-    weight_decay: float = 0.01         # Weight decay (AdamW用)
     
-    # Loss weights
-    language_loss_weight: float = 1.0      # 言語モデリング損失の重み
-    segmentation_loss_weight: float = 1.0  # セグメンテーション損失の重み
+    # Weight decay設定（deepresearch.mdに基づく）
+    wd_lm: float = 0.01                # 言語モデルのweight decay
+    wd_seg: float = 0.01               # セグメンテーションのweight decay
+    weight_decay: float = 0.01         # デフォルトのweight decay（後方互換）
     
-    # 4-2の要件に従った損失関数パラメータ
-    lambda_lm: float = 1.0             # 言語モデリング損失の重み（後方互換のためlanguage_loss_weightと同じ）
-    lambda_seg: float = 1.0            # セグメンテーション損失の重み（後方互換のためsegmentation_loss_weightと同じ）
+    # Loss weights - deepresearch.md 4-4に基づく設定
+    lambda_lm: float = 0.1             # 言語モデリング損失の重み（低めに設定）
+    lambda_seg: float = 1.0            # セグメンテーション損失の重み
     dice_weight: float = 1.0           # Dice損失の重み係数
     bce_weight: float = 1.0            # BCE損失の重み係数
+    
+    # 後方互換性のための旧設定（非推奨）
+    language_loss_weight: float = 1.0      # 言語モデリング損失の重み
+    segmentation_loss_weight: float = 1.0  # セグメンテーション損失の重み
     seg_loss_weight: float = 1.0       # 後方互換性のため（lambda_segが優先）
+    
+    # 段階学習設定（deepresearch.md 4-4）
+    freeze_lm_ratio: float = 0.2       # 最初の20%の更新でLMを凍結
+    freeze_seg_token_during_phase1: bool = False  # Phase1でのSEGトークン埋め込み凍結
     
     # Device settings
     device_map: str = "auto"
@@ -179,6 +197,9 @@ class LISAConfig:
     # Dataset sampling
     dataset_config: str = "sem_seg||refer_seg||vqa||reason_seg"
     sample_rates: list = None  # Will be initialized in __post_init__
+    
+    # 評価設定 - deepresearch.md 4-5に基づく改善
+    inference_eval_samples: int = 128  # 評価サンプル数を128に増加（分散縮小のため）
     
     def __post_init__(self):
         if self.lora_target_modules is None:
@@ -239,3 +260,7 @@ class LISAConfig:
                 (672 * 672, (48, 48), 576),   # Medium: 48×48 patches, 576 tokens
                 (896 * 896, (64, 64), 1024),  # Large: 64×64 patches, 1024 tokens
             ]
+
+        # O3推奨: Phase別のサンプル率
+        self.phase1_sample_rates = [9, 3, 0, 1]  # Phase 1: VQAを除外（LISA論文準拠）
+        self.phase2_sample_rates = [9, 3, 3, 1]  # Phase 2: 全タスクを含める

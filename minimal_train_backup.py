@@ -70,7 +70,8 @@ class MinimalTrainer:
         
         # 推論評価設定
         self.run_inference_eval = getattr(config, 'run_inference_eval', False)
-        self.inference_eval_samples = getattr(config, 'inference_eval_samples', 3)
+        # 評価サンプル数（最小1、テスト時は少数でも可）
+        self.inference_eval_samples = max(getattr(config, 'inference_eval_samples', 3), 1)
         
         # 学習パラメータ
         self.num_epochs = config.num_epochs
@@ -386,53 +387,124 @@ class MinimalTrainer:
         logger.info(f"バッチ数: {len(self.train_loader)}")
     
     def setup_optimizer_and_scheduler(self):
-        """オプティマイザとスケジューラのセットアップ"""
-        # パラメータグループの作成
-        adapter_params = []
-        lora_params = []
-        seg_token_params = []
+        """オプティマイザとスケジューラのセットアップ - deepresearch.md 4-4に基づく改善"""
+        from transformers import get_linear_schedule_with_warmup
+        from torch.optim.lr_scheduler import LambdaLR
+        import math
+        
+        # パラメータグループの作成 - LMとSeg/SAMを分離
+        # インスタンス変数として保存（他のメソッドから参照するため）
+        self.lm_params = []
+        self.seg_params = []
+        
+        # LM/Segキーワードを明確に定義
+        LM_KEYWORDS = ['qwen', 'lm_head', 'language_model']
+        SEG_KEYWORDS = ['sam', 'mask_decoder', 'prompt_encoder', 'seg_head', 
+                        'fusion', 'adapter', 'prompt_proj', 'prompt_beta', 
+                        'image_fusion_beta', 'token_fpn', 'word_embeddings']  # SEGトークンも含む
         
         for name, param in self.model.named_parameters():
-            if param.requires_grad:
-                if "adapter" in name or "prompt_proj" in name or "prompt_beta" in name:
-                    adapter_params.append(param)
-                elif "lora" in name:
-                    lora_params.append(param)
-                elif "word_embeddings" in name:
-                    seg_token_params.append(param)
+            if not param.requires_grad:
+                continue
+                
+            # LMパラメータとSeg/SAMパラメータを分類
+            if any(k in name for k in LM_KEYWORDS):
+                # word_embeddingsは除外（SEGトークン）
+                if 'word_embeddings' not in name:
+                    self.lm_params.append(param)
+            else:
+                # その他すべてのパラメータ（SEGトークン含む）はseg_params
+                self.seg_params.append(param)
         
-        # パラメータグループ
-        param_groups = [
-            {"params": adapter_params, "lr": self.config.adapter_lr},
-            {"params": lora_params, "lr": self.config.lora_lr},
-            {"params": seg_token_params, "lr": self.config.seg_token_lr}
-        ]
+        # パラメータグループ - deepresearch.md 4-4に基づく設定
+        lr_lm = getattr(self.config, 'lr_lm', 5e-6)
+        lr_seg = getattr(self.config, 'lr_seg', 2e-4)
+        wd_lm = getattr(self.config, 'wd_lm', 0.01)
+        wd_seg = getattr(self.config, 'wd_seg', 0.01)
+        
+        # 更新ステップ数の計算（gradient accumulationを考慮）
+        num_update_steps_per_epoch = math.ceil(len(self.train_loader) / self.config.gradient_accumulation_steps)
+        num_training_steps = num_update_steps_per_epoch * self.config.num_epochs
+        
+        # 段階学習の設定
+        freeze_lm_ratio = getattr(self.config, 'freeze_lm_ratio', 0.2)
+        self.freeze_lm_steps = int(num_training_steps * freeze_lm_ratio)
+        self.lm_initially_frozen = False
+        
+        # 初期状態でLMパラメータを凍結
+        if self.freeze_lm_steps > 0:
+            for name, param in self.model.named_parameters():
+                if any(k in name for k in LM_KEYWORDS) and 'word_embeddings' not in name:
+                    param.requires_grad = False
+            self.lm_initially_frozen = True
+            logger.info(f"LMパラメータを最初の{self.freeze_lm_steps}ステップ凍結します")
+        
+        # パラメータグループを作成（順序を固定：先にSeg、次にLM）
+        param_groups = []
+        if len(self.seg_params) > 0:
+            param_groups.append({
+                "params": self.seg_params,
+                "lr": lr_seg,
+                "weight_decay": wd_seg,
+                "name": "seg"  # デバッグ用
+            })
+        if len(self.lm_params) > 0:
+            param_groups.append({
+                "params": self.lm_params,
+                "lr": lr_lm,
+                "weight_decay": wd_lm,
+                "name": "lm"  # デバッグ用
+            })
         
         # オプティマイザ
         self.optimizer = torch.optim.AdamW(
             param_groups,
-            weight_decay=self.config.weight_decay
+            betas=(0.9, 0.999),
+            eps=1e-8
         )
         
-        # スケジューラ
-        # 重要: Gradient Accumulationを考慮した実際の最適化ステップ数
-        # スケジューラのステップは「optimizer.step()が呼ばれる回数」と一致させる
-        import math
+        # スケジューラの設定（改善版）
+        warmup_ratio = self.config.warmup_ratio
+        warmup_steps = int(num_training_steps * warmup_ratio)
         
-        # 1エポックあたりの実際の更新回数（gradient accumulation考慮）
-        num_update_steps_per_epoch = math.ceil(len(self.train_loader) / self.config.gradient_accumulation_steps)
+        # Segパラメータは常に学習されるため、通常のスケジューラを使用
+        # LMパラメータは段階的に解凍されるため、カスタムlambdaを使用
+        def make_scheduler_lambdas(total_steps, freeze_steps, warmup_steps):
+            """LMとSegのLRスケジュール関数を生成"""
+            def seg_lambda(current_step):
+                # Segは最初からウォームアップ→線形減衰
+                if current_step < warmup_steps:
+                    return float(current_step) / float(max(1, warmup_steps))
+                progress = float(current_step - warmup_steps) / float(max(1, total_steps - warmup_steps))
+                return max(0.0, 1.0 - progress)
+            
+            def lm_lambda(current_step):
+                # LMは最初freeze_stepsまでLR=0（凍結中）
+                if current_step < freeze_steps:
+                    return 0.0  # 凍結中は学習率0
+                # 解凍後は通常のウォームアップ→線形減衰
+                adjusted_step = current_step - freeze_steps
+                adjusted_total = total_steps - freeze_steps
+                adjusted_warmup = min(warmup_steps, adjusted_total // 10)  # 解凍後の短いウォームアップ
+                
+                if adjusted_step < adjusted_warmup:
+                    return float(adjusted_step) / float(max(1, adjusted_warmup))
+                progress = float(adjusted_step - adjusted_warmup) / float(max(1, adjusted_total - adjusted_warmup))
+                return max(0.0, 1.0 - progress)
+            
+            # パラメータグループの順序に合わせてlambda関数を返す
+            lambdas = []
+            if len(self.seg_params) > 0:
+                lambdas.append(seg_lambda)
+            if len(self.lm_params) > 0:
+                lambdas.append(lm_lambda)
+            return lambdas
         
-        # 総更新回数
-        num_training_steps = num_update_steps_per_epoch * self.config.num_epochs
-        
-        # ウォームアップステップ数（更新回数ベース）
-        num_warmup_steps = max(1, int(num_training_steps * self.config.warmup_ratio))
-        
-        self.scheduler = get_linear_schedule_with_warmup(
-            self.optimizer,
-            num_warmup_steps=num_warmup_steps,
-            num_training_steps=num_training_steps
+        # LambdaLRスケジューラを作成
+        scheduler_lambdas = make_scheduler_lambdas(
+            num_training_steps, self.freeze_lm_steps, warmup_steps
         )
+        self.scheduler = LambdaLR(self.optimizer, lr_lambda=scheduler_lambdas)
         
         # 統計情報をログ出力
         logger.info("=" * 60)
@@ -441,9 +513,177 @@ class MinimalTrainer:
         logger.info(f"  Gradient Accumulation Steps: {self.config.gradient_accumulation_steps}")
         logger.info(f"  実際の更新回数/エポック: {num_update_steps_per_epoch}")
         logger.info(f"  総更新回数: {num_training_steps}")
-        logger.info(f"  ウォームアップ更新回数: {num_warmup_steps}")
+        logger.info(f"  ウォームアップステップ数: {warmup_steps}")
         logger.info(f"  実効バッチサイズ: {self.config.batch_size * self.config.gradient_accumulation_steps}")
         logger.info("=" * 60)
+        logger.info("パラメータグループ設定:")
+        logger.info(f"  Segパラメータ数: {len(self.seg_params)}")
+        logger.info(f"  Seg学習率: {lr_seg}")
+        logger.info(f"  Seg weight decay: {wd_seg}")
+        logger.info(f"  LMパラメータ数: {len(self.lm_params)}")
+        logger.info(f"  LM学習率: {lr_lm}")
+        logger.info(f"  LM weight decay: {wd_lm}")
+        if self.freeze_lm_steps > 0:
+            logger.info(f"  LM凍結ステップ数: {self.freeze_lm_steps}")
+            logger.info(f"  LM凍結比率: {freeze_lm_ratio}")
+        logger.info("=" * 60)
+        
+    def _build_parameter_groups(self):
+        """削除予定 - setup_optimizer_and_schedulerに統合済み"""
+        pass
+    
+    def _create_optimizer(self):
+        """現在の凍結状態に応じてオプティマイザを作成 - deepresearch.md 4-4に基づく改善版"""
+        # deepresearch.md 4-4に基づく学習率設定
+        lr_lm = getattr(self.config, 'lr_lm', 5e-6)     # LM は極小
+        lr_seg = getattr(self.config, 'lr_seg', 2e-4)   # Seg/SAM はやや大きめ
+        wd_lm = getattr(self.config, 'wd_lm', 0.01)
+        wd_seg = getattr(self.config, 'wd_seg', 0.01)
+        
+        param_groups = []
+        
+        # セグメンテーションパラメータは常に学習可能
+        seg_active_params = [param for _, param in self.seg_params if param.requires_grad]
+        if seg_active_params:
+            param_groups.append({
+                "params": seg_active_params,
+                "lr": lr_seg,
+                "weight_decay": wd_seg,
+                "param_type": "segmentation"  # デバッグ用
+            })
+            logger.info(f"セグメンテーションパラメータ群: {len(seg_active_params)}個, lr={lr_seg:.2e}, wd={wd_seg}")
+        
+        # LMパラメータは凍結状態に応じて追加
+        lm_active_params = [param for _, param in self.lm_params if param.requires_grad]
+        if lm_active_params:
+            param_groups.append({
+                "params": lm_active_params,
+                "lr": lr_lm,
+                "weight_decay": wd_lm,
+                "param_type": "language_model"  # デバッグ用
+            })
+            logger.info(f"言語モデルパラメータ群: {len(lm_active_params)}個, lr={lr_lm:.2e}, wd={wd_lm}")
+        
+        if not param_groups:
+            raise ValueError("学習可能なパラメータがありません。freeze設定を確認してください。")
+        
+        # AdamW with optimized settings for multimodal training
+        self.optimizer = torch.optim.AdamW(
+            param_groups,
+            betas=(0.9, 0.999),  # 標準設定
+            eps=1e-8             # 数値安定性
+        )
+        
+        logger.info(f"オプティマイザ作成完了: {len(param_groups)}個のパラメータグループ")
+        
+    def _log_parameter_groups(self):
+        """パラメータグループの統計情報をログ出力"""
+        logger.info("パラメータグループ設定:")
+        
+        # 現在アクティブなパラメータ数を計算
+        lm_active = sum(1 for _, param in self.lm_params if param.requires_grad)
+        seg_active = sum(1 for _, param in self.seg_params if param.requires_grad)
+        lm_total = len(self.lm_params)
+        seg_total = len(self.seg_params)
+        
+        logger.info(f"  LMパラメータ数: {lm_active}/{lm_total} (アクティブ/全体)")
+        if lm_active > 0:
+            logger.info(f"  LM学習率: {getattr(self.config, 'lr_lm', 5e-6)}")
+            logger.info(f"  LM weight decay: {getattr(self.config, 'wd_lm', 0.01)}")
+        else:
+            logger.info("  LMパラメータは凍結中")
+            
+        logger.info(f"  Segパラメータ数: {seg_active}/{seg_total} (アクティブ/全体)")
+        logger.info(f"  Seg学習率: {getattr(self.config, 'lr_seg', 2e-4)}")
+        logger.info(f"  Seg weight decay: {getattr(self.config, 'wd_seg', 0.01)}")
+        
+        if self.freeze_lm_steps > 0:
+            logger.info(f"  LM凍結ステップ数: {self.freeze_lm_steps}")
+        logger.info("=" * 60)
+
+    def _freeze_lm_parameters(self, freeze=True):
+        """
+        LMパラメータの凍結/解凍（段階学習用）
+        deepresearch.md 4-4に基づく改善版
+        
+        Args:
+            freeze: True=凍結、False=解凍
+        """
+        lm_param_count = 0
+        changed_count = 0
+        
+        # LMキーワードを明確に定義
+        LM_KEYWORDS = ['qwen', 'lm_head', 'language_model']
+        
+        for name, param in self.model.named_parameters():
+            # LMパラメータの判定（word_embeddingsは除外）
+            if any(k in name for k in LM_KEYWORDS) and 'word_embeddings' not in name:
+                lm_param_count += 1
+                if param.requires_grad != (not freeze):
+                    param.requires_grad = not freeze
+                    changed_count += 1
+                    
+                    # 凍結時は勾配をクリア（メモリリーク防止）
+                    if freeze and param.grad is not None:
+                        param.grad.data.zero_()
+                        param.grad = None
+        
+        action = "凍結" if freeze else "解凍"
+        logger.info(f"LMパラメータ{action}: {changed_count}/{lm_param_count}個のパラメータを{action}")
+        
+        # SEGトークン埋め込みの処理（Phase1で凍結する場合）
+        if freeze and getattr(self.config, 'freeze_seg_token_during_phase1', False):
+            for name, param in self.model.named_parameters():
+                if 'word_embeddings' in name and param.requires_grad:
+                    param.requires_grad = False
+                    if param.grad is not None:
+                        param.grad.data.zero_()
+                        param.grad = None
+                    logger.info(f"SEGトークン埋め込みを一時凍結: {name}")
+        
+        # wandb記録
+        if hasattr(self, 'use_wandb') and self.use_wandb:
+            try:
+                import wandb
+                wandb.log({
+                    "phase": 1 if freeze else 2,
+                    "lm_frozen": freeze,
+                    "lm_params_changed": changed_count,
+                    "step": getattr(self, 'global_step', 0)
+                })
+            except ImportError:
+                pass
+            
+    def _update_optimizer_for_phase_change(self):
+        """
+        段階学習のフェーズ変更時にオプティマイザを更新
+        deepresearch.md 4-4に基づくLM解凍とパラメータグループの再構築
+        """
+        if not hasattr(self, 'lm_initially_frozen') or not self.lm_initially_frozen:
+            return
+        
+        # LMパラメータの解凍はすでに_freeze_lm_parameters(False)で実行済み
+        # ここではオプティマイザの状態をリセットするだけ
+        
+        # フェーズ変更を記録
+        self.lm_initially_frozen = False
+        logger.info("段階学習Phase 2: LM解凍完了 - マルチモーダル統合学習開始")
+        
+        # LambdaLRスケジューラはそのまま継続（オプティマイザ再構築不要）
+        # LambdaLRがすでにLMとSegで異なるスケジュールを実装済み
+        
+        # wandb記録
+        if hasattr(self, 'use_wandb') and self.use_wandb:
+            try:
+                import wandb
+                wandb.log({
+                    "phase": 2,
+                    "lm_frozen": False,
+                    "total_active_params": len([p for p in self.model.parameters() if p.requires_grad]),
+                    "step": getattr(self, 'global_step', 0)
+                })
+            except ImportError:
+                pass
 
     def get_alignment_checkpoint_path(self):
         """アライメントチェックポイントのパスを取得"""
@@ -906,16 +1146,13 @@ class MinimalTrainer:
         self._restore_training_freeze_settings()
     
     def compute_loss(self, outputs, labels, mask_labels):
-        """損失計算（安定化版） - SAM座標系（1024x1024）で統一"""
-        from src.losses.segmentation import safe_seg_loss, compute_pos_weight
+        """
+        損失計算（改善版）- deepresearch.md 4-4に基づくスケーリングと安定化
+        動的重み調整と段階学習対応を強化
         
-        # 言語モデリング損失
-        vocab_size = outputs.logits.size(-1)
-        lm_loss = nn.functional.cross_entropy(
-            outputs.logits.view(-1, vocab_size),
-            labels.view(-1),
-            ignore_index=-100
-        )
+        O3推奨: Phase 1ではVQAサンプルを除外する（カリキュラム学習）
+        """
+        from src.losses.segmentation import safe_seg_loss, compute_pos_weight
         
         # セグメンテーション損失（安定化版）
         total_seg_loss = 0.0
@@ -939,10 +1176,6 @@ class MinimalTrainer:
                     
                     # 1会話1マスクなので、最初のマスクのみを使用
                     pred_mask = batch_masks[0] if isinstance(batch_masks, list) else batch_masks
-                    
-                    # デバッグ情報
-                    logger.debug(f"pred_mask shape before upsampling: {pred_mask.shape}")
-                    logger.debug(f"gt_mask shape: {gt_mask.shape}")
                     
                     # 予測マスクをSAM座標系（1024x1024）にアップサンプル（bilinear for logits）
                     if pred_mask.dim() == 2:
@@ -979,23 +1212,16 @@ class MinimalTrainer:
                     
                     # GTマスクが1024x1024でない場合はリサイズ（nearest補間）
                     if gt_mask_sam.shape != (sam_size, sam_size):
-                        logger.debug(f"GT mask resizing from {gt_mask_sam.shape} to {(sam_size, sam_size)}")
                         if gt_mask_sam.dim() == 2:
                             gt_mask_4d = gt_mask_sam.unsqueeze(0).unsqueeze(0)
                         else:
                             gt_mask_4d = gt_mask_sam.unsqueeze(0)
                         
-                        # GTは離散値なので必ずnearestモードを使用（エッジ保持）
-                        # PyTorchバージョンにより'nearest-exact'がサポートされていない場合があるため適切に処理
-                        if hasattr(torch, '__version__') and torch.__version__ >= '1.11.0':
-                            interpolate_mode = 'nearest-exact'
-                        else:
-                            interpolate_mode = 'nearest'
-                            
+                        # GTは離散値なので必ずnearest補間を使用（エッジ保持）
                         gt_mask_resized = nn.functional.interpolate(
                             gt_mask_4d.float(),
                             size=(sam_size, sam_size),
-                            mode=interpolate_mode
+                            mode='nearest'
                         )
                         gt_mask_sam = gt_mask_resized.squeeze(0).squeeze(0)
                     
@@ -1024,11 +1250,6 @@ class MinimalTrainer:
                     total_bce_loss += bce_loss
                     total_dice_loss += dice_loss
                     seg_count += 1
-                    
-                    # デバッグ情報（最初のバッチのみ）
-                    if batch_idx == 0 and self.config.debug:
-                        logger.debug(f"BCE loss: {bce_loss:.4f}, Dice loss: {dice_loss:.4f}")
-                        logger.debug(f"Pos weight: {pos_weight.item():.3f}")
         
         # 平均セグメンテーション損失
         if seg_count > 0:
@@ -1036,21 +1257,78 @@ class MinimalTrainer:
             total_bce_loss = total_bce_loss / seg_count
             total_dice_loss = total_dice_loss / seg_count
         else:
-            total_seg_loss = torch.tensor(0.0, device=lm_loss.device)
-            total_bce_loss = torch.tensor(0.0, device=lm_loss.device)
-            total_dice_loss = torch.tensor(0.0, device=lm_loss.device)
+            # セグメンテーションタスクがない場合は勾配が流れるゼロを作成
+            total_seg_loss = (outputs.logits * 0).mean()
+            total_bce_loss = (outputs.logits * 0).mean()
+            total_dice_loss = (outputs.logits * 0).mean()
         
-        # 総合損失（λ_lmとλ_segで重み付け）
-        lambda_lm = getattr(self.config, 'lambda_lm', 1.0)
-        lambda_seg = getattr(self.config, 'lambda_seg', 1.0)
+        # deepresearch.md 4-4に基づく動的損失重み調整
+        lambda_lm = getattr(self.config, 'lambda_lm', 0.1)    # LM は低重み
+        lambda_seg = getattr(self.config, 'lambda_seg', 1.0)  # Seg は標準重み
         
-        # seg_loss_weightは後方互換性のため残す（lambda_segが優先）
-        if hasattr(self.config, 'seg_loss_weight') and not hasattr(self.config, 'lambda_seg'):
-            lambda_seg = self.config.seg_loss_weight
+        # 段階学習時の適応重み調整
+        if hasattr(self, 'lm_initially_frozen') and self.lm_initially_frozen:
+            # Phase 1: LMが凍結中
+            # O3推奨: Phase 1ではVQAサンプルを除外しているはずだが、万が一混入した場合はエラーを出す
+            if seg_count == 0:
+                # Phase 1でVQAサンプルが混入 = 設定ミス
+                raise ValueError(
+                    "Phase 1でVQAサンプル（マスクなし）が検出されました。"
+                    "Phase 1ではsample_rateを[9, 3, 0, 1]に設定してVQAを除外してください。"
+                    "LISA論文に基づき、Phase 1はセグメンテーションタスクのみで学習すべきです。"
+                )
             
-        total_loss = lambda_lm * lm_loss + lambda_seg * total_seg_loss
+            # LM損失は計算するが勾配は流さない（モニタリング用）
+            with torch.no_grad():
+                vocab_size = outputs.logits.size(-1)
+                lm_loss = nn.functional.cross_entropy(
+                    outputs.logits.view(-1, vocab_size),
+                    labels.view(-1),
+                    ignore_index=-100
+                )
+            
+            # Phase 1の総合損失（セグメンテーション損失のみ）
+            total_loss = lambda_seg * total_seg_loss
+            effective_lambda_lm = 0.0
+            effective_lambda_seg = lambda_seg
+        else:
+            # Phase 2: LM解凍後は通常の計算
+            vocab_size = outputs.logits.size(-1)
+            lm_loss = nn.functional.cross_entropy(
+                outputs.logits.view(-1, vocab_size),
+                labels.view(-1),
+                ignore_index=-100
+            )
+            
+            # 学習進行に応じた動的重み調整
+            if hasattr(self, 'global_step'):
+                # LM損失が収束した後はセグメンテーション重みを相対的に増加
+                lm_loss_val = lm_loss.item()
+                if lm_loss_val < 0.1:  # LM損失が十分小さくなった場合
+                    lambda_seg *= 2.0  # セグメンテーション重みを2倍に
+                    logger.debug(f"動的重み調整: LM損失が{lm_loss_val:.4f}なのでSeg重みを{lambda_seg:.2f}に増加")
+            
+            # 通常の重み付け
+            effective_lambda_lm = lambda_lm
+            effective_lambda_seg = lambda_seg
+            total_loss = effective_lambda_lm * lm_loss + effective_lambda_seg * total_seg_loss
         
-        # ログ用に詳細な損失情報を返す
+        # total_lossのrequires_gradを最終確認（フォールバックなし、エラーを適切に出す）
+        if not total_loss.requires_grad:
+            raise RuntimeError(
+                f"total_loss.requires_grad=False: 勾配が流れません。"
+                f"seg_count={seg_count}, Phase={'1 (LM frozen)' if hasattr(self, 'lm_initially_frozen') and self.lm_initially_frozen else '2'}"
+                f"\nこれは設定ミスを示しています。Phase 1ではVQAサンプルを除外してください。"
+            )
+        
+        # 詳細なロギング（デバッグ時）
+        if hasattr(self, 'debug') and self.debug and hasattr(self, 'global_step'):
+            if self.global_step % 100 == 0:  # 100ステップごと
+                logger.debug(f"Step {self.global_step}: "
+                           f"LM損失={lm_loss.item():.4f} (λ={effective_lambda_lm:.3f}), "
+                           f"Seg損失={total_seg_loss.item():.4f} (λ={effective_lambda_seg:.3f}), "
+                           f"総損失={total_loss.item():.4f}")
+        
         return total_loss, lm_loss, total_seg_loss
     
     def train_epoch(self, epoch):
@@ -1065,172 +1343,282 @@ class MinimalTrainer:
         accumulation_steps = self.config.gradient_accumulation_steps
         accumulated_loss = 0.0
         
+        # オプティマイザ更新回数を追跡（段階学習用）
+        optimizer_step_count = 0
+        
         progress_bar = tqdm(self.train_loader, desc=f"Epoch {epoch+1}/{self.config.num_epochs}")
         
         for batch_idx, batch in enumerate(progress_bar):
-            # デバイスに移動
-            batch = {k: v.to(self.device) if torch.is_tensor(v) else v for k, v in batch.items()}
-            
-            # デバッグ: トークン数とsam_imagesを確認
-            if batch_idx == 0 or self.config.debug:
-                img_tokens = batch['pixel_values'].shape[1] if batch['pixel_values'].dim() == 3 else 0
-                txt_tokens = batch['input_ids'].shape[1]
-                total_tokens = img_tokens + txt_tokens
-                logger.debug(f"Batch {batch_idx}: img_tokens={img_tokens}, txt_tokens={txt_tokens}, total={total_tokens}")
-                if batch['pixel_values'].dim() == 3:
-                    logger.debug(f"pixel_values shape: {batch['pixel_values'].shape}")
-                logger.debug(f"input_ids shape: {batch['input_ids'].shape}")
+            try:
+                # デバイスに移動
+                batch = {k: v.to(self.device) if torch.is_tensor(v) else v for k, v in batch.items()}
                 
-                # SAM画像のチェック
-                if 'sam_images' in batch:
-                    if batch['sam_images'] is not None:
-                        logger.debug(f"sam_images shape: {batch['sam_images'].shape}")
+                # デバッグ: トークン数とsam_imagesを確認
+                if batch_idx == 0 or self.config.debug:
+                    img_tokens = batch['pixel_values'].shape[1] if batch['pixel_values'].dim() == 3 else 0
+                    txt_tokens = batch['input_ids'].shape[1]
+                    total_tokens = img_tokens + txt_tokens
+                    logger.debug(f"Batch {batch_idx}: img_tokens={img_tokens}, txt_tokens={txt_tokens}, total={total_tokens}")
+                    if batch['pixel_values'].dim() == 3:
+                        logger.debug(f"pixel_values shape: {batch['pixel_values'].shape}")
+                    logger.debug(f"input_ids shape: {batch['input_ids'].shape}")
+                    
+                    # SAM画像のチェック
+                    if 'sam_images' in batch:
+                        if batch['sam_images'] is not None:
+                            logger.debug(f"sam_images shape: {batch['sam_images'].shape}")
+                        else:
+                            logger.debug("sam_images is None in batch")
                     else:
-                        logger.debug("sam_images is None in batch")
+                        logger.debug("sam_images key missing from batch")
+                    if 'image_grid_thw' in batch and batch['image_grid_thw'] is not None:
+                        logger.debug(f"image_grid_thw: {batch['image_grid_thw']}")
+                    
+                    # データセットタイプ別の統計（初回のみ）
+                    if batch_idx == 0 and hasattr(self.train_dataset, 'dataset_indices'):
+                        dataset_stats = {}
+                        for i, ds in enumerate(self.train_dataset.all_datasets):
+                            ds_name = type(ds).__name__
+                            dataset_stats[ds_name] = 0
+                        
+                        # 現在のエポックのサンプル分布を計算
+                        for idx in self.train_dataset.dataset_indices[:self.config.samples_per_epoch]:
+                            ds_name = type(self.train_dataset.all_datasets[idx[0]]).__name__
+                            dataset_stats[ds_name] += 1
+                        
+                        logger.info("データセットサンプル分布:")
+                        for ds_name, count in dataset_stats.items():
+                            percentage = (count / self.config.samples_per_epoch) * 100
+                            logger.info(f"  {ds_name}: {count} ({percentage:.1f}%)")
+                
+                # Forward pass with optional AMP
+                # BFloat16を使用（Qwen2.5-VLがBF16で学習されているため）
+                amp_dtype = torch.bfloat16 if self.use_fp16 else torch.float32
+                with torch.amp.autocast(device_type='cuda', enabled=self.use_fp16, dtype=amp_dtype):
+                    forward_kwargs = {
+                        'input_ids': batch['input_ids'],
+                        'pixel_values': batch['pixel_values'],
+                        'attention_mask': batch['attention_mask'],
+                        'labels': batch['labels'],
+                    }
+                    
+                    # mask_labelsの処理（テンソルまたはリストに対応）
+                    if 'mask_labels' in batch and batch['mask_labels'] is not None:
+                        if torch.is_tensor(batch['mask_labels']):
+                            # テンソルの場合はリストに変換
+                            forward_kwargs['mask_labels'] = [batch['mask_labels'][i] for i in range(batch['mask_labels'].size(0))]
+                        else:
+                            # すでにリストの場合はそのまま使用
+                            forward_kwargs['mask_labels'] = batch['mask_labels']
+                    else:
+                        forward_kwargs['mask_labels'] = None
+                    
+                    # image_grid_thwがある場合は追加
+                    if 'image_grid_thw' in batch:
+                        forward_kwargs['image_grid_thw'] = batch['image_grid_thw']
+                    
+                    # sam_imagesがある場合は追加
+                    if 'sam_images' in batch and batch['sam_images'] is not None:
+                        forward_kwargs['sam_images'] = batch['sam_images']
+                    
+                    outputs = self.model(**forward_kwargs)
+                    
+                    # 損失計算
+                    total_loss, lm_loss, seg_loss = self.compute_loss(
+                        outputs, batch['labels'], batch['mask_labels']
+                    )
+                    
+                    # Gradient Accumulationを考慮したloss
+                    # 各ミニバッチの損失を累積ステップ数で割る
+                    scaled_loss = total_loss / accumulation_steps
+                
+                # エラーデバッグ用: サンプル情報とrequires_gradを確認
+                if batch_idx < 5:  # 最初の5バッチをチェック
+                    logger.debug(f"Batch {batch_idx}: total_loss.requires_grad = {total_loss.requires_grad}")
+                    logger.debug(f"Batch {batch_idx}: scaled_loss.requires_grad = {scaled_loss.requires_grad}")
+                    if hasattr(outputs, 'loss') and outputs.loss is not None:
+                        logger.debug(f"Batch {batch_idx}: outputs.loss.requires_grad = {outputs.loss.requires_grad}")
+                
+                # Backward pass
+                # BFloat16では勾配スケーリングは不要（ダイナミックレンジが広いため）
+                scaled_loss.backward()
+                
+                accumulated_loss += total_loss.item()
+                
+                # ===== 重要: Gradient Accumulation境界でのみ最適化とスケジューラ更新 =====
+                # これにより、スケジューラの更新回数がoptimizer.step()の回数と一致する
+                is_accumulation_boundary = (batch_idx + 1) % accumulation_steps == 0
+                is_last_batch = (batch_idx + 1) == len(self.train_loader)
+                
+                if is_accumulation_boundary or is_last_batch:
+                    # 勾配クリッピング（requires_grad=Trueのパラメータのみ）
+                    if self.max_grad_norm is not None:
+                        # 凍結されていないパラメータのみに勾配クリッピングを適用
+                        trainable_params = [p for p in self.model.parameters() if p.requires_grad and p.grad is not None]
+                        if trainable_params:
+                            torch.nn.utils.clip_grad_norm_(trainable_params, max_norm=self.max_grad_norm)
+                    
+                    # 最適化ステップ
+                    self.optimizer.step()
+                    
+                    # スケジューラ更新（optimizer.step()の直後）
+                    # 重要: gradient accumulationを考慮したnum_training_stepsと
+                    # 実際のoptimizer.step()呼び出し回数が一致するようにする
+                    self.scheduler.step()
+                    
+                    # 勾配をリセット
+                    self.optimizer.zero_grad(set_to_none=True)
+                    
+                    # 累積損失をリセット
+                    accumulated_loss = 0.0
+                    
+                    # オプティマイザ更新回数を増加
+                    optimizer_step_count += 1
+                    
+                    # 段階学習: LMパラメータの凍結解除（deepresearch.md 4-4）
+                    # 凍結解除はoptimizer step境界で行う（オプティマイザ更新のタイミングと同期）
+                    if hasattr(self, 'lm_initially_frozen') and self.lm_initially_frozen:
+                        if hasattr(self, 'freeze_lm_steps') and optimizer_step_count >= self.freeze_lm_steps:
+                            self._freeze_lm_parameters(False)
+                            self._update_optimizer_for_phase_change()
+                            self.lm_initially_frozen = False
+                            logger.info(f"オプティマイザステップ{optimizer_step_count}でLMパラメータの凍結を解除し、オプティマイザを更新しました")
+                
+                # 損失の記録
+                epoch_loss += total_loss.item()
+                epoch_lm_loss += lm_loss.item() if isinstance(lm_loss, torch.Tensor) else lm_loss
+                epoch_seg_loss += seg_loss.item() if isinstance(seg_loss, torch.Tensor) else seg_loss
+                
+                # βパラメータの値を取得
+                beta_value = torch.sigmoid(self.model.prompt_beta).item() if hasattr(self.model, 'prompt_beta') else 0.0
+                
+                # 現在の学習率を取得
+                current_lr = self.scheduler.get_last_lr()[0]
+                
+                # プログレスバーの更新
+                progress_bar.set_postfix({
+                    'loss': f"{total_loss.item():.4f}",
+                    'lm': f"{lm_loss.item() if isinstance(lm_loss, torch.Tensor) else lm_loss:.4f}",
+                    'seg': f"{seg_loss:.4f}",
+                    'lr': f"{current_lr:.2e}",
+                    'β': f"{beta_value:.3f}"
+                })
+                
+                # WandBログ（使用する場合）
+                if self.config.use_wandb:
+                    wandb.log({
+                        'train/loss': total_loss.item(),
+                        'train/lm_loss': lm_loss.item() if isinstance(lm_loss, torch.Tensor) else lm_loss,
+                        'train/seg_loss': seg_loss if isinstance(seg_loss, float) else seg_loss.item(),
+                        'train/learning_rate': current_lr,
+                        'train/epoch': epoch,
+                        'train/step': self.global_step,
+                        'train/optimizer_step': optimizer_step_count,
+                        'train/beta': beta_value
+                    })
+                
+                # Loss履歴を記録
+                self.loss_history['steps'].append(self.global_step)
+                self.loss_history['total_loss'].append(total_loss.item())
+                self.loss_history['lm_loss'].append(lm_loss.item() if isinstance(lm_loss, torch.Tensor) else lm_loss)
+                self.loss_history['seg_loss'].append(seg_loss.item() if isinstance(seg_loss, torch.Tensor) else seg_loss)
+                self.loss_history['learning_rate'].append(current_lr)
+                
+                self.global_step += 1
+                
+                # 定期的な可視化を保存
+                if 'mask_labels' in batch and batch['mask_labels'] is not None:
+                    logger.debug(f"Calling save_visualization at step {self.global_step}")
+                    self.save_visualization(batch, outputs, self.global_step)
                 else:
-                    logger.debug("sam_images key missing from batch")
-                if 'image_grid_thw' in batch and batch['image_grid_thw'] is not None:
-                    logger.debug(f"image_grid_thw: {batch['image_grid_thw']}")
+                    logger.debug(f"Skipping save_visualization at step {self.global_step}: mask_labels not found or None")
                 
-                # データセットタイプ別の統計（初回のみ）
-                if batch_idx == 0 and hasattr(self.train_dataset, 'dataset_indices'):
-                    dataset_stats = {}
-                    for i, ds in enumerate(self.train_dataset.all_datasets):
-                        ds_name = type(ds).__name__
-                        dataset_stats[ds_name] = 0
+                # 定期的なチェックポイント保存
+                if self.global_step % self.config.save_steps == 0:
+                    self.save_checkpoint(f"step_{self.global_step}")
                     
-                    # 現在のエポックのサンプル分布を計算
-                    for idx in self.train_dataset.dataset_indices[:self.config.samples_per_epoch]:
-                        ds_name = type(self.train_dataset.all_datasets[idx[0]]).__name__
-                        dataset_stats[ds_name] += 1
-                    
-                    logger.info("データセットサンプル分布:")
-                    for ds_name, count in dataset_stats.items():
-                        percentage = (count / self.config.samples_per_epoch) * 100
-                        logger.info(f"  {ds_name}: {count} ({percentage:.1f}%)")
-            
-            # Forward pass with optional AMP
-            # BFloat16を使用（Qwen2.5-VLがBF16で学習されているため）
-            amp_dtype = torch.bfloat16 if self.use_fp16 else torch.float32
-            with torch.amp.autocast(device_type='cuda', enabled=self.use_fp16, dtype=amp_dtype):
-                forward_kwargs = {
-                    'input_ids': batch['input_ids'],
-                    'pixel_values': batch['pixel_values'],
-                    'attention_mask': batch['attention_mask'],
-                    'labels': batch['labels'],
-                }
+            except RuntimeError as e:
+                # エラー時の詳細情報を出力
+                logger.error(f"エラーが発生しました - Batch {batch_idx}, Epoch {epoch+1}")
+                logger.error(f"エラーメッセージ: {str(e)}")
                 
-                # mask_labelsの処理（テンソルまたはリストに対応）
+                # バッチの詳細情報
+                if 'input_ids' in batch:
+                    logger.error(f"input_ids shape: {batch['input_ids'].shape}")
+                if 'pixel_values' in batch:
+                    logger.error(f"pixel_values shape: {batch['pixel_values'].shape}")
+                if 'sam_images' in batch and batch['sam_images'] is not None:
+                    logger.error(f"sam_images shape: {batch['sam_images'].shape}")
                 if 'mask_labels' in batch and batch['mask_labels'] is not None:
                     if torch.is_tensor(batch['mask_labels']):
-                        # テンソルの場合はリストに変換
-                        forward_kwargs['mask_labels'] = [batch['mask_labels'][i] for i in range(batch['mask_labels'].size(0))]
+                        logger.error(f"mask_labels shape: {batch['mask_labels'].shape}")
                     else:
-                        # すでにリストの場合はそのまま使用
-                        forward_kwargs['mask_labels'] = batch['mask_labels']
-                else:
-                    forward_kwargs['mask_labels'] = None
+                        logger.error(f"mask_labels type: {type(batch['mask_labels'])}, length: {len(batch['mask_labels']) if hasattr(batch['mask_labels'], '__len__') else 'N/A'}")
                 
-                # image_grid_thwがある場合は追加
-                if 'image_grid_thw' in batch:
-                    forward_kwargs['image_grid_thw'] = batch['image_grid_thw']
+                # データセット情報を出力
+                # まず、バッチからデバッグ情報を取得
+                if '_debug_info' in batch:
+                    debug_info = batch['_debug_info']
+                    if isinstance(debug_info, dict):
+                        logger.error(f"Dataset: {debug_info.get('dataset_name', 'unknown')}")
+                        logger.error(f"Dataset Index: {debug_info.get('dataset_idx', -1)}")
+                        logger.error(f"Sample Index: {debug_info.get('sample_idx', -1)}")
+                        logger.error(f"Dataset Size: {debug_info.get('dataset_size', -1)}")
+                        
+                        if 'image_path' in debug_info:
+                            logger.error(f"Image path: {debug_info['image_path']}")
+                        if 'text_prompt' in debug_info:
+                            logger.error(f"Text prompt: {debug_info['text_prompt']}")
+                        if 'first_message' in debug_info:
+                            logger.error(f"First message: {debug_info['first_message']}")
+                    elif isinstance(debug_info, list) and len(debug_info) > 0:
+                        # バッチの最初のサンプルの情報を表示
+                        first_debug = debug_info[0] if isinstance(debug_info[0], dict) else {}
+                        logger.error(f"Dataset: {first_debug.get('dataset_name', 'unknown')}")
+                        logger.error(f"Dataset Index: {first_debug.get('dataset_idx', -1)}")
+                        logger.error(f"Sample Index: {first_debug.get('sample_idx', -1)}")
+                        if 'image_path' in first_debug:
+                            logger.error(f"Image path: {first_debug['image_path']}")
                 
-                # sam_imagesがある場合は追加
-                if 'sam_images' in batch and batch['sam_images'] is not None:
-                    forward_kwargs['sam_images'] = batch['sam_images']
+                # フォールバック: 旧方式でも試す
+                if hasattr(self.train_dataset, 'debug_sample_info'):
+                    # HybridDatasetの場合
+                    debug_dict = self.train_dataset.debug_sample_info
+                    # 最新のエントリを探す
+                    if debug_dict:
+                        latest_key = max(debug_dict.keys()) if debug_dict else None
+                        if latest_key is not None and latest_key in debug_dict:
+                            info = debug_dict[latest_key]
+                            logger.error(f"[From HybridDataset debug_sample_info]")
+                            logger.error(f"  Dataset: {info.get('dataset_name', 'unknown')}")
+                            logger.error(f"  Dataset Index: {info.get('dataset_idx', -1)}")
+                            logger.error(f"  Sample Index: {info.get('sample_idx', -1)}")
+                            if 'image_path' in info:
+                                logger.error(f"  Image path: {info['image_path']}")
+                            if 'text_prompt' in info:
+                                logger.error(f"  Text prompt: {info['text_prompt']}")
                 
-                outputs = self.model(**forward_kwargs)
+                # image_pathがバッチに直接含まれている場合
+                if 'image_path' in batch:
+                    if isinstance(batch['image_path'], str):
+                        logger.error(f"Direct image_path from batch: {batch['image_path']}")
+                    elif isinstance(batch['image_path'], list) and batch['image_path']:
+                        logger.error(f"Direct image_path from batch: {batch['image_path'][0]}")
                 
-                # 損失計算
-                total_loss, lm_loss, seg_loss = self.compute_loss(
-                    outputs, batch['labels'], batch['mask_labels']
-                )
+                # text_promptがバッチに直接含まれている場合
+                if 'text_prompt' in batch:
+                    if isinstance(batch['text_prompt'], str):
+                        logger.error(f"Direct text_prompt from batch: {batch['text_prompt'][:100]}")
+                    elif isinstance(batch['text_prompt'], list) and batch['text_prompt']:
+                        logger.error(f"Direct text_prompt from batch: {batch['text_prompt'][0][:100] if batch['text_prompt'][0] else 'None'}")
                 
-                # Gradient Accumulationを考慮したloss
-                # 各ミニバッチの損失を累積ステップ数で割る
-                scaled_loss = total_loss / accumulation_steps
-            
-            # Backward pass
-            # BFloat16では勾配スケーリングは不要（ダイナミックレンジが広いため）
-            scaled_loss.backward()
-            
-            accumulated_loss += total_loss.item()
-            
-            # ===== 重要: Gradient Accumulation境界でのみ最適化とスケジューラ更新 =====
-            # これにより、スケジューラの更新回数がoptimizer.step()の回数と一致する
-            is_accumulation_boundary = (batch_idx + 1) % accumulation_steps == 0
-            is_last_batch = (batch_idx + 1) == len(self.train_loader)
-            
-            if is_accumulation_boundary or is_last_batch:
-                # 勾配クリッピング
-                if self.max_grad_norm is not None:
-                    torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=self.max_grad_norm)
+                # モデルパラメータの状態を確認
+                trainable_count = sum(1 for p in self.model.parameters() if p.requires_grad)
+                frozen_count = sum(1 for p in self.model.parameters() if not p.requires_grad)
+                logger.error(f"Trainable parameters: {trainable_count}, Frozen parameters: {frozen_count}")
                 
-                # 最適化ステップ
-                self.optimizer.step()
-                
-                # スケジューラ更新（optimizer.step()の直後）
-                # 重要: gradient accumulationを考慮したnum_training_stepsと
-                # 実際のoptimizer.step()呼び出し回数が一致するようにする
-                self.scheduler.step()
-                
-                # 勾配をリセット
-                self.optimizer.zero_grad(set_to_none=True)
-                
-                # 累積損失をリセット
-                accumulated_loss = 0.0
-            
-            # 損失の記録
-            epoch_loss += total_loss.item()
-            epoch_lm_loss += lm_loss.item()
-            epoch_seg_loss += seg_loss.item() if isinstance(seg_loss, torch.Tensor) else seg_loss
-            
-            # βパラメータの値を取得
-            beta_value = torch.sigmoid(self.model.prompt_beta).item() if hasattr(self.model, 'prompt_beta') else 0.0
-            
-            # 現在の学習率を取得
-            current_lr = self.scheduler.get_last_lr()[0]
-            
-            # プログレスバーの更新
-            progress_bar.set_postfix({
-                'loss': f"{total_loss.item():.4f}",
-                'lm': f"{lm_loss.item():.4f}",
-                'seg': f"{seg_loss:.4f}",
-                'lr': f"{current_lr:.2e}",
-                'β': f"{beta_value:.3f}"
-            })
-            
-            # WandBログ（使用する場合）
-            if self.config.use_wandb:
-                wandb.log({
-                    'train/loss': total_loss.item(),
-                    'train/lm_loss': lm_loss.item(),
-                    'train/seg_loss': seg_loss if isinstance(seg_loss, float) else seg_loss.item(),
-                    'train/learning_rate': current_lr,
-                    'train/epoch': epoch,
-                    'train/step': self.global_step,
-                    'train/beta': beta_value
-                })
-            
-            # Loss履歴を記録
-            self.loss_history['steps'].append(self.global_step)
-            self.loss_history['total_loss'].append(total_loss.item())
-            self.loss_history['lm_loss'].append(lm_loss.item())
-            self.loss_history['seg_loss'].append(seg_loss.item() if isinstance(seg_loss, torch.Tensor) else seg_loss)
-            self.loss_history['learning_rate'].append(current_lr)
-            
-            self.global_step += 1
-            
-            # 定期的な可視化を保存
-            if 'mask_labels' in batch and batch['mask_labels'] is not None:
-                logger.debug(f"Calling save_visualization at step {self.global_step}")
-                self.save_visualization(batch, outputs, self.global_step)
-            else:
-                logger.debug(f"Skipping save_visualization at step {self.global_step}: mask_labels not found or None")
-            
-            # 定期的なチェックポイント保存
-            if self.global_step % self.config.save_steps == 0:
-                self.save_checkpoint(f"step_{self.global_step}")
+                # エラーを再発生させる
+                raise e
         
         # エポック平均
         avg_loss = epoch_loss / len(self.train_loader)
@@ -1239,6 +1627,7 @@ class MinimalTrainer:
         
         logger.info(f"Epoch {epoch+1} - 平均損失: {avg_loss:.4f}, LM: {avg_lm_loss:.4f}, Seg: {avg_seg_loss:.4f}")
         logger.info(f"最終学習率: {self.scheduler.get_last_lr()[0]:.2e}")
+        logger.info(f"オプティマイザ更新回数: {optimizer_step_count}")
         
         # エポック終了時に可視化を保存
         self.plot_loss_history()
@@ -1637,84 +2026,133 @@ class MinimalTrainer:
             except Exception as e:
                 logger.warning(f"推論評価の実行に失敗: {e}")
     
-    def run_inference_evaluation(self, checkpoint_path, checkpoint_name):
-        """チェックポイント保存時に推論評価を実行
+    def accumulate_iou_dice(self, preds, masks):
+        """IoU/Diceのマクロ平均計算（deepresearch.md 4-5）
         
-        test_inference_v2.pyと同じサンプル画像を使用して推論を実行し、
-        結果を可視化してチェックポイントディレクトリに保存します。
+        サンプル毎に計算してから平均を取ることで安定した評価を行う
         
         Args:
-            checkpoint_path: チェックポイントのパス
-            checkpoint_name: チェックポイントの名前（best, final, step_X など）
-        
-        Note:
-            - --run_inference_eval フラグで有効化
-            - --inference_eval_samples でサンプル数を指定（デフォルト3、最大3）
-            - 結果は checkpoint_path/inference_results/ に保存
-            - 各ステップでの推論性能の変化を追跡可能
+            preds: 予測マスク (B, H, W) or (B, 1, H, W)
+            masks: 正解マスク (B, H, W) or (B, 1, H, W)
+            
+        Returns:
+            tuple: (iou_mean, dice_mean)
         """
-        logger.info(f"🔍 チェックポイント {checkpoint_name} の推論評価を開始...")
+        if preds.dim() == 4:
+            preds = preds.squeeze(1)
+        if masks.dim() == 4:
+            masks = masks.squeeze(1)
+            
+        batch_size = preds.shape[0]
+        iou_list = []
+        dice_list = []
         
-        # 推論結果を保存するディレクトリ
-        inference_dir = checkpoint_path / "inference_results"
-        inference_dir.mkdir(exist_ok=True)
+        for i in range(batch_size):
+            pred = preds[i]
+            mask = masks[i]
+            
+            # 二値化
+            pred_binary = (pred > 0.5).float()
+            
+            # IoU計算
+            intersection = (pred_binary * mask).sum()
+            union = (pred_binary + mask - pred_binary * mask).sum()
+            iou = (intersection / (union + 1e-6)).item()
+            
+            # Dice計算
+            dice = (2 * intersection / (pred_binary.sum() + mask.sum() + 1e-6)).item()
+            
+            iou_list.append(iou)
+            dice_list.append(dice)
         
-        # モデルを評価モードに
+        return np.mean(iou_list), np.mean(dice_list)
+
+    def run_inference_evaluation(self):
+        """
+        推論評価の実行（改善版）
+        deepresearch.md 4-5に基づくサンプル数増加と振れ抑制
+        """
+        if not self.run_inference_eval:
+            return {}
+        
+        # deepresearch.md 4-5: 評価サンプル数を最低128に増加（振れを抑制）
+        eval_samples = max(self.inference_eval_samples, 128)
+        if eval_samples != self.inference_eval_samples:
+            logger.info(f"評価サンプル数を{self.inference_eval_samples}から{eval_samples}に増加（分散縮小のため）")
+        
         self.model.eval()
         
-        # サンプル画像をダウンロードまたは使用
-        sample_images = self.get_sample_images_for_inference()
+        # IoU/Dice の累積変数（マクロ平均用）
+        iou_sum = 0.0
+        dice_sum = 0.0
+        eval_count = 0
         
-        results = []
+        sample_images = self.get_sample_images_for_inference()
+        num_samples = min(len(sample_images), eval_samples)
+        
+        logger.info(f"推論評価開始: {num_samples}サンプルで評価")
+        
         with torch.no_grad():
-            for idx, img_data in enumerate(sample_images):
+            for i in range(num_samples):
                 try:
-                    # 推論を実行
-                    result = self.run_single_inference(
-                        img_data['image'], 
-                        img_data['prompt']
-                    )
+                    sample = sample_images[i]
+                    result = self.run_single_inference(sample)
                     
-                    # 結果を可視化して保存
-                    if result['mask'] is not None:
-                        self.visualize_inference_result(
-                            img_data['image'],
-                            result['mask'],
-                            img_data['name'],
-                            img_data['prompt'],
-                            inference_dir
-                        )
-                        
-                        # 統計情報を記録
-                        mask = result['mask']
-                        result_info = {
-                            "name": img_data['name'],
-                            "prompt": img_data['prompt'],
-                            "checkpoint": checkpoint_name,
-                            "global_step": self.global_step,
-                            "mask_min": float(mask.min()),
-                            "mask_max": float(mask.max()),
-                            "mask_mean": float(mask.mean()),
-                            "positive_pixels": int((mask > 0.5).sum()),
-                            "total_pixels": int(mask.size)
-                        }
-                        results.append(result_info)
-                        logger.info(f"  ✓ {img_data['name']}: mean={result_info['mask_mean']:.3f}, positive={result_info['positive_pixels']}/{result_info['total_pixels']}")
-                        
+                    if result and 'iou' in result and 'dice' in result:
+                        # サンプル毎のIoU/Diceを累積（総和→最後に割るマクロ平均）
+                        iou_sum += result['iou']
+                        dice_sum += result['dice']
+                        eval_count += 1
+                    
+                    # 進捗表示（50サンプルごと）
+                    if (i + 1) % 50 == 0:
+                        current_iou = iou_sum / eval_count if eval_count > 0 else 0.0
+                        current_dice = dice_sum / eval_count if eval_count > 0 else 0.0
+                        logger.info(f"評価進捗: {i+1}/{num_samples} - "
+                                  f"現在のIoU: {current_iou:.4f}, Dice: {current_dice:.4f}")
+                
                 except Exception as e:
-                    logger.warning(f"  ✗ {img_data['name']}: 推論失敗 - {e}")
+                    logger.warning(f"サンプル {i} の評価でエラー: {e}")
                     continue
         
-        # 結果をJSONで保存
-        if results:
-            results_path = inference_dir / "evaluation_results.json"
-            with open(results_path, 'w') as f:
-                json.dump(results, f, indent=2)
-            logger.info(f"  → 評価結果を保存: {results_path}")
-        
-        # モデルを訓練モードに戻す
         self.model.train()
-        logger.info(f"✅ 推論評価完了: {len(results)}/{len(sample_images)} 成功")
+        
+        # マクロ平均の計算
+        if eval_count > 0:
+            final_iou = iou_sum / eval_count
+            final_dice = dice_sum / eval_count
+            
+            metrics = {
+                'val_iou': final_iou,
+                'val_dice': final_dice,
+                'eval_samples': eval_count
+            }
+            
+            logger.info(f"評価完了: IoU={final_iou:.4f}, Dice={final_dice:.4f} "
+                       f"({eval_count}サンプル平均)")
+            
+            # wandb記録
+            if hasattr(self, 'use_wandb') and self.use_wandb:
+                try:
+                    import wandb
+                    log_dict = {
+                        'val/iou': final_iou,
+                        'val/dice': final_dice,
+                        'val/samples': eval_count,
+                        'step': self.global_step
+                    }
+                    wandb.log(log_dict)
+                except ImportError:
+                    pass
+            
+            return metrics
+        else:
+            logger.warning("有効な評価サンプルがありませんでした")
+            return {
+                'val_iou': 0.0,
+                'val_dice': 0.0,
+                'eval_samples': 0
+            }
     
     def get_sample_images_for_inference(self):
         """推論評価用のサンプル画像を取得"""
@@ -1999,40 +2437,76 @@ class MinimalTrainer:
         
         logger.info(f"Loss curves saved to {self.output_dir}")
     
+    def validate_phase1_settings(self):
+        """Phase 1の設定を検証し、VQAサンプルが確実に除外されているか確認"""
+        if hasattr(self.train_dataset, 'sample_rate'):
+            current_rates = self.train_dataset.sample_rate
+            logger.info("=" * 60)
+            logger.info("Phase 1設定の検証:")
+            logger.info(f"  現在のサンプル率: {current_rates}")
+            
+            # VQAのインデックスは通常2（[SemSeg, ReferSeg, VQA, ReasonSeg]の順）
+            if len(current_rates) > 2 and current_rates[2] > 0:
+                logger.warning("⚠️ Phase 1でVQAサンプルが有効になっています！")
+                logger.warning("  LISA論文に基づき、Phase 1ではVQAを除外すべきです。")
+                logger.warning("  config.phase1_sample_rates = [9, 3, 0, 1] を推奨します。")
+            else:
+                logger.info("✓ Phase 1: VQAサンプルは正しく除外されています")
+            logger.info("=" * 60)
+
     def train(self):
-        """訓練のメインループ"""
-        logger.info("訓練開始")
+        """モデルの学習を実行（段階学習対応）"""
         
-        # アライメントステージはmain()で既に実行済みなのでここでは実行しない
-        # self.run_alignment_stage()  # コメントアウト: main()で実行済み
+        # LMパラメータの初期凍結設定
+        if self.lm_initially_frozen:
+            self._freeze_lm_parameters(True)
+            logger.info(f"Phase 1開始: LMパラメータを凍結（最初の{self.freeze_lm_steps}ステップ）")
+            
+            # O3推奨: Phase 1ではVQAサンプルを除外
+            # サンプル率を[SemSeg, ReferSeg, VQA, ReasonSeg]で設定
+            phase1_rates = getattr(self.config, 'phase1_sample_rates', [9, 3, 0, 1])  # VQA=0
+            if hasattr(self.train_dataset, 'set_sample_rates'):
+                self.train_dataset.set_sample_rates(phase1_rates)
+                logger.info("Phase 1: VQAサンプルを除外（LISA論文準拠）")
+                logger.info(f"  サンプル率: {phase1_rates}")
+            
+            # Phase 1設定の検証
+            self.validate_phase1_settings()
         
+        # 学習ループ
         logger.info("メイン学習ステージ開始")
-        
         for epoch in range(self.config.num_epochs):
+            # Phase切り替えチェック（エポック開始時）
+            current_optimizer_steps = epoch * (len(self.train_loader) // self.config.gradient_accumulation_steps)
+            
+            # Phase 2への移行チェック
+            if self.lm_initially_frozen and current_optimizer_steps >= self.freeze_lm_steps:
+                # Phase 2: LMパラメータの凍結を解除
+                self._freeze_lm_parameters(False)
+                self._update_optimizer_for_phase_change()
+                self.lm_initially_frozen = False
+                logger.info(f"Phase 2開始: LMパラメータの凍結を解除（ステップ{current_optimizer_steps}）")
+                
+                # O3推奨: Phase 2ではVQAサンプルを含める
+                phase2_rates = getattr(self.config, 'phase2_sample_rates', [9, 3, 3, 1])  # VQAを含める
+                if hasattr(self.train_dataset, 'set_sample_rates'):
+                    self.train_dataset.set_sample_rates(phase2_rates)
+                    logger.info("Phase 2: VQAサンプルを含める（全タスク学習）")
+                    logger.info(f"  サンプル率: {phase2_rates}")
+            
+            # エポックの学習を実行
             avg_loss = self.train_epoch(epoch)
             
-            # ベストモデルの保存
-            if avg_loss < self.best_loss:
-                self.best_loss = avg_loss
-                self.save_checkpoint("best")
-                logger.info(f"ベストモデル更新: 損失 = {self.best_loss:.4f}")
-            
-            # エポック終了時の保存
-            self.save_checkpoint(f"epoch_{epoch+1}")
+            # チェックポイント保存
+            if (epoch + 1) % self.config.save_epochs == 0:
+                self.save_checkpoint(f"epoch_{epoch+1}")
         
-        logger.info("訓練完了")
-        logger.info(f"ベスト損失: {self.best_loss:.4f}")
-        
-        # 最終的な可視化を保存
-        self.plot_loss_history()
-        
-        # Loss履歴をJSONで保存
-        import json
-        with open(self.output_dir / "loss_history.json", 'w') as f:
-            json.dump(self.loss_history, f, indent=2)
-        
-        # 最終チェックポイント
+        # 最終チェックポイントの保存
         self.save_checkpoint("final")
+        logger.info("学習完了!")
+        
+        # 最終的な損失履歴を保存
+        self.plot_loss_history()
 
 
 def main():

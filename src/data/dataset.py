@@ -14,6 +14,9 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 import cv2
 import numpy as np
 import torch
+import logging
+
+logger = logging.getLogger(__name__)
 import torch.nn.functional as F
 from PIL import Image
 import torch.utils.data
@@ -771,6 +774,46 @@ class HybridDataset(torch.utils.data.Dataset):
         # 最終的なsample_rateを確認
         print(f"📊 最終的なsample_rate: {self.sample_rate} (合計: {sum(self.sample_rate)})")
 
+        # デバッグ用: サンプル追跡用の辞書を作成
+        self.debug_sample_info = {}
+
+    def set_sample_rates(self, new_rates):
+        """
+        サンプル率を動的に変更する（Phase切り替え用）
+        O3推奨: Phase 1ではVQAを0にする
+        
+        Args:
+            new_rates: 新しいサンプル率 [SemSeg, ReferSeg, VQA, ReasonSeg]
+                      例: Phase 1 = [9, 3, 0, 1], Phase 2 = [9, 3, 3, 1]
+        """
+        if len(new_rates) != len(self.all_datasets):
+            raise ValueError(
+                f"サンプル率の長さ({len(new_rates)})がデータセット数({len(self.all_datasets)})と一致しません"
+            )
+        
+        # 正規化
+        total_rate = sum(new_rates)
+        if total_rate > 0:
+            self.sample_rate = [rate / total_rate for rate in new_rates]
+        else:
+            raise ValueError("サンプル率の合計が0です")
+        
+        # データセット名とサンプル率を表示
+        dataset_names = [type(ds).__name__ for ds in self.all_datasets]
+        logger.info("サンプル率を更新:")
+        for name, rate in zip(dataset_names, self.sample_rate):
+            logger.info(f"  {name}: {rate:.3f}")
+    
+    def get_current_phase_info(self):
+        """現在のPhase情報を取得（デバッグ用）"""
+        dataset_names = [type(ds).__name__ for ds in self.all_datasets]
+        info = {
+            'datasets': dataset_names,
+            'sample_rates': self.sample_rate,
+            'total_datasets': len(self.all_datasets)
+        }
+        return info
+
     def __len__(self):
         return self.samples_per_epoch
 
@@ -812,6 +855,14 @@ class HybridDataset(torch.utils.data.Dataset):
         sample_idx = np.random.randint(0, dataset_size)
         sample = selected_dataset[sample_idx]
         
+        # デバッグ用: サンプル情報を保存
+        self.debug_sample_info[idx] = {
+            'dataset_idx': dataset_idx,
+            'dataset_name': type(selected_dataset).__name__,
+            'sample_idx': sample_idx,
+            'dataset_size': dataset_size
+        }
+        
         # データソースタイプの判定（仕様書第3章.2.1）
         # オリジナルLISAとの互換性：9要素または10要素タプル形式の場合
         if isinstance(sample, tuple) and len(sample) >= 9:
@@ -826,6 +877,13 @@ class HybridDataset(torch.utils.data.Dataset):
             questions = sample[7]           # 質問リスト
             sampled_classes = sample[8]    # クラス名リスト
             coord_transform = sample[9] if len(sample) > 9 else None  # 座標変換オブジェクト（10要素の場合のみ）
+            
+            # デバッグ用: 詳細情報を追加
+            self.debug_sample_info[idx]['image_path'] = image_path
+            self.debug_sample_info[idx]['has_mask'] = masks is not None
+            if conversation_messages and isinstance(conversation_messages, list) and len(conversation_messages) > 0:
+                if isinstance(conversation_messages[0], dict) and 'content' in conversation_messages[0]:
+                    self.debug_sample_info[idx]['first_message'] = conversation_messages[0]['content'][:100]
             
             # conversation_messagesがList[List[Dict]]形式の場合、最初の要素を使用
             if isinstance(conversation_messages, list) and len(conversation_messages) > 0:
@@ -867,6 +925,11 @@ class HybridDataset(torch.utils.data.Dataset):
             masks = sample[3] if len(sample) > 3 else None
             label = torch.tensor(0)  # ダミーラベル
             conversation_messages = None
+            
+            # デバッグ用: 詳細情報を追加
+            self.debug_sample_info[idx]['image_path'] = image_path
+            self.debug_sample_info[idx]['has_mask'] = masks is not None
+            self.debug_sample_info[idx]['text_prompt'] = text_prompt[:100] if text_prompt else None
             
             # セグメンテーションタスクかどうか判定
             is_seg_sample = masks is not None and (
@@ -1147,6 +1210,8 @@ class HybridDataset(torch.utils.data.Dataset):
             # 品質スコア関連
             'quality_score': quality_score,
             'loss_weight': loss_weight,
+            # デバッグ用
+            '_debug_info': self.debug_sample_info.get(idx, {})
         }
 
 def collate_fn(batch: List[Dict]) -> Dict[str, Any]:
