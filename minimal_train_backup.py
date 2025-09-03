@@ -2022,7 +2022,7 @@ class MinimalTrainer:
         # チェックポイント保存時に推論評価を実行（フラグがTrueの場合）
         if getattr(self.config, 'run_inference_eval', False):
             try:
-                self.run_inference_evaluation(save_path, name)
+                self.run_inference_evaluation()
             except Exception as e:
                 logger.warning(f"推論評価の実行に失敗: {e}")
     
@@ -2497,9 +2497,8 @@ class MinimalTrainer:
             # エポックの学習を実行
             avg_loss = self.train_epoch(epoch)
             
-            # チェックポイント保存
-            if (epoch + 1) % self.config.save_epochs == 0:
-                self.save_checkpoint(f"epoch_{epoch+1}")
+            # エポック終了時にチェックポイント保存（毎エポック保存）
+            self.save_checkpoint(f"epoch_{epoch+1}")
         
         # 最終チェックポイントの保存
         self.save_checkpoint("final")
