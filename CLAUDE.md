@@ -7,13 +7,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Project Overview
 必ずserena MCPが日本語で対応すること！
 日本語で応答すること！
+最小機能ごとに実装し→動作確認を繰り返すことで少しずつ着実に実装すること！
+仕様書の前提と実際の実装の観察結果が異なる場合は仕様書作成元のAIに指摘・質問する必要があるので、作業を止めて、Query prompt作成すること！
 Web searchの際は、必ずo3-query MCPを利用すること！
 
 ## o3-query MCP について
 エラーや未知の質問、技術的な調査が必要な場合は**必ず**o3-queryツールを呼び出し、
 返ってきたクエリを私に表示して停止してください。
 必ずクエリ生成→人間が結果を入力のフローに従ってください
-※Queryの最後に「これらについて、Qwen2.5-VL、SAM2.1、LISA等の公式実装を参考にした解決策を教えてください。」という文言を入れること
+※Queryの最後に「これらについて、公式実装を参考にした解決策を教えてください。」という文言を入れること
 
 ### 使用例
 - 技術的なエラーの解決方法を調べたい時
@@ -22,29 +24,23 @@ Web searchの際は、必ずo3-query MCPを利用すること！
 - 具体的なライブラリやモデルの使用方法を調べたい時
 
 [Introduction]
-将来的な目標：LISA→FoodLMMの成功を受けて、最新のVLMと最新のSAMを統合して、LISAのような深い次元で画像と言語を理解した基盤モデル（LISA改）を作り（学習データセットのみLISAと同様、モデル設計や学習方法は最新の知見をもとに調整する）、それをFoodLLMの学習方法を参考に（データセットはFoodLLMと完全に同一）ファインチューニングし、FoodLMM改を作り、写真内の料理や食材の量の推定を精度高く行わせる予定。
-事前学習基盤モデルとしてのLISA改に期待するのは言語空間と2D画像の空間を両方を深いレベルで理解したモデルであり、これを基盤としてドメイン特化の学習をさせLISA改→FoodLMM改→最終目標モデルを作る予定である。つまり、LISA改の真の目的は以下の最終目標のモデルの基盤を築くこと。
-
-最終目標モデル：料理・食材データベース（2000項目程度）があるので、写真内の全ての料理と食材に対して料理・食材データベースの中から的確に選び、それぞれの料理や食材に対して正確な重さ（g）を推定することが最終目標（FoodLMM改を料理・食材データベースで正規化されたデータでファインチューニングしたり、モデルのHeadを特定タスク特化することで作成する予定）。
-
-FoodLMM改や最終目標モデルは将来的な目標なので、一旦は事前学習汎用モデルであるLISA改にフォーカスすること！
-・用いるデータセットはLISAと全く同様である。
-
-現状：
-・Qwen2.5-VL（実装段階では3B, 最終的に72Bに変更）とSAM2.1の統合モデルをLISA改とする方針
-・おおまかな方針として、Qwen2.5-VLは高度なViTを持っているらしいので、既存のQwenの能力を活用すべく、Qwen2.5-VLベースに、SAM2.1のマスクデコーダー, プロンプトエンコーダーを必要部分にアダプターなどを用いて統合する方針（LISAを参考にこの実装方針を採用）
-
+現状元CTデータであるdata/CT-RATE-v2/dataset/valid_fixed/valid_1/valid_1_a/valid_1_a_1.nii.gzが存在する。
+現状、以下のScriptでそれぞれのタスクが完了した。
+1. PAT＋EATのMask作成：scripts/extract_eat_pat_improved_v5_4.py(利用する環境やコマンドはREADME_EAT_PAT_v4_ILAM.md参照)
+2. CTのDRR作成：deepdrr/test_deepdrr_final_pa_fixed.py(利用する環境やコマンドはdeepdrr/README.md参照)
+3. CTのDRRに位置位相を合わせたMaskの2D投影画像作成：mask_projection/src/mask_deepdrr_projection_thickness_gpt5pro8.py(利用する環境やコマンドは下を参照)
+docker run --rm --gpus all     -v /home/soya/ctrate_ws:/workspace     deepdrr-japan-mirror:latest bash -c "
+      pip3 install torch torchvision pydicom opencv-python scipy --no-cache-dir > /dev/null 2>&1 &&
+      echo '🎯 gpt5pro8最終改良版テスト実行開始' &&
+      cd /workspace &&
+      python3 mask_projection/src/mask_deepdrr_projection_thickness_gpt5pro8.py
+    "
 
 [命令]
-上記の方針で実装を進めてきた。
-事前タスク：詳細はminimal_train_backup.pyとその関連ファイルを全て読んで統合モデルの詳細を把握して。
-本番タスク：md_files/current/deepresearch.mdを参考にして4-4以降を把握したのち、現状のコードでdeepresearch.mdの4-4以降の通り、実装を改善したほうが良ければ、その部分の実装を進めて
+pipelineフォルダの中で作業をしたい。
+CTのNiftiが数万例あるので上の1-3をパイプラインScriptをつくりたい。、data/CT-RATE-v2/dataset/valid_fixed/valid_1/valid_1_a/valid_1_a_1.nii.gzの1例で、各作業の各ステップのGPU Memoryや時間を含めた指標のログをとれるようにして数万例に適応可能なのかTestして。
 
-※作業の途中で不適切なコードや冗長なコードを発見したら報告して修正すること。
 
-※実装の際に注意すること
-・参考すべきmdファイルははあくまでおおまかな指針であるので、細かな実装はo3 queryでプラクティスをリサーチして[Introduction]に述べている目的に沿うように、本質的に実装を進めること（簡易な実装でとりあえず走るコードは必要ない、本質的に目標を達成するコードが欲しい）
-・自信のない部分は適宜正規（Qwen, SAM, Huggingface, Pytorchなど公式の実装）の実装をo3 queryでしらべながら予想や自前の実装を少なくして実装すること
-・o3 queryを積極的に行い、Qwen, SAMの正規の実装をできるだけ用いること
-・フォールバック的もしくはダミーコードはエラーを隠蔽するので適切にエラーを出して止め、次のデバッグに繋がる情報を提供するように修正すること
-・解決した問題に関するデバッグログや必要のないデバッグログは削除、デバッグ作業により解決した部分はシンプル（分岐のない確定的な実装）にして、コードをシンプルに保つようにすること
+機能ごとに少しずつ実装を行い、適宜テストを行い実際に動くことを確認して次の機能を実装するように進めること。
+
+もしわからない部分があれば、積極的にAIにクエリするのでプロンプトを作成して。
